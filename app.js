@@ -81,12 +81,22 @@
                         <span class="file-name">${escHtml(f.name)}</span>
                         <span class="file-size">${sizeKB} KB</span>
                     </div>
-                    <span class="file-badge ${badgeClass}">${badgeText}</span>
+                    <span class="file-badge ${badgeClass}" data-index="${i}" title="Click para cambiar tipo">${badgeText}</span>
                 </div>
                 <button class="btn-remove" data-index="${i}" title="Eliminar">&times;</button>
             `;
             container.appendChild(div);
         }
+
+        // Toggle file type on badge click
+        container.querySelectorAll('.file-badge').forEach(badge => {
+            badge.addEventListener('click', e => {
+                e.stopPropagation();
+                const idx = parseInt(badge.dataset.index);
+                uploadedFiles[idx].type = uploadedFiles[idx].type === 'spec' ? 'catalog' : 'spec';
+                renderFileList();
+            });
+        });
 
         // Remove buttons
         container.querySelectorAll('.btn-remove').forEach(btn => {
