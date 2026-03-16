@@ -649,15 +649,87 @@ body {
     background: #f0f2f5;
 }
 
-.code-view {
+/* Code Editor */
+.editor-wrapper {
+    display: flex;
+    height: 100%;
+    overflow: hidden;
+}
+
+.line-numbers {
+    padding: 12px 0;
+    min-width: 48px;
+    text-align: right;
     font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
     line-height: 1.6;
-    padding: 16px;
-    color: var(--text-secondary);
-    white-space: pre-wrap;
-    word-break: break-all;
-    margin: 0;
+    color: var(--text-muted);
+    background: var(--bg-panel);
+    border-right: 1px solid var(--border);
+    user-select: none;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.line-numbers span {
+    display: block;
+    padding: 0 8px;
+}
+
+.code-editor {
+    flex: 1;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    padding: 12px 16px;
+    color: var(--text-primary);
+    background: var(--bg-app);
+    border: none;
+    outline: none;
+    resize: none;
+    white-space: pre;
+    overflow: auto;
+    tab-size: 2;
+    -moz-tab-size: 2;
+}
+
+.code-editor:focus {
+    background: #0e1127;
+}
+
+.code-editor.modified {
+    border-top: 2px solid var(--amber);
+}
+
+.editor-status {
+    font-size: 11px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.editor-status.modified {
+    color: var(--amber);
+}
+
+.editor-status.saved {
+    color: var(--green);
+}
+
+.editor-status.error {
+    color: var(--red);
+}
+
+.btn-apply {
+    border-color: var(--amber) !important;
+    color: var(--amber) !important;
+}
+
+.btn-apply:hover {
+    background: rgba(245, 158, 11, 0.1) !important;
 }
 
 /* ---- Right Panel ---- */

@@ -207,6 +207,21 @@
                 document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
                 tab.classList.add('active');
                 $('tab' + capitalize(tab.dataset.tab)).classList.add('active');
+
+                // Show/hide apply buttons based on active tab
+                const activeTab = tab.dataset.tab;
+                const btnApplyHtml = $('btnApplyHtml');
+                const btnApplyJson = $('btnApplyJson');
+                if (activeTab === 'html') {
+                    if (btnApplyHtml && PreviewEngine.isHtmlDirty()) btnApplyHtml.hidden = false;
+                    if (btnApplyJson) btnApplyJson.hidden = true;
+                } else if (activeTab === 'json') {
+                    if (btnApplyJson && PreviewEngine.isJsonDirty()) btnApplyJson.hidden = false;
+                    if (btnApplyHtml) btnApplyHtml.hidden = true;
+                } else {
+                    if (btnApplyHtml) btnApplyHtml.hidden = true;
+                    if (btnApplyJson) btnApplyJson.hidden = true;
+                }
             });
         });
 
