@@ -407,17 +407,18 @@ body {
     margin-top: 40px;
 }
 
-/* Prefilled indicator */
+/* Prefilled indicator — editable but visually distinct */
 [data-prefilled="true"] .form-control,
 [data-prefilled="true"] .form-select {
-    background: #f8f9fa;
-    font-style: italic;
+    background: #f0fdf4;
+    border-color: #86efac;
 }
 
-[data-prefilled="true"]::after {
-    content: "Pre-cargado";
+[data-prefilled="true"] .form-label::after {
+    content: " (pre-cargado)";
     font-size: 10px;
-    color: var(--muted-foreground);
+    color: #16a34a;
+    font-weight: 400;
     font-style: italic;
 }
 
@@ -953,7 +954,8 @@ input[inputmode="numeric"] {
     function buildField(field) {
         const colClass = field.colWidth || 'col-12';
         const requiredAttr = field.required ? ' required' : '';
-        const disabledAttr = field.prefilled ? ' disabled' : '';
+        // Prefilled fields are editable in preview but visually marked
+        const disabledAttr = '';
         const prefilledData = field.prefilled ? ' data-prefilled="true"' : '';
         const requiredMark = field.required ? ' <span class="required-mark">*</span>' : '';
         const label = field.customLabel || field.label || field.fieldName;
