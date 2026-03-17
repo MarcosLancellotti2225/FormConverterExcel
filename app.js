@@ -136,9 +136,10 @@
             });
         });
 
-        // Enable generate button if spec exists
+        // Enable generate button if spec or pdf exists
         const hasSpec = uploadedFiles.some(f => f.type === 'spec');
-        $('btnGenerate').disabled = !hasSpec;
+        const hasPdf = uploadedFiles.some(f => f.type === 'pdf');
+        $('btnGenerate').disabled = !(hasSpec || hasPdf);
     }
 
     async function generateForm() {
@@ -156,29 +157,44 @@
 
             questionsData = null;
             pdfFields = null;
+            specData = null;
 
+            const pdfFile = uploadedFiles.find(f => f.type === 'pdf');
+            const hasSpecFile = uploadedFiles.some(f => f.type === 'spec');
+
+            // Parse Excel files
             for (const f of uploadedFiles) {
-                if (f.type === 'pdf') {
-                    // Extract text from PDF
-                    progressText.textContent = 'Extrayendo campos del PDF...';
-                    const pdfText = await extractPdfText(f.file);
-                    pdfFields = ExcelParser.parsePdfFields(pdfText);
-                } else {
-                    const arrayBuffer = await f.file.arrayBuffer();
-                    const result = ExcelParser.parseFile(arrayBuffer, f.name);
+                if (f.type === 'pdf') continue; // handled separately
+                const arrayBuffer = await f.file.arrayBuffer();
+                const result = ExcelParser.parseFile(arrayBuffer, f.name);
 
-                    if (result.type === 'spec') {
-                        specData = result.data;
-                    } else if (result.type === 'questions') {
-                        questionsData = result.data;
-                    } else {
-                        catalogData = result.data;
-                    }
+                if (result.type === 'spec') {
+                    specData = result.data;
+                } else if (result.type === 'questions') {
+                    questionsData = result.data;
+                } else {
+                    catalogData = result.data;
                 }
             }
 
+            // PDF-only mode: analyze PDF to generate spec
+            if (pdfFile && !hasSpecFile) {
+                progressText.textContent = 'Analizando PDF — extrayendo campos...';
+                progressFill.style.width = '25%';
+
+                specData = await PdfAnalyzer.analyze(pdfFile.file);
+
+                progressText.textContent = `Encontrados ${specData.fields.length} campos en el PDF`;
+                progressFill.style.width = '40%';
+            } else if (pdfFile && hasSpecFile) {
+                // PDF as supplement: extract field names for matching
+                progressText.textContent = 'Extrayendo campos del PDF...';
+                const pdfText = await extractPdfText(pdfFile.file);
+                pdfFields = ExcelParser.parsePdfFields(pdfText);
+            }
+
             if (!specData) {
-                throw new Error('No se encontró un archivo de especificación válido');
+                throw new Error('No se encontró un archivo de especificación o PDF válido');
             }
 
             progressText.textContent = 'Procesando campos...';

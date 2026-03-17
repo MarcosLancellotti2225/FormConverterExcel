@@ -15,7 +15,7 @@
             <div class="upload-header">
                 <div class="logo-mark">DP</div>
                 <h1>DocPath Form Builder</h1>
-                <p class="subtitle">Carga un Excel de especificación para generar formularios HTML dinámicos</p>
+                <p class="subtitle">Carga un Excel de especificación o un PDF para generar formularios HTML dinámicos</p>
             </div>
 
             <div class="drop-zone" id="dropZone">
@@ -26,7 +26,7 @@
                         <line x1="12" y1="3" x2="12" y2="15"/>
                     </svg>
                 </div>
-                <p class="drop-zone-text">Arrastra archivos Excel aquí</p>
+                <p class="drop-zone-text">Arrastra archivos Excel o PDF aquí</p>
                 <p class="drop-zone-hint">o haz click para seleccionar</p>
                 <input type="file" id="fileInput" multiple accept=".xlsx,.xls,.pdf" hidden>
             </div>
@@ -207,6 +207,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
     <script src="modules/excel-parser.js"></script>
+    <script src="modules/pdf-analyzer.js"></script>
     <script src="modules/match-engine.js"></script>
     <script src="modules/field-manager.js"></script>
     <script src="modules/html-generator.js"></script>
