@@ -197,6 +197,16 @@ body {
     color: var(--teal);
 }
 
+.badge-questions {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--amber);
+}
+
+.badge-pdf {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--red);
+}
+
 .btn-remove {
     background: none;
     border: none;
@@ -938,4 +948,191 @@ textarea.props-input {
     .builder-layout { flex-direction: column; }
     .panel-left { width: 100%; min-width: 100%; max-height: 40vh; }
     .panel-right.open { width: 100%; min-width: 100%; }
+}
+
+/* =============================================
+   Match Review Screen
+   ============================================= */
+
+.match-container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 40px 24px;
+}
+
+.match-header {
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.match-header h1 {
+    color: var(--text-primary);
+    font-size: 24px;
+    margin: 12px 0 8px;
+}
+
+.match-header .subtitle {
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.match-stats {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+.match-stat {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 20px;
+    text-align: center;
+    min-width: 100px;
+}
+
+.match-stat-value {
+    display: block;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.match-stat-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.match-stat.good .match-stat-value { color: var(--green); }
+.match-stat.warn .match-stat-value { color: var(--amber); }
+.match-stat.bad .match-stat-value { color: var(--red); }
+
+.match-filters {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    justify-content: center;
+}
+
+.match-filter-btn {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+}
+
+.match-filter-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+.match-filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.match-table-wrapper {
+    overflow-x: auto;
+    margin-bottom: 24px;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+}
+
+.match-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.match-table thead {
+    background: var(--bg-card);
+    position: sticky;
+    top: 0;
+}
+
+.match-table th {
+    text-align: left;
+    padding: 10px 12px;
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+}
+
+.match-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+    vertical-align: middle;
+}
+
+.match-table tr:hover td { background: var(--bg-card-hover); }
+
+.match-field-name {
+    max-width: 220px;
+}
+
+.match-field-name strong {
+    display: block;
+    font-size: 13px;
+}
+
+.match-field-step,
+.match-field-section {
+    display: block;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.match-select,
+.match-input {
+    width: 100%;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 6px 10px;
+    border-radius: var(--radius);
+    font-size: 12px;
+    font-family: inherit;
+}
+
+.match-select:focus,
+.match-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+.conf-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.conf-high { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+.conf-med { background: rgba(245, 158, 11, 0.15); color: var(--amber); }
+.conf-low { background: rgba(239, 68, 68, 0.15); color: var(--red); }
+
+.btn-clear-match {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px;
+}
+
+.btn-clear-match:hover { color: var(--red); }
+
+.match-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
 }

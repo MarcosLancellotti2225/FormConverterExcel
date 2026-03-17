@@ -8,6 +8,8 @@
     let uploadedFiles = [];
     let specData = null;
     let catalogData = null;
+    let questionsData = null;
+    let pdfFields = null;
     let _previewDebounceTimer = null;
 
     // DOM refs
@@ -67,9 +69,12 @@
 
     function handleFiles(fileList) {
         for (const file of fileList) {
-            if (!file.name.match(/\.xlsx?$/i)) continue;
-            const type = ExcelParser.detectFileType(file.name);
-            uploadedFiles.push({ file, type, name: file.name, size: file.size });
+            if (file.name.match(/\.pdf$/i)) {
+                uploadedFiles.push({ file, type: 'pdf', name: file.name, size: file.size });
+            } else if (file.name.match(/\.xlsx?$/i)) {
+                const type = ExcelParser.detectFileType(file.name);
+                uploadedFiles.push({ file, type, name: file.name, size: file.size });
+            }
         }
         renderFileList();
     }
@@ -78,11 +83,20 @@
         const container = $('fileList');
         container.innerHTML = '';
 
+        const BADGE_MAP = {
+            spec:      { cls: 'badge-spec',      text: 'SPEC' },
+            catalog:   { cls: 'badge-catalog',    text: 'CATÁLOGO' },
+            questions: { cls: 'badge-questions',   text: 'PREGUNTAS' },
+            pdf:       { cls: 'badge-pdf',         text: 'PDF' }
+        };
+        const TYPE_CYCLE = ['spec', 'catalog', 'questions'];
+
         for (let i = 0; i < uploadedFiles.length; i++) {
             const f = uploadedFiles[i];
             const sizeKB = (f.size / 1024).toFixed(1);
-            const badgeClass = f.type === 'catalog' ? 'badge-catalog' : 'badge-spec';
-            const badgeText = f.type === 'catalog' ? 'CATÁLOGO' : 'SPEC';
+            const badge = BADGE_MAP[f.type] || BADGE_MAP.spec;
+            const badgeClass = badge.cls;
+            const badgeText = badge.text;
 
             const div = document.createElement('div');
             div.className = 'file-item';
@@ -100,12 +114,15 @@
             container.appendChild(div);
         }
 
-        // Toggle file type on badge click
-        container.querySelectorAll('.file-badge').forEach(badge => {
-            badge.addEventListener('click', e => {
+        // Cycle file type on badge click (pdf files can't change)
+        container.querySelectorAll('.file-badge').forEach(bdg => {
+            bdg.addEventListener('click', e => {
                 e.stopPropagation();
-                const idx = parseInt(badge.dataset.index);
-                uploadedFiles[idx].type = uploadedFiles[idx].type === 'spec' ? 'catalog' : 'spec';
+                const idx = parseInt(bdg.dataset.index);
+                const f = uploadedFiles[idx];
+                if (f.type === 'pdf') return; // PDF stays PDF
+                const curIdx = TYPE_CYCLE.indexOf(f.type);
+                f.type = TYPE_CYCLE[(curIdx + 1) % TYPE_CYCLE.length];
                 renderFileList();
             });
         });
@@ -133,18 +150,30 @@
         $('btnGenerate').disabled = true;
 
         try {
-            // Parse spec files
-            progressText.textContent = 'Leyendo archivos Excel...';
-            progressFill.style.width = '20%';
+            // Parse all files
+            progressText.textContent = 'Leyendo archivos...';
+            progressFill.style.width = '10%';
+
+            questionsData = null;
+            pdfFields = null;
 
             for (const f of uploadedFiles) {
-                const arrayBuffer = await f.file.arrayBuffer();
-                const result = ExcelParser.parseFile(arrayBuffer, f.name);
-
-                if (result.type === 'spec') {
-                    specData = result.data;
+                if (f.type === 'pdf') {
+                    // Extract text from PDF
+                    progressText.textContent = 'Extrayendo campos del PDF...';
+                    const pdfText = await extractPdfText(f.file);
+                    pdfFields = ExcelParser.parsePdfFields(pdfText);
                 } else {
-                    catalogData = result.data;
+                    const arrayBuffer = await f.file.arrayBuffer();
+                    const result = ExcelParser.parseFile(arrayBuffer, f.name);
+
+                    if (result.type === 'spec') {
+                        specData = result.data;
+                    } else if (result.type === 'questions') {
+                        questionsData = result.data;
+                    } else {
+                        catalogData = result.data;
+                    }
                 }
             }
 
@@ -153,23 +182,42 @@
             }
 
             progressText.textContent = 'Procesando campos...';
-            progressFill.style.width = '50%';
+            progressFill.style.width = '40%';
 
             // Initialize field manager
             FieldManager.init(specData, catalogData);
 
             progressText.textContent = 'Detectando lógica condicional...';
-            progressFill.style.width = '70%';
+            progressFill.style.width = '60%';
 
             FieldManager.detectConditionals();
 
-            progressText.textContent = 'Generando formulario...';
-            progressFill.style.width = '90%';
+            // If we have questions or PDF data, go to match screen
+            const hasExtraData = (questionsData && questionsData.questions.length > 0) ||
+                                 (pdfFields && pdfFields.length > 0);
 
-            // Switch to builder screen
-            await delay(300);
-            showScreen('builderScreen');
-            initBuilderScreen();
+            if (hasExtraData) {
+                progressText.textContent = 'Matcheando campos...';
+                progressFill.style.width = '80%';
+
+                const fields = FieldManager.getFields().filter(f => f.visible);
+                MatchEngine.autoMatch(
+                    fields,
+                    questionsData ? questionsData.questions : [],
+                    pdfFields || []
+                );
+
+                await delay(200);
+                showScreen('matchScreen');
+                initMatchScreen();
+            } else {
+                progressText.textContent = 'Generando formulario...';
+                progressFill.style.width = '90%';
+
+                await delay(300);
+                showScreen('builderScreen');
+                initBuilderScreen();
+            }
 
             progressFill.style.width = '100%';
             progressText.textContent = 'Listo!';
@@ -181,6 +229,166 @@
             progressFill.style.background = '#ef4444';
             $('btnGenerate').disabled = false;
         }
+    }
+
+    /**
+     * Extract text from a PDF using pdf.js
+     */
+    async function extractPdfText(file) {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const lines = [];
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            const pageText = content.items.map(item => item.str).join(' ');
+            lines.push(pageText);
+        }
+
+        return lines.join('\n');
+    }
+
+    // === MATCH REVIEW SCREEN ===
+
+    function initMatchScreen() {
+        renderMatchTable();
+        renderMatchStats();
+
+        // Filter buttons
+        document.querySelectorAll('.match-filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.match-filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                renderMatchTable(btn.dataset.filter);
+            });
+        });
+
+        // Back button
+        $('btnBackToUpload2').addEventListener('click', () => showScreen('uploadScreen'));
+
+        // Apply matches and go to builder
+        $('btnApplyMatches').addEventListener('click', () => {
+            MatchEngine.applyToFields();
+            showScreen('builderScreen');
+            initBuilderScreen();
+        });
+    }
+
+    function renderMatchStats() {
+        const stats = MatchEngine.getStats();
+        const el = $('matchStats');
+        el.innerHTML = `
+            <div class="match-stat"><span class="match-stat-value">${stats.total}</span><span class="match-stat-label">Campos</span></div>
+            <div class="match-stat good"><span class="match-stat-value">${stats.qMatched}</span><span class="match-stat-label">Con pregunta</span></div>
+            <div class="match-stat good"><span class="match-stat-value">${stats.pdfMatched}</span><span class="match-stat-label">Con PDF</span></div>
+            <div class="match-stat warn"><span class="match-stat-value">${stats.lowConf}</span><span class="match-stat-label">Baja confianza</span></div>
+            <div class="match-stat bad"><span class="match-stat-value">${stats.unmatched}</span><span class="match-stat-label">Sin match</span></div>
+        `;
+    }
+
+    function renderMatchTable(filter) {
+        const tbody = $('matchTableBody');
+        tbody.innerHTML = '';
+        let matches = MatchEngine.getMatches();
+
+        if (filter === 'matched') {
+            matches = matches.filter(m => m.questionMatch || m.pdfName);
+        } else if (filter === 'unmatched') {
+            matches = matches.filter(m => !m.questionMatch && !m.pdfName);
+        } else if (filter === 'low') {
+            matches = matches.filter(m =>
+                (m.questionMatch && m.questionScore < 0.5) ||
+                (m.pdfMatch && m.pdfScore < 0.5)
+            );
+        }
+
+        const questions = questionsData ? questionsData.questions : [];
+        const pdfs = pdfFields || [];
+
+        for (const match of matches) {
+            const tr = document.createElement('tr');
+            const confScore = Math.max(match.questionScore, match.pdfScore);
+            const confClass = confScore >= 0.7 ? 'conf-high' : confScore >= 0.4 ? 'conf-med' : 'conf-low';
+            const confPct = Math.round(confScore * 100);
+
+            tr.innerHTML = `
+                <td class="match-field-name">
+                    <span class="match-field-step">${escHtml(match.step)}</span>
+                    <strong>${escHtml(match.fieldName)}</strong>
+                    <span class="match-field-section">${escHtml(match.section)}</span>
+                </td>
+                <td>
+                    <select class="match-select match-question-select" data-field-id="${match.fieldId}">
+                        <option value="">— Sin match —</option>
+                        ${questions.map((q, qi) => `
+                            <option value="${qi}" ${match.questionMatch === q ? 'selected' : ''}>
+                                ${escHtml(q.question || q.fieldId).substring(0, 80)}
+                            </option>
+                        `).join('')}
+                    </select>
+                </td>
+                <td>
+                    <input type="text" class="match-input match-pdf-input" data-field-id="${match.fieldId}"
+                           value="${escAttr(match.pdfName)}" placeholder="Campo PDF..."
+                           list="pdfFieldList">
+                </td>
+                <td><span class="conf-badge ${confClass}">${confPct}%</span></td>
+                <td>
+                    <button class="btn-clear-match" data-field-id="${match.fieldId}" title="Limpiar match">&times;</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        }
+
+        // PDF datalist for autocomplete
+        let datalist = document.getElementById('pdfFieldList');
+        if (!datalist) {
+            datalist = document.createElement('datalist');
+            datalist.id = 'pdfFieldList';
+            document.body.appendChild(datalist);
+        }
+        datalist.innerHTML = pdfs.map(pf => `<option value="${escAttr(pf.name)}">`).join('');
+
+        // Wire change events
+        tbody.querySelectorAll('.match-question-select').forEach(sel => {
+            sel.addEventListener('change', () => {
+                const fieldId = sel.dataset.fieldId;
+                const qi = sel.value;
+                if (qi === '') {
+                    MatchEngine.updateMatch(fieldId, {
+                        questionMatch: null, questionScore: 0, questionText: '', questionOverride: false
+                    });
+                } else {
+                    const q = questions[parseInt(qi)];
+                    MatchEngine.updateMatch(fieldId, {
+                        questionMatch: q, questionScore: 1.0, questionText: q.question, questionOverride: true
+                    });
+                }
+                renderMatchStats();
+            });
+        });
+
+        tbody.querySelectorAll('.match-pdf-input').forEach(input => {
+            input.addEventListener('change', () => {
+                MatchEngine.updateMatch(input.dataset.fieldId, {
+                    pdfName: input.value, pdfOverride: true, pdfScore: input.value ? 1.0 : 0
+                });
+                renderMatchStats();
+            });
+        });
+
+        tbody.querySelectorAll('.btn-clear-match').forEach(btn => {
+            btn.addEventListener('click', () => {
+                MatchEngine.updateMatch(btn.dataset.fieldId, {
+                    questionMatch: null, questionScore: 0, questionText: '',
+                    pdfMatch: null, pdfScore: 0, pdfName: '',
+                    questionOverride: false, pdfOverride: false
+                });
+                renderMatchTable(filter);
+                renderMatchStats();
+            });
+        });
     }
 
     // === BUILDER SCREEN ===

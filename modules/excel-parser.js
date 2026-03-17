@@ -22,12 +22,15 @@ const ExcelParser = (() => {
     };
 
     /**
-     * Detect file type: 'spec' or 'catalog'
+     * Detect file type: 'spec', 'catalog', or 'questions'
      */
     function detectFileType(fileName) {
         const lower = fileName.toLowerCase();
         if (lower.includes('catalogo') || lower.includes('catálogo') || lower.includes('catalog')) {
             return 'catalog';
+        }
+        if (lower.includes('pregunta') || lower.includes('question') || lower.includes('descripci')) {
+            return 'questions';
         }
         return 'spec';
     }
@@ -41,6 +44,8 @@ const ExcelParser = (() => {
 
         if (fileType === 'catalog') {
             return { type: 'catalog', data: parseCatalog(workbook), fileName };
+        } else if (fileType === 'questions') {
+            return { type: 'questions', data: parseQuestions(workbook), fileName };
         } else {
             return { type: 'spec', data: parseSpec(workbook), fileName };
         }
@@ -266,6 +271,119 @@ const ExcelParser = (() => {
         return catalogs;
     }
 
+    /**
+     * Parse questions/descriptions Excel
+     * Flexible: looks for columns like "pregunta", "descripcion", "campo", "label", "texto"
+     */
+    function parseQuestions(workbook) {
+        const questions = [];
+
+        for (const sheetName of workbook.SheetNames) {
+            const sheet = workbook.Sheets[sheetName];
+            const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+            if (rawData.length < 2) continue;
+
+            // Find header row
+            let headerRow = -1;
+            let colMap = {};
+
+            const questionMatchers = ['pregunta', 'question', 'descripcion', 'descripción', 'label', 'texto', 'enunciado'];
+            const idMatchers = ['campo', 'field', 'id', 'nombre', 'código', 'codigo', 'clave', 'key'];
+            const sectionMatchers = ['sección', 'seccion', 'section', 'grupo', 'paso', 'step'];
+            const hintMatchers = ['ayuda', 'hint', 'placeholder', 'ejemplo'];
+
+            for (let i = 0; i < Math.min(10, rawData.length); i++) {
+                const row = rawData[i];
+                if (!row) continue;
+                const tempMap = {};
+                let matches = 0;
+
+                for (let j = 0; j < row.length; j++) {
+                    const cell = cleanStr(String(row[j] || '')).toLowerCase();
+                    if (!cell) continue;
+
+                    if (!tempMap.question && questionMatchers.some(m => cell.includes(m))) {
+                        tempMap.question = j; matches++;
+                    } else if (!tempMap.fieldId && idMatchers.some(m => cell.includes(m))) {
+                        tempMap.fieldId = j; matches++;
+                    } else if (!tempMap.section && sectionMatchers.some(m => cell.includes(m))) {
+                        tempMap.section = j; matches++;
+                    } else if (!tempMap.hint && hintMatchers.some(m => cell.includes(m))) {
+                        tempMap.hint = j; matches++;
+                    }
+                }
+
+                if (matches >= 1 && (tempMap.question !== undefined || tempMap.fieldId !== undefined)) {
+                    headerRow = i;
+                    colMap = tempMap;
+                    break;
+                }
+            }
+
+            if (headerRow === -1) {
+                // Fallback: col 0 = id, col 1 = question
+                headerRow = 0;
+                colMap = { fieldId: 0, question: 1 };
+            }
+
+            for (let i = headerRow + 1; i < rawData.length; i++) {
+                const row = rawData[i];
+                if (!row || row.every(c => c === '' || c == null)) continue;
+
+                const q = {
+                    fieldId: cleanStr(getCellValue(row, colMap.fieldId)),
+                    question: cleanStr(getCellValue(row, colMap.question)),
+                    section: cleanStr(getCellValue(row, colMap.section)),
+                    hint: cleanStr(getCellValue(row, colMap.hint)),
+                    _sheet: sheetName,
+                    _row: i
+                };
+
+                if (q.question || q.fieldId) {
+                    questions.push(q);
+                }
+            }
+        }
+
+        return { questions };
+    }
+
+    /**
+     * Extract field names from a PDF text dump (plain text)
+     * Used when a PDF is uploaded and converted to text client-side
+     */
+    function parsePdfFields(textContent) {
+        const fields = [];
+        const lines = textContent.split('\n');
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+
+            // Look for patterns like "Campo: xxx" or field-like identifiers
+            // Also capture labels followed by underscores/lines (form field patterns)
+            const colonMatch = trimmed.match(/^(.+?):\s*(_+|\.+)?\s*$/);
+            if (colonMatch) {
+                fields.push({ name: colonMatch[1].trim(), raw: trimmed });
+                continue;
+            }
+
+            // Lines ending with underscores (fill-in fields)
+            const underscoreMatch = trimmed.match(/^(.+?)\s*_{3,}\s*$/);
+            if (underscoreMatch) {
+                fields.push({ name: underscoreMatch[1].trim(), raw: trimmed });
+                continue;
+            }
+
+            // Short lines that look like field labels
+            if (trimmed.length < 80 && trimmed.length > 2 && !trimmed.includes('.') && /^[A-ZÁÉÍÓÚÑ]/.test(trimmed)) {
+                fields.push({ name: trimmed, raw: trimmed });
+            }
+        }
+
+        return fields;
+    }
+
     // Helpers
     function getCellValue(row, colIndex) {
         if (colIndex === undefined || colIndex === null) return '';
@@ -282,6 +400,8 @@ const ExcelParser = (() => {
         detectFileType,
         parseFile,
         parseSpec,
-        parseCatalog
+        parseCatalog,
+        parseQuestions,
+        parsePdfFields
     };
 })();
