@@ -8,9 +8,21 @@
     let uploadedFiles = [];
     let specData = null;
     let catalogData = null;
+    let _previewDebounceTimer = null;
 
     // DOM refs
     const $ = id => document.getElementById(id);
+
+    /**
+     * Debounced preview regeneration — auto-fires on field changes
+     * 300ms delay so typing doesn't cause constant regeneration
+     */
+    function schedulePreviewUpdate() {
+        clearTimeout(_previewDebounceTimer);
+        _previewDebounceTimer = setTimeout(() => {
+            regeneratePreview();
+        }, 300);
+    }
 
     // === SCREEN MANAGEMENT ===
 
@@ -241,10 +253,12 @@
             FieldManager.selectField(null);
         });
 
-        // Listen for field changes
+        // Listen for field changes — update properties panel AND live-refresh preview
         FieldManager.onChange(() => {
             const selected = FieldManager.getSelectedField();
             if (selected) renderProperties(selected);
+            // Auto-regenerate preview with debounce
+            schedulePreviewUpdate();
         });
     }
 
