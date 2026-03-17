@@ -435,6 +435,46 @@ body {
     pointer-events: none;
 }
 
+/* Validation feedback */
+.validation-msg {
+    font-size: 12px;
+    margin-top: 4px;
+    min-height: 16px;
+    transition: all 0.15s;
+}
+
+.validation-msg.error { color: var(--destructive); }
+.validation-msg.success { color: #16a34a; }
+
+.form-control.is-invalid,
+.form-select.is-invalid {
+    border-color: var(--destructive);
+    box-shadow: 0 0 0 3px rgba(207, 37, 37, 0.08);
+}
+
+.form-control.is-valid,
+.form-select.is-valid {
+    border-color: #16a34a;
+    box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.08);
+}
+
+/* Character counter */
+.char-counter {
+    font-size: 11px;
+    color: var(--muted-foreground);
+    text-align: right;
+    margin-top: 2px;
+    transition: color 0.15s;
+}
+
+.char-counter.warning { color: #d97706; }
+.char-counter.over { color: var(--destructive); font-weight: 600; }
+
+/* Input type indicator for numeric */
+input[inputmode="numeric"] {
+    font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 768px) {
     .stepper-horizontal { display: none; }
     .form-check-group { flex-direction: column; }
@@ -446,13 +486,104 @@ body {
     /**
      * Full interactive JS for the generated form
      */
-    function buildINS_JS(steps, dynamicSections, conditionalMap) {
+    function buildINS_JS(steps, dynamicSections, conditionalMap, validationRules) {
         return `
 // ========================================
 // INS Form — Interactive Logic
 // ========================================
 (function() {
     'use strict';
+
+    // === VALIDATION RULES ===
+    var rules = ${JSON.stringify(validationRules)};
+
+    function validateField(input) {
+        var name = input.name;
+        var rule = rules[name];
+        if (!rule) return;
+
+        var val = input.value;
+        var msgEl = document.querySelector('[data-msg-for="' + name + '"]');
+        var errors = [];
+
+        // Required
+        if (rule.required && !val.trim()) {
+            errors.push('Campo obligatorio');
+        }
+
+        if (val.trim()) {
+            // Max length
+            if (rule.maxLength && val.length > rule.maxLength) {
+                errors.push('M\\u00e1ximo ' + rule.maxLength + ' caracteres (ten\\u00e9s ' + val.length + ')');
+            }
+
+            // Pattern (numeric)
+            if (rule.pattern) {
+                var re = new RegExp('^' + rule.pattern + '$');
+                if (!re.test(val)) {
+                    errors.push('Solo se permiten n\\u00fameros');
+                }
+            }
+
+            // Email
+            if (rule.format === 'email') {
+                var emailRe = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
+                if (!emailRe.test(val)) {
+                    errors.push('Email inv\\u00e1lido');
+                }
+            }
+
+            // Date dd/mm/aaaa
+            if (rule.format === 'date') {
+                var dateRe = /^\\d{2}\\/\\d{2}\\/\\d{4}$/;
+                if (!dateRe.test(val)) {
+                    errors.push('Formato: dd/mm/aaaa');
+                }
+            }
+        }
+
+        // Update UI
+        input.classList.remove('is-invalid', 'is-valid');
+        if (msgEl) {
+            msgEl.classList.remove('error', 'success');
+            if (errors.length > 0) {
+                input.classList.add('is-invalid');
+                msgEl.classList.add('error');
+                msgEl.textContent = errors[0];
+            } else if (val.trim()) {
+                input.classList.add('is-valid');
+                msgEl.classList.add('success');
+                msgEl.textContent = '\\u2713';
+            } else {
+                msgEl.textContent = '';
+            }
+        }
+    }
+
+    function updateCharCounter(input) {
+        var name = input.name;
+        var counter = document.querySelector('[data-counter-for="' + name + '"]');
+        if (!counter) return;
+        var rule = rules[name];
+        var max = rule ? rule.maxLength : 0;
+        if (!max) return;
+        var len = input.value.length;
+        counter.textContent = len + ' / ' + max;
+        counter.classList.remove('warning', 'over');
+        if (len > max) counter.classList.add('over');
+        else if (len > max * 0.8) counter.classList.add('warning');
+    }
+
+    // Bind validation to all inputs
+    document.querySelectorAll('input.form-control, select.form-select, textarea.form-control').forEach(function(el) {
+        el.addEventListener('input', function() {
+            validateField(el);
+            updateCharCounter(el);
+        });
+        el.addEventListener('blur', function() {
+            validateField(el);
+        });
+    });
 
     // === STEP NAVIGATION ===
     let currentStep = 1;
@@ -491,6 +622,31 @@ body {
     var btnNext = document.getElementById('btnNext');
     var btnBack = document.getElementById('btnBack');
     if (btnNext) btnNext.addEventListener('click', function() {
+        // Validate current step before advancing
+        var currentSection = document.querySelector('.step-section.active');
+        var hasErrors = false;
+        if (currentSection) {
+            currentSection.querySelectorAll('input.form-control, select.form-select').forEach(function(el) {
+                if (el.disabled) return;
+                validateField(el);
+                if (el.classList.contains('is-invalid')) hasErrors = true;
+            });
+            // Check required radios
+            var radioGroups = {};
+            currentSection.querySelectorAll('input[type="radio"][required]').forEach(function(r) {
+                if (!r.disabled) radioGroups[r.name] = radioGroups[r.name] || false;
+                if (r.checked) radioGroups[r.name] = true;
+            });
+            for (var rg in radioGroups) {
+                if (!radioGroups[rg]) hasErrors = true;
+            }
+        }
+        if (hasErrors) {
+            // Scroll to first error
+            var firstErr = currentSection.querySelector('.is-invalid');
+            if (firstErr) firstErr.focus();
+            return;
+        }
         if (currentStep < totalSteps) showStep(currentStep + 1);
         else alert('Formulario enviado (demo)');
     });
@@ -632,7 +788,10 @@ body {
         // Collect conditional map
         const conditionalMap = {};
 
-        // Pre-scan for conditionals
+        // Collect validation rules per field
+        const validationRules = {};
+
+        // Pre-scan for conditionals and validation
         for (const field of visibleFields) {
             if (field.conditionalTrigger) {
                 conditionalMap[field.id] = {
@@ -640,6 +799,18 @@ body {
                     targetIds: field.conditionalTrigger.targetIds,
                     showWhen: field.conditionalTrigger.showWhen || 'si'
                 };
+            }
+
+            // Build validation rule entry
+            const v = field.validation || {};
+            const rule = {};
+            if (field.required) rule.required = true;
+            if (v.maxLength) rule.maxLength = v.maxLength;
+            if (v.pattern) rule.pattern = v.pattern;
+            if (v.format) rule.format = v.format;
+            if (field.rule) rule.ruleText = field.rule;
+            if (Object.keys(rule).length > 0) {
+                validationRules[sanitizeId(field.id)] = rule;
             }
         }
 
@@ -659,7 +830,7 @@ body {
         html += '</main>\n';
         html += buildFooter();
         html += `    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"><\/script>\n`;
-        html += `    <script>${buildINS_JS(steps, dynamicSections, conditionalMap)}<\/script>\n`;
+        html += `    <script>${buildINS_JS(steps, dynamicSections, conditionalMap, validationRules)}<\/script>\n`;
         html += '</body>\n</html>';
 
         return html;
@@ -814,7 +985,8 @@ body {
                 html += buildCheckbox(field);
                 break;
             case 'date':
-                html += `                    <input type="text" class="form-control" placeholder="dd/mm/aaaa" name="${sanitizeId(field.id)}"${requiredAttr}${disabledAttr}>\n`;
+                html += `                    <input type="text" class="form-control" placeholder="dd/mm/aaaa" name="${sanitizeId(field.id)}" maxlength="10"${requiredAttr}${disabledAttr}>\n`;
+                html += `                    <div class="char-counter" data-counter-for="${sanitizeId(field.id)}">0 / 10</div>\n`;
                 break;
             default:
                 html += buildTextInput(field, requiredAttr, disabledAttr);
@@ -824,6 +996,9 @@ body {
         if (field.rule) {
             html += `                    <div class="form-hint">${escHtml(field.rule)}</div>\n`;
         }
+
+        // Validation feedback slot
+        html += `                    <div class="validation-msg" data-msg-for="${sanitizeId(field.id)}"></div>\n`;
 
         html += `                </div>\n`;
 
@@ -836,9 +1011,21 @@ body {
     }
 
     function buildTextInput(field, requiredAttr, disabledAttr) {
+        const v = field.validation || {};
         const placeholder = field.placeholder ? ` placeholder="${escAttr(field.placeholder)}"` : '';
-        const maxLen = field.validation && field.validation.maxLength ? ` maxlength="${field.validation.maxLength}"` : '';
-        return `                    <input type="text" class="form-control" name="${sanitizeId(field.id)}"${placeholder}${maxLen}${requiredAttr}${disabledAttr}>\n`;
+        const maxLen = v.maxLength ? ` maxlength="${v.maxLength}"` : '';
+        const inputMode = v.pattern === '[0-9]*' ? ' inputmode="numeric"' : '';
+        const patternAttr = v.pattern ? ` pattern="${escAttr(v.pattern)}"` : '';
+        const inputType = v.format === 'email' ? 'email' : 'text';
+
+        let html = `                    <input type="${inputType}" class="form-control" name="${sanitizeId(field.id)}"${placeholder}${maxLen}${inputMode}${patternAttr}${requiredAttr}${disabledAttr}>\n`;
+
+        // Add char counter for fields with maxLength
+        if (v.maxLength) {
+            html += `                    <div class="char-counter" data-counter-for="${sanitizeId(field.id)}">0 / ${v.maxLength}</div>\n`;
+        }
+
+        return html;
     }
 
     function buildSelect(field, requiredAttr, disabledAttr) {
