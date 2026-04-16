@@ -1,0 +1,20 @@
+node_modules/
+outputs/*.json
+!outputs/.gitkeep
+inputs/*.pdf
+inputs/*.xlsx
+inputs/*.txt
+!inputs/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+npm-debug.log*

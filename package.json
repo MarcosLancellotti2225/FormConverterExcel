@@ -1,0 +1,31 @@
+{
+  "name": "ins-lovable-json-generator",
+  "version": "0.1.0",
+  "description": "Pipeline que convierte PDFs + Matriz Excel + Catálogos del INS a JSON Lovable",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "node src/index.js --all",
+    "build:1009052": "node src/index.js --pdf=1009052",
+    "build:D0306": "node src/index.js --pdf=D0306",
+    "build:D0309": "node src/index.js --pdf=D0309",
+    "test": "node test/smoke.test.js"
+  },
+  "keywords": [
+    "ins",
+    "lovable",
+    "form-generator",
+    "pdf",
+    "excel"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ajv": "^8.12.0",
+    "pdf-lib": "^1.17.1",
+    "xlsx": "^0.18.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
