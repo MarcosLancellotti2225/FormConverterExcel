@@ -82,17 +82,48 @@ async function run() {
     console.log('\n── json-builder shape ───────────────────');
     const { buildLovableJson } = require('../src/builders/json-builder');
 
-    test('buildLovableJson emits the expected top-level keys', () => {
+    test('buildLovableJson emits the expected Lovable shape', () => {
         const json = buildLovableJson({
             sections: [],
             pdfId: '1009052',
             pdfBase64: null,
+            pdfData: null,
             meta: { productName: 'Test' },
             catalogs: {}
         });
-        assert.ok(json.$schema);
-        assert.strictEqual(json.productCode, '1009052');
-        assert.deepStrictEqual(json.sections, []);
+        assert.ok(json.data, 'data wrapper missing');
+        const def = json.data.jsonDefinition;
+        assert.ok(def, 'jsonDefinition missing');
+        assert.deepStrictEqual(def.sections, []);
+        assert.deepStrictEqual(def.validationRules, []);
+        assert.deepStrictEqual(def.fieldPositions, []);
+        assert.strictEqual(def.sourceType, 'pdf');
+        assert.strictEqual(json.data.versionNumber, 1);
+    });
+
+    test('buildField emits field_ prefix, stringified conditionalVisibility, and rect object', () => {
+        const { buildField } = require('../src/builders/json-builder');
+        const f = buildField({
+            id: 'primer_nombre',
+            label: 'Primer Nombre',
+            type: 'text',
+            required: true,
+            readOnly: false,
+            jsonName: 'PrimerNombre',
+            conditionalVisibility: JSON.stringify({ dependsOn: 'tipo_persona', equals: 'Fisica' }),
+            pdfCoords: { page: 0, rect: [10, 20, 100, 15] },
+            sourceMeta: { sourceName: 'Cliente/PrimerNombre' }
+        });
+        assert.strictEqual(f.id, 'field_primer_nombre');
+        assert.strictEqual(f.prefillMode, 'required');
+        assert.strictEqual(f.prefillKey, 'PrimerNombre');
+        const cond = JSON.parse(f.conditionalVisibility);
+        assert.strictEqual(cond.logic, 'and');
+        assert.strictEqual(cond.conditions[0].fieldId, 'field_tipo_persona');
+        assert.strictEqual(cond.conditions[0].operator, 'equals');
+        assert.strictEqual(cond.conditions[0].value, 'Fisica');
+        assert.deepStrictEqual(f.sourceMeta.rect, { x: 10, y: 20, width: 100, height: 15 });
+        assert.strictEqual(f.sourceMeta.kind, 'pdf');
     });
 
     console.log('\n── prefillkey-validator ─────────────────');
@@ -110,7 +141,7 @@ async function run() {
         assert.ok(paths.has('Cliente.Telefonos.Telefono[].Numero'));
     });
 
-    test('validateLovableJson flags unknown prefillKey', () => {
+    test('validateLovableJson flags unknown prefillKey (flat shape)', () => {
         const clientPaths = new Set(['Cliente.PrimerNombre']);
         const lovable = {
             sections: [{
@@ -119,6 +150,24 @@ async function run() {
                     { id: 'b', label: 'B', prefillKey: 'Cliente.NoExiste' }
                 ]
             }]
+        };
+        const issues = validateLovableJson(lovable, clientPaths);
+        assert.strictEqual(issues.length, 1);
+        assert.strictEqual(issues[0].field, 'b');
+    });
+
+    test('validateLovableJson walks into data.jsonDefinition', () => {
+        const clientPaths = new Set(['Cliente.PrimerNombre']);
+        const lovable = {
+            data: {
+                jsonDefinition: {
+                    sections: [{
+                        fields: [
+                            { id: 'b', label: 'B', prefillKey: 'Cliente.NoExiste' }
+                        ]
+                    }]
+                }
+            }
         };
         const issues = validateLovableJson(lovable, clientPaths);
         assert.strictEqual(issues.length, 1);

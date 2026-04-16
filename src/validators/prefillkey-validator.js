@@ -63,7 +63,10 @@ function validateLovableJson(lovableJson, clientPaths) {
     const issues = [];
     if (!clientPaths || clientPaths.size === 0) return issues;
 
-    for (const sec of lovableJson.sections || []) {
+    // Accept both the legacy flat shape and the Lovable {data:{jsonDefinition}} wrapper
+    const root = lovableJson?.data?.jsonDefinition || lovableJson;
+
+    for (const sec of root.sections || []) {
         for (const f of sec.fields || []) {
             const toCheck = [];
             if (f.prefillKey)      toCheck.push(f.prefillKey);

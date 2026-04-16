@@ -26,8 +26,8 @@ async function fileToText(file) {
 /**
  * Run the full pipeline for every product the user provided.
  * @param {Object} inputs
- * @param {File}   inputs.matrixFile
- * @param {File}   inputs.catalogsFile
+ * @param {File}   inputs.matrixFile      (required)
+ * @param {File}   [inputs.catalogsFile]  (optional)
  * @param {Object<string, File>} [inputs.pdfFiles]  map pdfId → File
  * @param {File}   [inputs.clientJsonFile]
  * @param {Object} [options]
@@ -35,11 +35,10 @@ async function fileToText(file) {
  */
 async function runAll(inputs, options = {}) {
     const { matrixFile, catalogsFile, pdfFiles = {}, clientJsonFile } = inputs;
-    if (!matrixFile)   throw new Error('matrixFile is required');
-    if (!catalogsFile) throw new Error('catalogsFile is required');
+    if (!matrixFile) throw new Error('matrixFile is required');
 
     const matrixBuffer   = await fileToUint8Array(matrixFile);
-    const catalogsBuffer = await fileToUint8Array(catalogsFile);
+    const catalogsBuffer = catalogsFile ? await fileToUint8Array(catalogsFile) : null;
     const clientJsonText = clientJsonFile ? await fileToText(clientJsonFile) : null;
 
     // If the user provided at least one PDF, iterate over those; otherwise all known products
@@ -47,13 +46,16 @@ async function runAll(inputs, options = {}) {
 
     const results = [];
     for (const pdfId of pdfIds) {
-        const pdfBuffer = pdfFiles[pdfId] ? await fileToUint8Array(pdfFiles[pdfId]) : null;
+        const pdfFile = pdfFiles[pdfId];
+        const pdfBuffer = pdfFile ? await fileToUint8Array(pdfFile) : null;
+        const pdfFileName = pdfFile ? pdfFile.name : null;
         const result = await runPipeline({
             matrixBuffer,
             catalogsBuffer,
             pdfBuffer,
             clientJsonText,
-            pdfId
+            pdfId,
+            pdfFileName
         }, options);
         results.push({ pdfId, ...result });
     }

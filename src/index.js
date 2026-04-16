@@ -35,14 +35,18 @@ async function main() {
     const catalogsPath = args.catalogs || DEFAULT_PATHS.catalogs;
     const clientPath   = args.client   || DEFAULT_PATHS.client;
 
-    if (!fs.existsSync(matrixPath))   throw new Error(`Matrix not found: ${matrixPath}`);
-    if (!fs.existsSync(catalogsPath)) throw new Error(`Catalogs not found: ${catalogsPath}`);
+    if (!fs.existsSync(matrixPath)) throw new Error(`Matrix not found: ${matrixPath}`);
 
     log(`→ Reading matrix:   ${rel(matrixPath)}`);
     const matrixBuffer = fs.readFileSync(matrixPath);
 
-    log(`→ Reading catalogs: ${rel(catalogsPath)}`);
-    const catalogsBuffer = fs.readFileSync(catalogsPath);
+    let catalogsBuffer = null;
+    if (fs.existsSync(catalogsPath)) {
+        log(`→ Reading catalogs: ${rel(catalogsPath)}`);
+        catalogsBuffer = fs.readFileSync(catalogsPath);
+    } else {
+        log(`  (catalogs optional — none found at ${rel(catalogsPath)}, options inferred from matrix)`);
+    }
 
     const clientJsonText = fs.existsSync(clientPath)
         ? fs.readFileSync(clientPath, 'utf-8')
@@ -86,14 +90,16 @@ async function main() {
             catalogsBuffer,
             pdfBuffer,
             clientJsonText,
-            pdfId
+            pdfId,
+            pdfFileName: pdfFile || null
         }, {
             embedPdf: !args.noPdfEmbed,
-            strategy: args.strategy || 'logical'
+            strategy: args.strategy || 'pdf_page'
         });
 
-        const fieldCount = json.sections.reduce((n, s) => n + s.fields.length, 0);
-        log(`  ${fieldCount} fields across ${json.sections.length} sections`);
+        const sections = json.data?.jsonDefinition?.sections || [];
+        const fieldCount = sections.reduce((n, s) => n + s.fields.length, 0);
+        log(`  ${fieldCount} fields across ${sections.length} sections`);
 
         if (warnings.length) {
             log(`  ⚠ ${warnings.length} warnings${args.verbose ? ':' : ' (use --verbose)'}`);

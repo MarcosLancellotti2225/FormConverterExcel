@@ -21,7 +21,7 @@
     <main>
         <section class="panel">
             <h2>1. Insumos</h2>
-            <p class="hint">Subí la matriz y los catálogos. Los PDFs son opcionales (solo aportan coordenadas AcroForm al output).</p>
+            <p class="hint">Solo la matriz es obligatoria. Catálogos, PDFs y JSON cliente son opcionales (PDF aporta coordenadas AcroForm; JSON cliente valida prefillKey).</p>
 
             <div class="inputs-grid">
                 <label class="file-slot required" data-slot="matrix">
@@ -31,8 +31,8 @@
                     <span class="file-status"></span>
                 </label>
 
-                <label class="file-slot required" data-slot="catalogs">
-                    <span class="label">Catálogos Excel</span>
+                <label class="file-slot" data-slot="catalogs">
+                    <span class="label">Catálogos Excel (opcional)</span>
                     <span class="desc">Catalogos_Formularios_INS_Namirial_-_Vida.xlsx</span>
                     <input type="file" accept=".xlsx,.xls" data-input="catalogs">
                     <span class="file-status"></span>

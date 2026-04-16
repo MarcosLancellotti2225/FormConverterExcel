@@ -26,14 +26,14 @@ const KNOWN_PRODUCTS = {
  *
  * @param {Object} inputs
  * @param {ArrayBuffer|Uint8Array|Buffer} inputs.matrixBuffer       (required)
- * @param {ArrayBuffer|Uint8Array|Buffer} inputs.catalogsBuffer     (required)
- * @param {ArrayBuffer|Uint8Array|Buffer} [inputs.pdfBuffer]        (optional)
- * @param {string}  [inputs.clientJsonText]                         (optional)
- * @param {string}  inputs.pdfId                                     (1009052 | D0306 | D0309)
+ * @param {ArrayBuffer|Uint8Array|Buffer} [inputs.catalogsBuffer]   (optional — options inferred from matrix if absent)
+ * @param {ArrayBuffer|Uint8Array|Buffer} [inputs.pdfBuffer]        (optional — no coordinates without it)
+ * @param {string}  [inputs.clientJsonText]                          (optional — enables prefillKey validation)
+ * @param {string}  inputs.pdfId                                     (1009052 | D0306 | D0309 | any)
+ * @param {string}  [inputs.pdfFileName]                             original upload name, used in _sourcePdf
  * @param {Object}  [options]
  * @param {boolean} [options.embedPdf=true]    include _sourcePdf.b64 in output
- * @param {string}  [options.strategy='logical']  section-grouper strategy
- * @param {boolean} [options.collectWarnings=true] return warnings[] instead of console.warn
+ * @param {string}  [options.strategy='pdf_page']  section-grouper strategy
  * @returns {Promise<{ json:Object, warnings:Array, issues:Array }>}
  */
 async function runPipeline(inputs, options = {}) {
@@ -42,17 +42,17 @@ async function runPipeline(inputs, options = {}) {
         catalogsBuffer,
         pdfBuffer,
         clientJsonText,
-        pdfId
+        pdfId,
+        pdfFileName
     } = inputs;
 
     const {
         embedPdf = true,
-        strategy = 'logical'
+        strategy = 'pdf_page'
     } = options;
 
-    if (!matrixBuffer)   throw new Error('matrixBuffer is required');
-    if (!catalogsBuffer) throw new Error('catalogsBuffer is required');
-    if (!pdfId)          throw new Error('pdfId is required');
+    if (!matrixBuffer) throw new Error('matrixBuffer is required');
+    if (!pdfId)        throw new Error('pdfId is required');
 
     const productMeta = KNOWN_PRODUCTS[pdfId] || { productName: pdfId, productKey: null };
     const warnings = [];
@@ -70,8 +70,8 @@ async function runPipeline(inputs, options = {}) {
         );
     }
 
-    // 3. Parse catalogs + resolve options
-    const catalogs = parseCatalogsFromBuffer(catalogsBuffer);
+    // 3. Parse catalogs + resolve options (optional)
+    const catalogs = catalogsBuffer ? parseCatalogsFromBuffer(catalogsBuffer) : {};
     mergeCatalogs(fields, catalogs);
 
     // 4. Apply rules (validations + conditionals)
@@ -80,8 +80,9 @@ async function runPipeline(inputs, options = {}) {
 
     // 5. Parse PDF coordinates (optional)
     let pdfBase64 = null;
+    let pdfData = null;
     if (pdfBuffer) {
-        const pdfData = await parsePdfFromBuffer(pdfBuffer);
+        pdfData = await parsePdfFromBuffer(pdfBuffer);
         const mergeResult = mergePdfCoords(fields, pdfData);
         for (const w of mergeResult.warnings) warnings.push({ stage: 'pdf', ...w });
         if (embedPdf) {
@@ -93,11 +94,13 @@ async function runPipeline(inputs, options = {}) {
     const sections = groupBySections(fields, strategy);
     resolveTriggerConditionals(sections);
 
-    // 7. Build final JSON
+    // 7. Build final JSON (Lovable shape)
     const json = buildLovableJson({
         sections,
         pdfId,
         pdfBase64,
+        pdfData,
+        pdfFileName: pdfFileName || (pdfData ? `${pdfId}.pdf` : null),
         meta: productMeta,
         catalogs
     });

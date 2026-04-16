@@ -55938,79 +55938,226 @@ var InsPipelineBundle = (() => {
     "src/builders/json-builder.js"(exports, module) {
       "use strict";
       function buildLovableJson(ctx) {
-        const { sections, pdfId, pdfBase64, meta, catalogs } = ctx;
-        const out = {
-          $schema: "lovable-form.v1",
-          productCode: pdfId,
-          productName: meta?.productName || pdfId,
-          version: meta?.version || "0.1.0",
-          generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-          _sourcePdf: pdfBase64 ? { fileName: `${pdfId}.pdf`, encoding: "base64", b64: pdfBase64 } : void 0,
-          sections: sections.map((sec) => ({
-            id: sec.id,
-            stepTitle: sec.stepTitle,
-            title: sec.title,
-            order: sec.order,
-            fields: sec.fields.map(buildField)
-          })),
-          // TODO-LOVABLE-4: if consolidating products, wrap the above in a products[] list
-          _meta: {
-            catalogNames: Object.keys(catalogs || {}),
-            fieldCount: sections.reduce((n, s) => n + s.fields.length, 0)
+        const {
+          sections,
+          pdfId,
+          pdfBase64,
+          pdfData,
+          pdfFileName,
+          meta
+        } = ctx;
+        const now = (/* @__PURE__ */ new Date()).toISOString();
+        const fileName = pdfFileName || (pdfData ? `${pdfId}.pdf` : null);
+        const pageCount = pdfData?.numPages ?? 0;
+        const builtSections = sections.map((sec, idx) => ({
+          id: sec.id || `sec_page_${idx + 1}`,
+          title: sectionTitle(sec, idx),
+          description: null,
+          order: idx + 1,
+          fields: sec.fields.map(buildField)
+        }));
+        resolveRadioGroups(builtSections);
+        const jsonDefinition = {
+          sections: builtSections,
+          validationRules: [],
+          prefillMappings: [],
+          generatedDocuments: [],
+          _sourcePdf: pdfBase64 && fileName ? { fileName, pageCount, b64: pdfBase64 } : null,
+          fieldPositions: pdfData ? buildFieldPositions(pdfData) : [],
+          importedAt: now,
+          sourceType: "pdf"
+        };
+        return {
+          data: {
+            id: null,
+            templateId: null,
+            versionNumber: 1,
+            status: 1,
+            signatureMode: null,
+            jsonDefinition,
+            publishedAt: null,
+            createdAt: now
           }
         };
-        return out;
+      }
+      function sectionTitle(sec, idx) {
+        if (sec.title && /^p[aá]gina\s+\d+$/i.test(sec.title)) {
+          return `Page ${idx + 1}`;
+        }
+        return sec.title || `Page ${idx + 1}`;
       }
       function buildField(f) {
+        const id = prefixId(f.id);
+        const type = mapLovableType(f);
         const field = {
-          id: f.id,
-          label: f.label,
-          type: f.type,
+          id,
+          label: f.label || "",
+          type,
+          placeholder: null,
           required: !!f.required,
           readOnly: !!f.readOnly,
-          hidden: !!f.hidden
-          // TODO-LOVABLE-5: confirmar estrategia de hidden
+          width: "full",
+          helpText: null,
+          validationPattern: f.validationPattern || null,
+          options: buildOptions(f),
+          conditionalVisibility: buildConditionalVisibility(f),
+          defaultValue: f.value && !(f.options && f.options.length) ? f.value : null,
+          sourceMeta: buildSourceMeta(f),
+          prefillMode: f.required ? "required" : "optional",
+          prefillKey: resolvePrefillKey(f),
+          radioGroupFields: []
+          // populated in resolveRadioGroups()
         };
-        if (f.value && !f.options?.length) field.defaultValue = f.value;
-        if (f.options?.length) {
-          field.options = f.options;
-          if (/beneficiario|dependiente/i.test(f.label)) {
-            field.repeatable = true;
-          }
-        }
-        if (f.validationPattern) field.validationPattern = f.validationPattern;
-        if (f.maxLength) field.maxLength = f.maxLength;
-        if (f.conditionalVisibility) field.conditionalVisibility = f.conditionalVisibility;
-        if (f.productScope && !f.productScope.includes("all")) {
-          field.productScope = f.productScope;
-        }
-        const { prefillKey, mappedPaths } = resolvePrefillPaths(f);
-        if (prefillKey) field.prefillKey = prefillKey;
-        if (mappedPaths && mappedPaths.length) field.mappedPaths = mappedPaths;
-        if (f.catalogName) field.catalog = f.catalogName;
-        if (/nombre\s*completo/i.test(f.label)) {
-          field.computed = {
-            sources: ["primer_nombre", "segundo_nombre", "primer_apellido", "segundo_apellido"],
-            join: " "
-          };
-        }
-        if (f.sourceMeta) {
-          field.sourceMeta = f.sourceMeta;
-          if (f.pdfCoords) {
-            field.sourceMeta.page = f.pdfCoords.page;
-            field.sourceMeta.rect = f.pdfCoords.rect;
-          }
-        }
         return field;
       }
-      function resolvePrefillPaths(field) {
-        const raw = field.jsonName || "";
-        if (!raw) return { prefillKey: null, mappedPaths: [] };
-        const parts = raw.split(/[,;/]|\s+y\s+/i).map((s) => s.trim()).filter(Boolean);
-        if (parts.length === 1) {
-          return { prefillKey: parts[0], mappedPaths: [] };
+      function prefixId(id) {
+        if (!id) return "field_unknown";
+        return id.startsWith("field_") ? id : `field_${id}`;
+      }
+      function mapLovableType(f) {
+        const hintLabel = (f.label || "").toLowerCase();
+        const hintJson = (f.jsonName || "").toLowerCase();
+        if (/email|correo/.test(hintLabel) || /email|correo/.test(hintJson)) return "email";
+        if (/tel[eé]fono|celular|movil|m[oó]vil|phone/.test(hintLabel) || /telefono|celular|phone/.test(hintJson)) return "phone";
+        switch (f.type) {
+          case "radio":
+            return "radio";
+          case "select":
+            return "select";
+          case "number":
+            return "number";
+          case "checkbox":
+            return "radio";
+          case "date":
+            return "text";
+          case "heading":
+            return "text";
+          case "readonly":
+            return "text";
+          case "text":
+          default:
+            return "text";
         }
-        return { prefillKey: parts[0], mappedPaths: parts.slice(1) };
+      }
+      function buildOptions(f) {
+        if (!f.options || !f.options.length) return null;
+        return f.options.map((o) => {
+          if (typeof o === "string") return o;
+          return o.label || o.code || "";
+        }).filter(Boolean);
+      }
+      function buildConditionalVisibility(f) {
+        if (!f.conditionalVisibility) return null;
+        let parsed;
+        try {
+          parsed = JSON.parse(f.conditionalVisibility);
+        } catch {
+          return null;
+        }
+        if (!parsed || !parsed.dependsOn) return null;
+        const cond = { fieldId: prefixId(parsed.dependsOn) };
+        if (parsed.equals === null || parsed.equals === void 0 || parsed.equals === "") {
+          cond.operator = "not_empty";
+        } else {
+          cond.operator = "equals";
+          cond.value = String(parsed.equals);
+        }
+        return JSON.stringify({ logic: "and", conditions: [cond] });
+      }
+      function buildSourceMeta(f) {
+        if (!f.sourceMeta && !f.pdfCoords) return null;
+        const rect = f.pdfCoords?.rect ? rectFromArray(f.pdfCoords.rect) : null;
+        return {
+          kind: "pdf",
+          sourceName: f.sourceMeta?.sourceName || f.pdfFieldName || null,
+          sourceNames: null,
+          page: f.pdfCoords?.page ?? 0,
+          rect,
+          sourceRects: rect ? [rect] : null,
+          buttonFlags: null,
+          sourceType: "pdf"
+        };
+      }
+      function rectFromArray(arr) {
+        if (!arr || arr.length < 4) return null;
+        const [x, y, width, height] = arr;
+        return { x, y, width, height };
+      }
+      function resolvePrefillKey(f) {
+        const raw = (f.jsonName || "").trim();
+        if (!raw) return null;
+        const first = raw.split(/[,;/]|\s+y\s+/i)[0].trim();
+        return first || null;
+      }
+      function resolveRadioGroups(sections) {
+        const allRadios = [];
+        for (const sec of sections) {
+          for (const f of sec.fields) {
+            if (f.type === "radio") allRadios.push(f);
+          }
+        }
+        if (allRadios.length < 2) return;
+        const groups = /* @__PURE__ */ new Map();
+        for (const r of allRadios) {
+          const key = radioGroupKey(r);
+          if (!key) continue;
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(r);
+        }
+        for (const [, members] of groups) {
+          if (members.length < 2) continue;
+          for (const m of members) {
+            m.radioGroupFields = members.filter((x) => x.id !== m.id).map((x) => x.id);
+          }
+        }
+      }
+      function radioGroupKey(field) {
+        const src = field.sourceMeta?.sourceName;
+        if (!src) return null;
+        const idx = src.lastIndexOf("/");
+        if (idx > 0) return src.slice(0, idx);
+        return (field.label || "").toLowerCase().trim() || null;
+      }
+      function buildFieldPositions(pdfData) {
+        if (!pdfData || !pdfData.fields) return [];
+        const out = [];
+        for (const name of Object.keys(pdfData.fields)) {
+          const entry = pdfData.fields[name];
+          const widgets = entry.widgets && entry.widgets.length ? entry.widgets : entry.rect ? [{ page: entry.page, rect: entry.rect }] : [];
+          if (!widgets.length) {
+            out.push({
+              sourceName: name,
+              page: entry.page ?? 0,
+              hasCoordinates: false,
+              xPx: 0,
+              yPx: 0,
+              widthPx: 0,
+              heightPx: 0,
+              xInt: 0,
+              yInt: 0,
+              widthInt: 0,
+              heightInt: 0
+            });
+            continue;
+          }
+          for (const w of widgets) {
+            const [x, y, width, height] = w.rect || [0, 0, 0, 0];
+            out.push({
+              sourceName: name,
+              page: w.page ?? 0,
+              hasCoordinates: !!w.rect,
+              xPx: x,
+              yPx: y,
+              widthPx: width,
+              heightPx: height,
+              xInt: Math.round(x),
+              yInt: Math.round(y),
+              widthInt: Math.round(width),
+              heightInt: Math.round(height)
+            });
+          }
+        }
+        return out;
       }
       module.exports = { buildLovableJson, buildField };
     }
@@ -56059,7 +56206,8 @@ var InsPipelineBundle = (() => {
       function validateLovableJson(lovableJson, clientPaths) {
         const issues = [];
         if (!clientPaths || clientPaths.size === 0) return issues;
-        for (const sec of lovableJson.sections || []) {
+        const root = lovableJson?.data?.jsonDefinition || lovableJson;
+        for (const sec of root.sections || []) {
           for (const f of sec.fields || []) {
             const toCheck = [];
             if (f.prefillKey) toCheck.push(f.prefillKey);
@@ -56119,14 +56267,14 @@ var InsPipelineBundle = (() => {
           catalogsBuffer,
           pdfBuffer,
           clientJsonText,
-          pdfId
+          pdfId,
+          pdfFileName
         } = inputs;
         const {
           embedPdf = true,
-          strategy = "logical"
+          strategy = "pdf_page"
         } = options;
         if (!matrixBuffer) throw new Error("matrixBuffer is required");
-        if (!catalogsBuffer) throw new Error("catalogsBuffer is required");
         if (!pdfId) throw new Error("pdfId is required");
         const productMeta = KNOWN_PRODUCTS[pdfId] || { productName: pdfId, productKey: null };
         const warnings = [];
@@ -56137,13 +56285,14 @@ var InsPipelineBundle = (() => {
             (f) => f.productScope.includes("all") || f.productScope.includes(productMeta.productKey)
           );
         }
-        const catalogs = parseCatalogsFromBuffer(catalogsBuffer);
+        const catalogs = catalogsBuffer ? parseCatalogsFromBuffer(catalogsBuffer) : {};
         mergeCatalogs(fields, catalogs);
         const ruleResult = applyRules(fields);
         for (const w of ruleResult.warnings) warnings.push({ stage: "rules", ...w });
         let pdfBase64 = null;
+        let pdfData = null;
         if (pdfBuffer) {
-          const pdfData = await parsePdfFromBuffer(pdfBuffer);
+          pdfData = await parsePdfFromBuffer(pdfBuffer);
           const mergeResult = mergePdfCoords(fields, pdfData);
           for (const w of mergeResult.warnings) warnings.push({ stage: "pdf", ...w });
           if (embedPdf) {
@@ -56156,6 +56305,8 @@ var InsPipelineBundle = (() => {
           sections,
           pdfId,
           pdfBase64,
+          pdfData,
+          pdfFileName: pdfFileName || (pdfData ? `${pdfId}.pdf` : null),
           meta: productMeta,
           catalogs
         });
@@ -56191,20 +56342,22 @@ var InsPipelineBundle = (() => {
       async function runAll(inputs, options = {}) {
         const { matrixFile, catalogsFile, pdfFiles = {}, clientJsonFile } = inputs;
         if (!matrixFile) throw new Error("matrixFile is required");
-        if (!catalogsFile) throw new Error("catalogsFile is required");
         const matrixBuffer = await fileToUint8Array(matrixFile);
-        const catalogsBuffer = await fileToUint8Array(catalogsFile);
+        const catalogsBuffer = catalogsFile ? await fileToUint8Array(catalogsFile) : null;
         const clientJsonText = clientJsonFile ? await fileToText(clientJsonFile) : null;
         const pdfIds = Object.keys(pdfFiles).length ? Object.keys(pdfFiles) : Object.keys(KNOWN_PRODUCTS);
         const results = [];
         for (const pdfId of pdfIds) {
-          const pdfBuffer = pdfFiles[pdfId] ? await fileToUint8Array(pdfFiles[pdfId]) : null;
+          const pdfFile = pdfFiles[pdfId];
+          const pdfBuffer = pdfFile ? await fileToUint8Array(pdfFile) : null;
+          const pdfFileName = pdfFile ? pdfFile.name : null;
           const result = await runPipeline({
             matrixBuffer,
             catalogsBuffer,
             pdfBuffer,
             clientJsonText,
-            pdfId
+            pdfId,
+            pdfFileName
           }, options);
           results.push({ pdfId, ...result });
         }

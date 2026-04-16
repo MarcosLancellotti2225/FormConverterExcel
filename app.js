@@ -73,7 +73,7 @@
     }
 
     function refreshButtons() {
-        const ready = state.matrix && state.catalogs;
+        const ready = !!state.matrix;
         const hasAnyPdf = Object.keys(state.pdfs).length > 0;
         $('#btnRun').disabled = !ready || !hasAnyPdf;
         $('#btnRunAll').disabled = !ready;
@@ -127,7 +127,8 @@
         container.innerHTML = '';
         for (const r of results) {
             const meta = InsPipelineBundle.KNOWN_PRODUCTS[r.pdfId] || { productName: r.pdfId };
-            const fieldCount = r.json.sections.reduce((n, s) => n + s.fields.length, 0);
+            const sections = r.json.data?.jsonDefinition?.sections || [];
+            const fieldCount = sections.reduce((n, s) => n + s.fields.length, 0);
             const card = document.createElement('div');
             card.className = 'result-card';
             card.innerHTML = `
@@ -135,7 +136,7 @@
                     <span class="product-id">${r.pdfId}</span>
                     <span class="product-name">${meta.productName}</span>
                     <span class="product-stats">
-                        ${fieldCount} campos · ${r.json.sections.length} secciones
+                        ${fieldCount} campos · ${sections.length} secciones
                         · ${r.warnings.length} warnings
                         · ${r.issues.length} prefillKey mismatches
                     </span>
