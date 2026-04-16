@@ -30,7 +30,7 @@ Pipeline que consume los insumos del INS (PDFs del trámite + matriz Excel + cat
   pipeline.js               # orchestrador puro (buffer-in → JSON-out)
   index.js                  # CLI (Node)
   browser.js                # entry para el bundle web
-/web                        # UI estática (GitHub Pages friendly)
+/docs                        # UI estática (GitHub Pages friendly)
   index.html, app.js, styles.css, bundle.js (generado)
 /scripts/serve.js           # dev server mínimo (sin deps)
 /inputs                     # PDFs, Excels, client JSON (gitignored)
@@ -54,7 +54,7 @@ Pipeline que consume los insumos del INS (PDFs del trámite + matriz Excel + cat
 
 ```bash
 npm install
-npm run build:web        # genera web/bundle.js (~2.9MB, bundlea xlsx + pdf-lib)
+npm run build:web        # genera docs/bundle.js (~2.9MB, bundlea xlsx + pdf-lib)
 npm run serve            # http://localhost:3000
 ```
 
@@ -62,8 +62,16 @@ Dropeás la matriz, los catálogos y (opcional) los PDFs, apretás "Generar",
 y descargás el/los JSON resultantes. Todo corre en el browser: ningún archivo
 va a ningún servidor.
 
-Para publicar en GitHub Pages, configurá la fuente a la carpeta `/web`
-(con el `bundle.js` ya buildeado y commiteado).
+### Publicar en GitHub Pages
+
+1. En el repo: **Settings → Pages**
+2. **Source:** `Deploy from a branch`
+3. **Branch:** `main` (o la que tenga el build actualizado)
+4. **Folder:** `/docs`
+5. Save
+
+La UI queda en `https://<usuario>.github.io/<repo>/`. El archivo `docs/.nojekyll`
+evita que GitHub renderice el HTML con Jekyll.
 
 ## Uso — CLI
 

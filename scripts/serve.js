@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = process.env.PORT || 3000;
-const ROOT = path.resolve(__dirname, '..', 'web');
+const ROOT = path.resolve(__dirname, '..', 'docs');
 
 const MIME = {
     '.html': 'text/html; charset=utf-8',
