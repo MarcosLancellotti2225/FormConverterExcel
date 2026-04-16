@@ -9,27 +9,22 @@
  */
 'use strict';
 
-const fs = require('fs');
-
 /**
- * Build the path set from the cliente JSON text file.
- * @param {string} clientJsonPath
+ * Build the path set from raw client-JSON text.
+ * @param {string} raw  content of Json_Formulario_Vida_-_Asegurado.txt
  * @returns {Set<string>}  canonical paths like "Cliente.PrimerNombre", arrays as "Cliente.Telefonos.Telefono[].Numero"
  */
-function loadClientPaths(clientJsonPath) {
-    if (!fs.existsSync(clientJsonPath)) {
-        return new Set();
-    }
-    const raw = fs.readFileSync(clientJsonPath, 'utf-8').trim();
+function loadClientPathsFromText(raw) {
     if (!raw) return new Set();
+    const text = String(raw).trim();
+    if (!text) return new Set();
 
     let json;
     try {
-        json = JSON.parse(raw);
+        json = JSON.parse(text);
     } catch (err) {
-        // Files saved with trailing commas / JS-ish extensions — best-effort fix
         try {
-            json = JSON.parse(raw.replace(/,(\s*[}\]])/g, '$1'));
+            json = JSON.parse(text.replace(/,(\s*[}\]])/g, '$1'));
         } catch (e2) {
             console.warn('prefillkey-validator: could not parse client JSON:', e2.message);
             return new Set();
@@ -106,4 +101,4 @@ function isKnownPath(key, paths) {
     return false;
 }
 
-module.exports = { loadClientPaths, validateLovableJson };
+module.exports = { loadClientPathsFromText, validateLovableJson };

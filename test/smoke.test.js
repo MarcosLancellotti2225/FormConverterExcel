@@ -96,18 +96,16 @@ async function run() {
     });
 
     console.log('\n── prefillkey-validator ─────────────────');
-    const { loadClientPaths, validateLovableJson } = require('../src/validators/prefillkey-validator');
+    const { loadClientPathsFromText, validateLovableJson } = require('../src/validators/prefillkey-validator');
 
-    test('loadClientPaths walks a nested JSON', () => {
-        const tmp = path.join(ROOT, 'test', '_tmp_client.json');
-        fs.writeFileSync(tmp, JSON.stringify({
+    test('loadClientPathsFromText walks a nested JSON', () => {
+        const raw = JSON.stringify({
             Cliente: {
                 PrimerNombre: '',
                 Telefonos: { Telefono: [{ Numero: '' }] }
             }
-        }));
-        const paths = loadClientPaths(tmp);
-        fs.unlinkSync(tmp);
+        });
+        const paths = loadClientPathsFromText(raw);
         assert.ok(paths.has('Cliente.PrimerNombre'));
         assert.ok(paths.has('Cliente.Telefonos.Telefono[].Numero'));
     });

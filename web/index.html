@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>INS Lovable JSON Generator</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header class="topbar">
+        <div class="brand">
+            <div class="logo">INS</div>
+            <div class="titles">
+                <h1>Lovable JSON Generator</h1>
+                <p>Pipeline Matriz + Catálogos + PDF → JSON Lovable</p>
+            </div>
+        </div>
+        <a class="repo-link" href="https://github.com/MarcosLancellotti2225/FormConverterExcel" target="_blank">repo</a>
+    </header>
+
+    <main>
+        <section class="panel">
+            <h2>1. Insumos</h2>
+            <p class="hint">Subí la matriz y los catálogos. Los PDFs son opcionales (solo aportan coordenadas AcroForm al output).</p>
+
+            <div class="inputs-grid">
+                <label class="file-slot required" data-slot="matrix">
+                    <span class="label">Matriz Excel</span>
+                    <span class="desc">Matriz_Formularios_VidaColectiva_Secciones.xlsx</span>
+                    <input type="file" accept=".xlsx,.xls" data-input="matrix">
+                    <span class="file-status"></span>
+                </label>
+
+                <label class="file-slot required" data-slot="catalogs">
+                    <span class="label">Catálogos Excel</span>
+                    <span class="desc">Catalogos_Formularios_INS_Namirial_-_Vida.xlsx</span>
+                    <input type="file" accept=".xlsx,.xls" data-input="catalogs">
+                    <span class="file-status"></span>
+                </label>
+
+                <label class="file-slot" data-slot="client">
+                    <span class="label">JSON cliente (opcional)</span>
+                    <span class="desc">Json_Formulario_Vida_-_Asegurado.txt</span>
+                    <input type="file" accept=".txt,.json" data-input="client">
+                    <span class="file-status"></span>
+                </label>
+            </div>
+
+            <h3 class="subhead">PDFs por producto (opcional)</h3>
+            <div class="pdf-grid" id="pdfGrid"></div>
+        </section>
+
+        <section class="panel">
+            <h2>2. Opciones</h2>
+            <div class="options">
+                <label class="toggle">
+                    <input type="checkbox" id="optEmbedPdf" checked>
+                    <span>Incrustar PDF en <code>_sourcePdf.b64</code></span>
+                </label>
+                <label class="toggle">
+                    <input type="checkbox" id="optVerbose">
+                    <span>Mostrar todos los warnings</span>
+                </label>
+                <label class="select-row">
+                    <span>Estrategia de secciones</span>
+                    <select id="optStrategy">
+                        <option value="logical" selected>Lógicas (Paso + Sección)</option>
+                        <option value="pdf_page">Por página del PDF</option>
+                    </select>
+                </label>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>3. Generar</h2>
+            <div class="actions">
+                <button id="btnRun" class="primary" disabled>Generar JSON</button>
+                <button id="btnRunAll" class="secondary" disabled>Generar los 3 productos</button>
+            </div>
+            <div id="status" class="status"></div>
+        </section>
+
+        <section class="panel" id="resultsPanel" hidden>
+            <h2>4. Resultados</h2>
+            <div id="results"></div>
+        </section>
+
+        <section class="panel" id="warningsPanel" hidden>
+            <h2>Warnings</h2>
+            <details open>
+                <summary id="warningsSummary"></summary>
+                <pre id="warningsLog"></pre>
+            </details>
+        </section>
+    </main>
+
+    <footer>
+        <span>Pipeline 100% client-side — ningún archivo sale de tu browser.</span>
+    </footer>
+
+    <script src="bundle.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

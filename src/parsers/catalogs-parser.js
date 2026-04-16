@@ -9,18 +9,16 @@
  */
 'use strict';
 
-const fs = require('fs');
 const XLSX = require('xlsx');
 
 const CODE_MATCHERS  = ['codigo', 'código', 'code', 'cod', 'id', 'clave'];
 const LABEL_MATCHERS = ['descripcion', 'descripción', 'nombre', 'label', 'name', 'valor'];
 
-function parseCatalogs(xlsxPath) {
-    if (!fs.existsSync(xlsxPath)) {
-        throw new Error(`Catalogs file not found: ${xlsxPath}`);
+function parseCatalogsFromBuffer(buffer) {
+    if (!buffer) {
+        throw new Error('parseCatalogsFromBuffer: buffer is required');
     }
-
-    const workbook = XLSX.readFile(xlsxPath);
+    const workbook = XLSX.read(buffer, { type: 'array' });
     const catalogs = {};
 
     for (const sheetName of workbook.SheetNames) {
@@ -59,4 +57,4 @@ function normalizeKey(str) {
         .replace(/^_+|_+$/g, '');
 }
 
-module.exports = { parseCatalogs, normalizeKey };
+module.exports = { parseCatalogsFromBuffer, normalizeKey };

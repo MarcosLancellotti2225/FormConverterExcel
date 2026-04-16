@@ -9,20 +9,17 @@
  */
 'use strict';
 
-const fs = require('fs');
 const { PDFDocument } = require('pdf-lib');
 
 /**
- * Parse a PDF file and return its AcroForm field map.
- * @param {string} pdfPath
+ * Parse a PDF buffer and return its AcroForm field map.
+ * @param {ArrayBuffer|Uint8Array|Buffer} bytes
  * @returns {Promise<{ numPages:number, fields:Object<string, PdfFieldInfo> }>}
  */
-async function parsePdfCoordinates(pdfPath) {
-    if (!fs.existsSync(pdfPath)) {
-        throw new Error(`PDF file not found: ${pdfPath}`);
+async function parsePdfFromBuffer(bytes) {
+    if (!bytes) {
+        throw new Error('parsePdfFromBuffer: buffer is required');
     }
-
-    const bytes = fs.readFileSync(pdfPath);
     const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
     const form = pdfDoc.getForm();
     const pages = pdfDoc.getPages();
@@ -92,11 +89,21 @@ function findPageByRef(pages, ref) {
 }
 
 /**
- * Read a PDF file as base64 (for `_sourcePdf.b64` in the output JSON).
+ * Convert a buffer to base64 for `_sourcePdf.b64` in the output JSON.
+ * Works in both Node (Buffer) and browser (Uint8Array / ArrayBuffer).
  */
-function readPdfAsBase64(pdfPath) {
-    const bytes = fs.readFileSync(pdfPath);
+function bufferToBase64(buffer) {
+    if (typeof Buffer !== 'undefined' && Buffer.isBuffer(buffer)) {
+        return buffer.toString('base64');
+    }
+    const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    // btoa is available in browsers; fall back to Buffer in Node
+    if (typeof btoa !== 'undefined') return btoa(binary);
     return Buffer.from(bytes).toString('base64');
 }
 
-module.exports = { parsePdfCoordinates, readPdfAsBase64 };
+module.exports = { parsePdfFromBuffer, bufferToBase64 };

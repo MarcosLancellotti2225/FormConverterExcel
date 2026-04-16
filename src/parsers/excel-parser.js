@@ -20,8 +20,6 @@
  */
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
 const XLSX = require('xlsx');
 
 const COLUMN_MATCHERS = {
@@ -41,13 +39,14 @@ const COLUMN_MATCHERS = {
 };
 
 /**
- * Parse a matrix xlsx file path → { sheetName, fields: Field[] }
+ * Parse a matrix xlsx buffer (ArrayBuffer / Uint8Array / Buffer)
+ * → { sheetName, fields: Field[] }
  */
-function parseMatrix(xlsxPath) {
-    if (!fs.existsSync(xlsxPath)) {
-        throw new Error(`Matrix file not found: ${xlsxPath}`);
+function parseMatrixFromBuffer(buffer) {
+    if (!buffer) {
+        throw new Error('parseMatrixFromBuffer: buffer is required');
     }
-    const workbook = XLSX.readFile(xlsxPath);
+    const workbook = XLSX.read(buffer, { type: 'array' });
     const sheetName = findMatrixSheet(workbook);
     const sheet = workbook.Sheets[sheetName];
     const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
@@ -304,7 +303,7 @@ function cleanStr(v) {
 }
 
 module.exports = {
-    parseMatrix,
+    parseMatrixFromBuffer,
     // exported for tests
     _internal: { mapType, normalizeRequired, normalizeProductScope, groupComboRows, makeId }
 };

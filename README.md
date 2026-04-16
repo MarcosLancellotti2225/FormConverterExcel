@@ -1,31 +1,41 @@
 # INS Lovable JSON Generator
 
-Pipeline de línea de comandos que consume los insumos del INS (PDFs del trámite + matriz Excel + catálogos) y produce un **JSON en formato Lovable** por cada producto.
+Pipeline que consume los insumos del INS (PDFs del trámite + matriz Excel + catálogos) y produce un **JSON en formato Lovable** por cada producto.
 
 > El formulario visual lo construye un desarrollador externo en [Lovable](https://lovable.dev).
 > Este repo ya no incluye preview ni builder — solo el generador de JSON.
+
+**Dos formas de usarlo:**
+
+1. **CLI** — `node src/index.js --all` (buena para batches / CI).
+2. **Web UI** — `npm run serve` o hospedaje estático en GitHub Pages. Toda la pipeline corre 100% client-side, ningún archivo sale del browser.
 
 ## Estructura
 
 ```
 /src
   /parsers
-    excel-parser.js        # matriz (Formulario Digital Vida)
-    catalogs-parser.js     # catálogos (Tipo Formulario, Moneda, etc.)
-    pdf-analyzer.js        # coordenadas AcroForm via pdf-lib
-    rule-parser.js         # lenguaje natural → conditionalVisibility + validation
+    excel-parser.js         # matriz (Formulario Digital Vida)
+    catalogs-parser.js      # catálogos (Tipo Formulario, Moneda, etc.)
+    pdf-analyzer.js         # coordenadas AcroForm via pdf-lib
+    rule-parser.js          # lenguaje natural → conditionalVisibility + validation
   /transformers
-    merge-catalogs.js      # options[] ← catálogos resueltos
-    merge-pdf-coords.js    # sourceMeta + rect ← PDF
-    section-grouper.js     # Field[] → Section[]
+    merge-catalogs.js       # options[] ← catálogos resueltos
+    merge-pdf-coords.js     # sourceMeta + rect ← PDF
+    section-grouper.js      # Field[] → Section[]
   /builders
-    json-builder.js        # JSON Lovable final
+    json-builder.js         # JSON Lovable final
   /validators
-    prefillkey-validator.js  # valida paths contra Json_Formulario_Vida_-_Asegurado.txt
-  index.js                 # CLI
-/inputs                    # PDFs, Excels, client JSON (gitignored)
-/outputs                   # JSONs generados (gitignored)
-/test                      # smoke tests
+    prefillkey-validator.js # valida paths contra Json_Formulario_Vida_-_Asegurado.txt
+  pipeline.js               # orchestrador puro (buffer-in → JSON-out)
+  index.js                  # CLI (Node)
+  browser.js                # entry para el bundle web
+/web                        # UI estática (GitHub Pages friendly)
+  index.html, app.js, styles.css, bundle.js (generado)
+/scripts/serve.js           # dev server mínimo (sin deps)
+/inputs                     # PDFs, Excels, client JSON (gitignored)
+/outputs                    # JSONs generados (gitignored)
+/test                       # smoke tests
 ```
 
 ## Inputs esperados en `/inputs/`
@@ -40,7 +50,22 @@ Pipeline de línea de comandos que consume los insumos del INS (PDFs del trámit
 | `Json_Formulario_Vida_-_Asegurado.txt`             | JSON cliente (para validar `prefillKey`) |
 | `lovable-example-1009052.json`                     | Ejemplo de estructura Lovable (referencia) |
 
-## Uso
+## Uso — Web UI
+
+```bash
+npm install
+npm run build:web        # genera web/bundle.js (~2.9MB, bundlea xlsx + pdf-lib)
+npm run serve            # http://localhost:3000
+```
+
+Dropeás la matriz, los catálogos y (opcional) los PDFs, apretás "Generar",
+y descargás el/los JSON resultantes. Todo corre en el browser: ningún archivo
+va a ningún servidor.
+
+Para publicar en GitHub Pages, configurá la fuente a la carpeta `/web`
+(con el `bundle.js` ya buildeado y commiteado).
+
+## Uso — CLI
 
 ```bash
 npm install
@@ -67,6 +92,8 @@ npm run build            # --all
 npm run build:1009052
 npm run build:D0306
 npm run build:D0309
+npm run build:web        # bundle browser
+npm run serve            # dev server localhost:3000
 npm test                 # smoke tests
 ```
 
