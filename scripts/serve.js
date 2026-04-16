@@ -12,7 +12,17 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = process.env.PORT || 3000;
-const ROOT = path.resolve(__dirname, '..', 'docs');
+const ROOT = path.resolve(__dirname, '..');
+
+// Only serve these files — everything else in the repo stays private locally.
+const ALLOWED = new Set([
+    '/',
+    '/index.html',
+    '/app.js',
+    '/bundle.js',
+    '/styles.css',
+    '/favicon.ico'
+]);
 
 const MIME = {
     '.html': 'text/html; charset=utf-8',
@@ -26,13 +36,12 @@ const MIME = {
 
 const server = http.createServer((req, res) => {
     let reqPath = decodeURIComponent(req.url.split('?')[0]);
+    if (!ALLOWED.has(reqPath)) {
+        res.writeHead(404); return res.end('not found');
+    }
     if (reqPath === '/') reqPath = '/index.html';
 
     const filePath = path.join(ROOT, reqPath);
-    if (!filePath.startsWith(ROOT)) {
-        res.writeHead(403); return res.end('forbidden');
-    }
-
     fs.readFile(filePath, (err, data) => {
         if (err) {
             res.writeHead(404); return res.end('not found');

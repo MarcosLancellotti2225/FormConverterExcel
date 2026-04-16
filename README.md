@@ -30,8 +30,8 @@ Pipeline que consume los insumos del INS (PDFs del trámite + matriz Excel + cat
   pipeline.js               # orchestrador puro (buffer-in → JSON-out)
   index.js                  # CLI (Node)
   browser.js                # entry para el bundle web
-/docs                        # UI estática (GitHub Pages friendly)
-  index.html, app.js, styles.css, bundle.js (generado)
+/                           # UI estática (GitHub Pages sirve desde acá)
+  index.html, app.js, styles.css, bundle.js (generado), .nojekyll
 /scripts/serve.js           # dev server mínimo (sin deps)
 /inputs                     # PDFs, Excels, client JSON (gitignored)
 /outputs                    # JSONs generados (gitignored)
@@ -54,7 +54,7 @@ Pipeline que consume los insumos del INS (PDFs del trámite + matriz Excel + cat
 
 ```bash
 npm install
-npm run build:web        # genera docs/bundle.js (~2.9MB, bundlea xlsx + pdf-lib)
+npm run build:web        # genera bundle.js en la raíz (~2.9MB)
 npm run serve            # http://localhost:3000
 ```
 
@@ -64,14 +64,14 @@ va a ningún servidor.
 
 ### Publicar en GitHub Pages
 
-1. En el repo: **Settings → Pages**
+1. **Settings → Pages**
 2. **Source:** `Deploy from a branch`
-3. **Branch:** `main` (o la que tenga el build actualizado)
-4. **Folder:** `/docs`
+3. **Branch:** la branch que tenga el build (ej: `main` o `claude/docpath-form-builder-89SN4`)
+4. **Folder:** `/ (root)`
 5. Save
 
-La UI queda en `https://<usuario>.github.io/<repo>/`. El archivo `docs/.nojekyll`
-evita que GitHub renderice el HTML con Jekyll.
+La UI queda en `https://<usuario>.github.io/<repo>/`. El archivo `.nojekyll`
+en la raíz evita que GitHub renderice el README con Jekyll.
 
 ## Uso — CLI
 
