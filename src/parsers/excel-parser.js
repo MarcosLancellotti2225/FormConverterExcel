@@ -1,9 +1,9 @@
 /**
  * Excel Matrix Parser
- * Reads `Matriz_Formularios_VidaColectiva_Secciones.xlsx` and normalizes rows
- * into Field[] ready for the pipeline.
+ * Reads the matrix xlsx and normalizes rows into Field[] ready for the pipeline.
  *
  * Expected columns (resilient to header variants):
+ *  - Código Formulario              (NEW — groups rows into forms; matches PDF filename)
  *  - Pasos Formulario
  *  - Sección
  *  - Nombre en PDF                 (label on the PDF)
@@ -12,7 +12,7 @@
  *  - Valor
  *  - Regla
  *  - Obligatorio
- *  - Formulario a visualizar       (meta-conditional by product)
+ *  - Formulario a visualizar       (legacy product-scope filter)
  *  - Visualización en Formularios  (readonly / hidden)
  *  - Observaciones
  *  - Nombre del Campo en Json
@@ -23,6 +23,8 @@
 const XLSX = require('xlsx');
 
 const COLUMN_MATCHERS = {
+    formCode:      ['código formulario', 'codigo formulario', 'código pdf', 'codigo pdf',
+                    'form code', 'pdf id', 'id formulario', 'formulario id'],
     step:          ['pasos formulario', 'paso', 'pasos'],
     section:       ['sección', 'seccion'],
     pdfLabel:      ['nombre en pdf'],
@@ -40,7 +42,7 @@ const COLUMN_MATCHERS = {
 
 /**
  * Parse a matrix xlsx buffer (ArrayBuffer / Uint8Array / Buffer)
- * → { sheetName, fields: Field[] }
+ * → { sheetName, fields: Field[], formCodes: string[], hasFormCodeColumn: boolean }
  */
 function parseMatrixFromBuffer(buffer) {
     if (!buffer) {
@@ -61,12 +63,15 @@ function parseMatrixFromBuffer(buffer) {
         throw new Error('Could not find "Nombre del campo en formulario" column in the matrix');
     }
 
+    const hasFormCodeColumn = columnMap.formCode !== undefined;
+
     const rawFields = [];
     for (let i = headerRow + 1; i < rawRows.length; i++) {
         const row = rawRows[i];
         if (!row || row.every(c => c === '' || c == null)) continue;
 
         const field = {
+            formCode:      cleanStr(getCell(row, columnMap.formCode)),
             step:          cleanStr(getCell(row, columnMap.step)),
             section:       cleanStr(getCell(row, columnMap.section)),
             pdfLabel:      cleanStr(getCell(row, columnMap.pdfLabel)),
@@ -80,24 +85,55 @@ function parseMatrixFromBuffer(buffer) {
             obs:           cleanStr(getCell(row, columnMap.obs)),
             jsonName:      cleanStr(getCell(row, columnMap.jsonName)),
             pdfFieldName:  cleanStr(getCell(row, columnMap.pdfFieldName)),
-            _rowIndex: i + 1 // 1-based for user-friendly logs
+            _rowIndex: i + 1
         };
 
-        // Skip rows that are completely blank of meaning
         if (!field.fieldLabel && !field.value && !field.pdfLabel) continue;
 
         rawFields.push(field);
     }
 
-    // Collapse repeated combo/radio rows into a single Field with options[]
     const fields = groupComboRows(rawFields).map(normalizeField);
 
-    return { sheetName, totalRawRows: rawFields.length, fields };
+    const formCodes = [...new Set(fields.map(f => f.formCode).filter(Boolean))];
+
+    return { sheetName, totalRawRows: rawFields.length, fields, formCodes, hasFormCodeColumn };
 }
 
 /**
- * Find the sheet that contains the main matrix. Prefers "Formulario Digital Vida".
+ * Group fields by formCode. Fields with empty/todos/all formCode are included in every group.
+ * Returns Map<formCode, Field[]>.
  */
+function groupFieldsByFormCode(fields) {
+    const groups = new Map();
+    const shared = [];
+
+    for (const f of fields) {
+        const code = f.formCode.toLowerCase();
+        if (!code || code === 'todos' || code === 'all') {
+            shared.push(f);
+        } else {
+            if (!groups.has(f.formCode)) groups.set(f.formCode, []);
+            groups.get(f.formCode).push(f);
+        }
+    }
+
+    // Prepend shared fields to every group
+    if (shared.length && groups.size) {
+        for (const [code, arr] of groups) {
+            groups.set(code, [...shared, ...arr]);
+        }
+    }
+
+    // If no group was created (no formCode column or all rows are shared),
+    // create a single group with all fields
+    if (groups.size === 0) {
+        groups.set('_all', fields);
+    }
+
+    return groups;
+}
+
 function findMatrixSheet(workbook) {
     const names = workbook.SheetNames;
     const preferred = names.find(n =>
@@ -105,7 +141,6 @@ function findMatrixSheet(workbook) {
     );
     if (preferred) return preferred;
 
-    // Fall back to the biggest sheet
     let biggest = names[0];
     let maxRows = 0;
     for (const n of names) {
@@ -116,9 +151,6 @@ function findMatrixSheet(workbook) {
     return biggest;
 }
 
-/**
- * Locate header row and map column names → indexes.
- */
 function findHeaderAndColumns(rawRows) {
     for (let i = 0; i < Math.min(10, rawRows.length); i++) {
         const row = rawRows[i];
@@ -145,7 +177,6 @@ function findHeaderAndColumns(rawRows) {
         }
     }
 
-    // Fallback: assume first row is header with the published column order
     return {
         headerRow: 0,
         columnMap: {
@@ -156,10 +187,6 @@ function findHeaderAndColumns(rawRows) {
     };
 }
 
-/**
- * Collapse consecutive rows sharing a fieldLabel into one field with options[].
- * Triggered when dataType mentions combo/radio/select.
- */
 function groupComboRows(rows) {
     const out = [];
     let i = 0;
@@ -182,7 +209,6 @@ function groupComboRows(rows) {
 
                 if (sameField && compatible && next.value) {
                     options.push(optionFromRow(next));
-                    // Merge metadata if later rows carry extra info
                     if (!cur.jsonName && next.jsonName) cur.jsonName = next.jsonName;
                     if (!cur.rule && next.rule)         cur.rule = next.rule;
                     if (!cur.obs && next.obs)           cur.obs = next.obs;
@@ -205,7 +231,6 @@ function groupComboRows(rows) {
 }
 
 function optionFromRow(row) {
-    // "codigo - descripcion" / "codigo, descripcion" / plain text
     const val = row.value;
     const m = val.match(/^([A-Z0-9]{1,6})\s*[-|,]\s*(.+)$/);
     if (m) {
@@ -214,13 +239,11 @@ function optionFromRow(row) {
     return { code: val, label: val };
 }
 
-/**
- * Normalize a raw matrix row into a Field object ready for transformers.
- */
 function normalizeField(raw) {
     const id = makeId(raw);
     return {
         id,
+        formCode: raw.formCode || '',
         step: raw.step || '',
         section: raw.section || '',
         label: raw.fieldLabel || raw.pdfLabel || '',
@@ -237,10 +260,8 @@ function normalizeField(raw) {
         required: normalizeRequired(raw.required),
         jsonName: raw.jsonName || '',
         _rowIndex: raw._rowIndex,
-        // Derived flags
         readOnly: /lectura|readonly|solo lectura/i.test(raw.visualization),
         hidden: /oculto|hidden|no visible/i.test(raw.visualization),
-        // Placeholders populated by later stages
         prefillKey: '',
         mappedPaths: [],
         conditionalVisibility: null,
@@ -251,7 +272,6 @@ function normalizeField(raw) {
 }
 
 function mapType(raw) {
-    // Strip accents so "Numérico" / "Título" / "Comentário" all normalize
     const t = (raw || '')
         .toLowerCase()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -275,10 +295,7 @@ function normalizeRequired(raw) {
 function normalizeProductScope(raw) {
     const r = String(raw || '').trim().toLowerCase();
     if (!r || r === 'todos' || r === 'all') return ['all'];
-    const scopes = [];
-    if (/vida\s*universal/.test(r)) scopes.push('vida_universal');
-    if (/protecci[oó]n\s*crediticia/.test(r)) scopes.push('proteccion_crediticia');
-    if (/vida\s*colectiva/.test(r)) scopes.push('vida_colectiva');
+    const scopes = r.split(/[,;]/).map(s => s.trim()).filter(Boolean);
     return scopes.length ? scopes : ['all'];
 }
 
@@ -304,6 +321,6 @@ function cleanStr(v) {
 
 module.exports = {
     parseMatrixFromBuffer,
-    // exported for tests
+    groupFieldsByFormCode,
     _internal: { mapType, normalizeRequired, normalizeProductScope, groupComboRows, makeId }
 };

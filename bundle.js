@@ -33270,6 +33270,16 @@ var InsPipelineBundle = (() => {
       "use strict";
       var XLSX = require_xlsx();
       var COLUMN_MATCHERS = {
+        formCode: [
+          "c\xF3digo formulario",
+          "codigo formulario",
+          "c\xF3digo pdf",
+          "codigo pdf",
+          "form code",
+          "pdf id",
+          "id formulario",
+          "formulario id"
+        ],
         step: ["pasos formulario", "paso", "pasos"],
         section: ["secci\xF3n", "seccion"],
         pdfLabel: ["nombre en pdf"],
@@ -33299,11 +33309,13 @@ var InsPipelineBundle = (() => {
         if (columnMap.fieldLabel === void 0) {
           throw new Error('Could not find "Nombre del campo en formulario" column in the matrix');
         }
+        const hasFormCodeColumn = columnMap.formCode !== void 0;
         const rawFields = [];
         for (let i = headerRow + 1; i < rawRows.length; i++) {
           const row = rawRows[i];
           if (!row || row.every((c) => c === "" || c == null)) continue;
           const field = {
+            formCode: cleanStr(getCell(row, columnMap.formCode)),
             step: cleanStr(getCell(row, columnMap.step)),
             section: cleanStr(getCell(row, columnMap.section)),
             pdfLabel: cleanStr(getCell(row, columnMap.pdfLabel)),
@@ -33318,13 +33330,35 @@ var InsPipelineBundle = (() => {
             jsonName: cleanStr(getCell(row, columnMap.jsonName)),
             pdfFieldName: cleanStr(getCell(row, columnMap.pdfFieldName)),
             _rowIndex: i + 1
-            // 1-based for user-friendly logs
           };
           if (!field.fieldLabel && !field.value && !field.pdfLabel) continue;
           rawFields.push(field);
         }
         const fields = groupComboRows(rawFields).map(normalizeField);
-        return { sheetName, totalRawRows: rawFields.length, fields };
+        const formCodes = [...new Set(fields.map((f) => f.formCode).filter(Boolean))];
+        return { sheetName, totalRawRows: rawFields.length, fields, formCodes, hasFormCodeColumn };
+      }
+      function groupFieldsByFormCode(fields) {
+        const groups = /* @__PURE__ */ new Map();
+        const shared = [];
+        for (const f of fields) {
+          const code = f.formCode.toLowerCase();
+          if (!code || code === "todos" || code === "all") {
+            shared.push(f);
+          } else {
+            if (!groups.has(f.formCode)) groups.set(f.formCode, []);
+            groups.get(f.formCode).push(f);
+          }
+        }
+        if (shared.length && groups.size) {
+          for (const [code, arr] of groups) {
+            groups.set(code, [...shared, ...arr]);
+          }
+        }
+        if (groups.size === 0) {
+          groups.set("_all", fields);
+        }
+        return groups;
       }
       function findMatrixSheet(workbook) {
         const names = workbook.SheetNames;
@@ -33434,6 +33468,7 @@ var InsPipelineBundle = (() => {
         const id = makeId(raw);
         return {
           id,
+          formCode: raw.formCode || "",
           step: raw.step || "",
           section: raw.section || "",
           label: raw.fieldLabel || raw.pdfLabel || "",
@@ -33450,10 +33485,8 @@ var InsPipelineBundle = (() => {
           required: normalizeRequired(raw.required),
           jsonName: raw.jsonName || "",
           _rowIndex: raw._rowIndex,
-          // Derived flags
           readOnly: /lectura|readonly|solo lectura/i.test(raw.visualization),
           hidden: /oculto|hidden|no visible/i.test(raw.visualization),
-          // Placeholders populated by later stages
           prefillKey: "",
           mappedPaths: [],
           conditionalVisibility: null,
@@ -33482,10 +33515,7 @@ var InsPipelineBundle = (() => {
       function normalizeProductScope(raw) {
         const r = String(raw || "").trim().toLowerCase();
         if (!r || r === "todos" || r === "all") return ["all"];
-        const scopes = [];
-        if (/vida\s*universal/.test(r)) scopes.push("vida_universal");
-        if (/protecci[oó]n\s*crediticia/.test(r)) scopes.push("proteccion_crediticia");
-        if (/vida\s*colectiva/.test(r)) scopes.push("vida_colectiva");
+        const scopes = r.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
         return scopes.length ? scopes : ["all"];
       }
       function makeId(raw) {
@@ -33502,7 +33532,7 @@ var InsPipelineBundle = (() => {
       }
       module.exports = {
         parseMatrixFromBuffer,
-        // exported for tests
+        groupFieldsByFormCode,
         _internal: { mapType, normalizeRequired, normalizeProductScope, groupComboRows, makeId }
       };
     }
@@ -56248,7 +56278,7 @@ var InsPipelineBundle = (() => {
   var require_pipeline = __commonJS({
     "src/pipeline.js"(exports, module) {
       "use strict";
-      var { parseMatrixFromBuffer } = require_excel_parser();
+      var { parseMatrixFromBuffer, groupFieldsByFormCode } = require_excel_parser();
       var { parseCatalogsFromBuffer } = require_catalogs_parser();
       var { parsePdfFromBuffer, bufferToBase64 } = require_pdf_analyzer();
       var { applyRules } = require_rule_parser();
@@ -56257,35 +56287,23 @@ var InsPipelineBundle = (() => {
       var { groupBySections, resolveTriggerConditionals } = require_section_grouper();
       var { buildLovableJson } = require_json_builder();
       var { loadClientPathsFromText, validateLovableJson } = require_prefillkey_validator();
-      var KNOWN_PRODUCTS = {
-        "1009052": { productName: "Vida Colectiva", productKey: "vida_colectiva" },
-        "D0306": { productName: "Vida Universal Plus", productKey: "vida_universal" },
-        "D0309": { productName: "Protecci\xF3n Crediticia", productKey: "proteccion_crediticia" }
-      };
-      async function runPipeline(inputs, options = {}) {
+      async function runPipelineForForm(inputs, options = {}) {
         const {
-          matrixBuffer,
+          fields: inputFields,
           catalogsBuffer,
           pdfBuffer,
           clientJsonText,
-          pdfId,
+          formCode,
           pdfFileName
         } = inputs;
         const {
           embedPdf = true,
           strategy = "pdf_page"
         } = options;
-        if (!matrixBuffer) throw new Error("matrixBuffer is required");
-        if (!pdfId) throw new Error("pdfId is required");
-        const productMeta = KNOWN_PRODUCTS[pdfId] || { productName: pdfId, productKey: null };
+        if (!inputFields || !inputFields.length) throw new Error("fields[] is required and must not be empty");
+        if (!formCode) throw new Error("formCode is required");
         const warnings = [];
-        const { fields: baseFields } = parseMatrixFromBuffer(matrixBuffer);
-        let fields = baseFields.map(cloneField);
-        if (productMeta.productKey) {
-          fields = fields.filter(
-            (f) => f.productScope.includes("all") || f.productScope.includes(productMeta.productKey)
-          );
-        }
+        let fields = inputFields.map(cloneField);
         const catalogs = catalogsBuffer ? parseCatalogsFromBuffer(catalogsBuffer) : {};
         mergeCatalogs(fields, catalogs);
         const ruleResult = applyRules(fields);
@@ -56304,11 +56322,11 @@ var InsPipelineBundle = (() => {
         resolveTriggerConditionals(sections);
         const json = buildLovableJson({
           sections,
-          pdfId,
+          pdfId: formCode,
           pdfBase64,
           pdfData,
-          pdfFileName: pdfFileName || (pdfData ? `${pdfId}.pdf` : null),
-          meta: productMeta,
+          pdfFileName: pdfFileName || (pdfData ? `${formCode}.pdf` : null),
+          meta: { productName: formCode },
           catalogs
         });
         let issues = [];
@@ -56318,6 +56336,35 @@ var InsPipelineBundle = (() => {
         }
         return { json, warnings, issues };
       }
+      async function runPipelineAll(inputs, options = {}) {
+        const { matrixBuffer, catalogsBuffer, pdfMap = {}, clientJsonText } = inputs;
+        if (!matrixBuffer) throw new Error("matrixBuffer is required");
+        const { fields: allFields, formCodes, hasFormCodeColumn } = parseMatrixFromBuffer(matrixBuffer);
+        const groups = groupFieldsByFormCode(allFields);
+        let codesToProcess;
+        const pdfCodes = Object.keys(pdfMap);
+        if (pdfCodes.length > 0) {
+          codesToProcess = pdfCodes;
+        } else {
+          codesToProcess = [...groups.keys()];
+        }
+        const results = [];
+        for (const code of codesToProcess) {
+          const fields = groups.get(code) || groups.get("_all") || [];
+          if (!fields.length) continue;
+          const pdf = pdfMap[code];
+          const result = await runPipelineForForm({
+            fields,
+            catalogsBuffer,
+            pdfBuffer: pdf?.buffer || null,
+            clientJsonText,
+            formCode: code,
+            pdfFileName: pdf?.fileName || null
+          }, options);
+          results.push({ formCode: code, ...result });
+        }
+        return { results, formCodes, hasFormCodeColumn };
+      }
       function cloneField(f) {
         return {
           ...f,
@@ -56325,14 +56372,14 @@ var InsPipelineBundle = (() => {
           productScope: [...f.productScope]
         };
       }
-      module.exports = { runPipeline, KNOWN_PRODUCTS };
+      module.exports = { runPipelineForForm, runPipelineAll, parseMatrixFromBuffer, groupFieldsByFormCode };
     }
   });
 
   // src/browser.js
   var require_browser = __commonJS({
     "src/browser.js"(exports, module) {
-      var { runPipeline, KNOWN_PRODUCTS } = require_pipeline();
+      var { runPipelineAll } = require_pipeline();
       async function fileToUint8Array(file) {
         const ab = await file.arrayBuffer();
         return new Uint8Array(ab);
@@ -56340,29 +56387,29 @@ var InsPipelineBundle = (() => {
       async function fileToText(file) {
         return await file.text();
       }
+      function formCodeFromFile(file) {
+        return file.name.replace(/\.pdf$/i, "");
+      }
       async function runAll(inputs, options = {}) {
-        const { matrixFile, catalogsFile, pdfFiles = {}, clientJsonFile } = inputs;
+        const { matrixFile, pdfFiles = [], catalogsFile, clientJsonFile } = inputs;
         if (!matrixFile) throw new Error("matrixFile is required");
         const matrixBuffer = await fileToUint8Array(matrixFile);
         const catalogsBuffer = catalogsFile ? await fileToUint8Array(catalogsFile) : null;
         const clientJsonText = clientJsonFile ? await fileToText(clientJsonFile) : null;
-        const pdfIds = Object.keys(pdfFiles).length ? Object.keys(pdfFiles) : Object.keys(KNOWN_PRODUCTS);
-        const results = [];
-        for (const pdfId of pdfIds) {
-          const pdfFile = pdfFiles[pdfId];
-          const pdfBuffer = pdfFile ? await fileToUint8Array(pdfFile) : null;
-          const pdfFileName = pdfFile ? pdfFile.name : null;
-          const result = await runPipeline({
-            matrixBuffer,
-            catalogsBuffer,
-            pdfBuffer,
-            clientJsonText,
-            pdfId,
-            pdfFileName
-          }, options);
-          results.push({ pdfId, ...result });
+        const pdfMap = {};
+        for (const pdfFile of pdfFiles) {
+          const code = formCodeFromFile(pdfFile);
+          pdfMap[code] = {
+            buffer: await fileToUint8Array(pdfFile),
+            fileName: pdfFile.name
+          };
         }
-        return results;
+        return runPipelineAll({
+          matrixBuffer,
+          catalogsBuffer,
+          pdfMap,
+          clientJsonText
+        }, options);
       }
       function jsonToBlob(json) {
         return new Blob([JSON.stringify(json, null, 2)], { type: "application/json;charset=utf-8" });
@@ -56378,9 +56425,9 @@ var InsPipelineBundle = (() => {
         setTimeout(() => URL.revokeObjectURL(url), 1e3);
       }
       if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, KNOWN_PRODUCTS, jsonToBlob, downloadBlob };
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob };
       }
-      module.exports = { runAll, KNOWN_PRODUCTS, jsonToBlob, downloadBlob };
+      module.exports = { runAll, jsonToBlob, downloadBlob };
     }
   });
   return require_browser();

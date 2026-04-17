@@ -12,44 +12,69 @@
             <div class="logo">INS</div>
             <div class="titles">
                 <h1>Lovable JSON Generator</h1>
-                <p>Pipeline Matriz + Catálogos + PDF → JSON Lovable</p>
+                <p>Matriz Excel + PDFs → JSON Lovable</p>
             </div>
         </div>
         <a class="repo-link" href="https://github.com/MarcosLancellotti2225/FormConverterExcel" target="_blank">repo</a>
     </header>
 
     <main>
+        <!-- INSTRUCTIVO -->
+        <section class="panel instructivo">
+            <details>
+                <summary><strong>Instructivo rápido</strong> (click para expandir)</summary>
+                <ol>
+                    <li><strong>Preparar la Matriz Excel:</strong> Agregar una columna <code>Código Formulario</code> que identifique a qué formulario pertenece cada fila. El valor debe coincidir con el nombre del archivo PDF (sin la extensión <code>.pdf</code>). Las filas con valor vacío o "Todos" se incluyen en todos los formularios.</li>
+                    <li><strong>Subir la Matriz:</strong> Hacer click o arrastrar el archivo <code>.xlsx</code> en el slot "Matriz Excel".</li>
+                    <li><strong>Subir los PDFs:</strong> Arrastrar uno o más archivos <code>.pdf</code> a la zona de PDFs. El nombre del archivo (ej: <code>1009052.pdf</code>) se usa como código para vincular con la columna <code>Código Formulario</code> de la matriz.</li>
+                    <li><strong>(Opcional) Catálogos:</strong> Si tenés un Excel de catálogos, subilo para enriquecer los options de combos/selects.</li>
+                    <li><strong>(Opcional) JSON cliente:</strong> Subilo para validar que los prefillKey existan en la estructura del cliente.</li>
+                    <li><strong>Generar:</strong> Click en "Generar JSON" para producir un JSON Lovable por cada PDF. Se genera un JSON por formulario.</li>
+                    <li><strong>Descargar:</strong> Descargá cada JSON individualmente o todos juntos en ZIP.</li>
+                </ol>
+            </details>
+        </section>
+
+        <!-- PASO 1: INSUMOS -->
         <section class="panel">
             <h2>1. Insumos</h2>
-            <p class="hint">Solo la matriz es obligatoria. Catálogos, PDFs y JSON cliente son opcionales (PDF aporta coordenadas AcroForm; JSON cliente valida prefillKey).</p>
+            <p class="hint">Solo la matriz es obligatoria. Catálogos, PDFs y JSON cliente son opcionales.</p>
 
             <div class="inputs-grid">
                 <label class="file-slot required" data-slot="matrix">
                     <span class="label">Matriz Excel</span>
-                    <span class="desc">Matriz_Formularios_VidaColectiva_Secciones.xlsx</span>
+                    <span class="desc">Con columna "Código Formulario"</span>
                     <input type="file" accept=".xlsx,.xls" data-input="matrix">
                     <span class="file-status"></span>
                 </label>
 
                 <label class="file-slot" data-slot="catalogs">
                     <span class="label">Catálogos Excel (opcional)</span>
-                    <span class="desc">Catalogos_Formularios_INS_Namirial_-_Vida.xlsx</span>
+                    <span class="desc">Enriquece opciones de selects</span>
                     <input type="file" accept=".xlsx,.xls" data-input="catalogs">
                     <span class="file-status"></span>
                 </label>
 
                 <label class="file-slot" data-slot="client">
                     <span class="label">JSON cliente (opcional)</span>
-                    <span class="desc">Json_Formulario_Vida_-_Asegurado.txt</span>
+                    <span class="desc">Valida prefillKey</span>
                     <input type="file" accept=".txt,.json" data-input="client">
                     <span class="file-status"></span>
                 </label>
             </div>
 
-            <h3 class="subhead">PDFs por producto (opcional)</h3>
-            <div class="pdf-grid" id="pdfGrid"></div>
+            <h3 class="subhead">PDFs (opcional — arrastrá uno o más)</h3>
+            <div id="pdfDropZone" class="pdf-drop-zone">
+                <input type="file" id="pdfFileInput" accept=".pdf" multiple hidden>
+                <div class="drop-label">
+                    <span class="drop-icon">+</span>
+                    <span>Arrastrá PDFs aquí o <button type="button" id="pdfBrowseBtn" class="link-btn">buscá archivos</button></span>
+                </div>
+                <div id="pdfList" class="pdf-list"></div>
+            </div>
         </section>
 
+        <!-- PASO 2: OPCIONES -->
         <section class="panel">
             <h2>2. Opciones</h2>
             <div class="options">
@@ -64,22 +89,24 @@
                 <label class="select-row">
                     <span>Estrategia de secciones</span>
                     <select id="optStrategy">
-                        <option value="logical" selected>Lógicas (Paso + Sección)</option>
-                        <option value="pdf_page">Por página del PDF</option>
+                        <option value="pdf_page" selected>Por página del PDF (sec_page_N)</option>
+                        <option value="logical">Lógicas (Paso + Sección)</option>
                     </select>
                 </label>
             </div>
         </section>
 
+        <!-- PASO 3: GENERAR -->
         <section class="panel">
             <h2>3. Generar</h2>
             <div class="actions">
                 <button id="btnRun" class="primary" disabled>Generar JSON</button>
-                <button id="btnRunAll" class="secondary" disabled>Generar los 3 productos</button>
+                <button id="btnDownloadAll" class="secondary" hidden>Descargar todos (.zip)</button>
             </div>
             <div id="status" class="status"></div>
         </section>
 
+        <!-- PASO 4: RESULTADOS -->
         <section class="panel" id="resultsPanel" hidden>
             <h2>4. Resultados</h2>
             <div id="results"></div>

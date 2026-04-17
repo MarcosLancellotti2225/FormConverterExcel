@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Smoke tests
- * - Unit tests for the rule-parser (no I/O required)
+ * - Unit tests for parsers and builder (no I/O required)
  * - End-to-end pipeline test (skipped gracefully if /inputs is empty)
  */
 'use strict';
@@ -55,7 +55,7 @@ async function run() {
     });
 
     console.log('\n── excel-parser internals ───────────────');
-    const { _internal: xlsx } = require('../src/parsers/excel-parser');
+    const { _internal: xlsx, groupFieldsByFormCode } = require('../src/parsers/excel-parser');
 
     test('mapType: Combo → select', () => {
         assert.strictEqual(xlsx.mapType('Combo'), 'select');
@@ -70,17 +70,42 @@ async function run() {
         assert.strictEqual(xlsx.normalizeRequired('NO'), false);
     });
 
-    test('normalizeProductScope: "Vida Universal Plus" → ["vida_universal"]', () => {
-        const r = xlsx.normalizeProductScope('Vida Universal Plus');
-        assert.deepStrictEqual(r, ['vida_universal']);
+    test('normalizeProductScope: comma-separated scopes', () => {
+        const r = xlsx.normalizeProductScope('vida_universal, proteccion_crediticia');
+        assert.deepStrictEqual(r, ['vida_universal', 'proteccion_crediticia']);
     });
 
     test('normalizeProductScope: "TODOS" → ["all"]', () => {
         assert.deepStrictEqual(xlsx.normalizeProductScope('TODOS'), ['all']);
     });
 
+    console.log('\n── groupFieldsByFormCode ────────────────');
+
+    test('groups fields by formCode and distributes shared fields', () => {
+        const fields = [
+            { formCode: '',       label: 'shared' },
+            { formCode: '1009052', label: 'a' },
+            { formCode: '1009052', label: 'b' },
+            { formCode: 'D0306',   label: 'c' }
+        ];
+        const groups = groupFieldsByFormCode(fields);
+        assert.strictEqual(groups.size, 2);
+        assert.strictEqual(groups.get('1009052').length, 3); // shared + a + b
+        assert.strictEqual(groups.get('D0306').length, 2);   // shared + c
+    });
+
+    test('returns _all group when no formCode column', () => {
+        const fields = [
+            { formCode: '', label: 'x' },
+            { formCode: '', label: 'y' }
+        ];
+        const groups = groupFieldsByFormCode(fields);
+        assert.ok(groups.has('_all'));
+        assert.strictEqual(groups.get('_all').length, 2);
+    });
+
     console.log('\n── json-builder shape ───────────────────');
-    const { buildLovableJson } = require('../src/builders/json-builder');
+    const { buildLovableJson, buildField } = require('../src/builders/json-builder');
 
     test('buildLovableJson emits the expected Lovable shape', () => {
         const json = buildLovableJson({
@@ -102,7 +127,6 @@ async function run() {
     });
 
     test('buildField emits field_ prefix, stringified conditionalVisibility, and rect object', () => {
-        const { buildField } = require('../src/builders/json-builder');
         const f = buildField({
             id: 'primer_nombre',
             label: 'Primer Nombre',
@@ -124,6 +148,7 @@ async function run() {
         assert.strictEqual(cond.conditions[0].value, 'Fisica');
         assert.deepStrictEqual(f.sourceMeta.rect, { x: 10, y: 20, width: 100, height: 15 });
         assert.strictEqual(f.sourceMeta.kind, 'pdf');
+        assert.strictEqual(f.sourceMeta.page, 1); // 1-indexed
     });
 
     console.log('\n── prefillkey-validator ─────────────────');
@@ -174,24 +199,28 @@ async function run() {
         assert.strictEqual(issues[0].field, 'b');
     });
 
-    console.log('\n── end-to-end pipeline (if inputs present) ──');
+    console.log('\n── end-to-end pipeline ──────────────────');
     const inputsDir = path.join(ROOT, 'inputs');
     const hasMatrix = fs.existsSync(path.join(inputsDir, 'Matriz_Formularios_VidaColectiva_Secciones.xlsx'));
-    const hasCatalog = fs.existsSync(path.join(inputsDir, 'Catalogos_Formularios_INS_Namirial_-_Vida.xlsx'));
 
-    if (!hasMatrix || !hasCatalog) {
-        console.log('  ↳ skipped (missing files in /inputs)');
+    if (!hasMatrix) {
+        console.log('  ↳ skipped (missing matrix in /inputs)');
     } else {
-        await test('full pipeline produces 1009052.json', async () => {
-            process.argv = ['node', 'src/index.js', '--pdf=1009052', '--no-pdf-embed'];
-            // Re-require CLI fresh
-            delete require.cache[require.resolve('../src/index.js')];
-            const { main } = require('../src/index');
-            await main();
-            const outPath = path.join(ROOT, 'outputs', '1009052.json');
-            assert.ok(fs.existsSync(outPath), 'output JSON was not written');
-            const parsed = JSON.parse(fs.readFileSync(outPath, 'utf-8'));
-            assert.ok(Array.isArray(parsed.sections), 'sections[] missing');
+        await test('full pipeline produces output JSON', async () => {
+            const { runPipelineAll } = require('../src/pipeline');
+            const matrixBuffer = fs.readFileSync(path.join(inputsDir, 'Matriz_Formularios_VidaColectiva_Secciones.xlsx'));
+            const { results } = await runPipelineAll({
+                matrixBuffer,
+                catalogsBuffer: null,
+                pdfMap: {},
+                clientJsonText: null
+            }, { embedPdf: false });
+
+            assert.ok(results.length > 0, 'no results generated');
+            for (const r of results) {
+                assert.ok(r.json.data, 'data wrapper missing');
+                assert.ok(r.json.data.jsonDefinition.sections, 'sections missing');
+            }
         });
     }
 

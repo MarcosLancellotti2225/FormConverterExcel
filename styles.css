@@ -166,6 +166,101 @@ main {
     gap: 0.5rem;
 }
 
+/* PDF drop zone */
+.pdf-drop-zone {
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    background: var(--bg-elevated);
+    padding: 1rem;
+    transition: border-color 0.15s, background 0.15s;
+    min-height: 80px;
+}
+.pdf-drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(88, 166, 255, 0.05);
+}
+.drop-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    padding: 0.5rem;
+}
+.drop-icon {
+    font-size: 1.5rem;
+    color: var(--text-dim);
+    font-weight: 300;
+}
+.link-btn {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 0.85rem;
+    text-decoration: underline;
+    padding: 0;
+    font-family: inherit;
+}
+.link-btn:hover { color: #79b8ff; }
+
+.pdf-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+.pdf-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.6rem;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.8rem;
+}
+.pdf-tag-code {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--accent-teal);
+    font-weight: 600;
+}
+.pdf-tag-size {
+    color: var(--text-dim);
+    font-size: 0.7rem;
+}
+.pdf-tag-remove {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0 0.2rem;
+    line-height: 1;
+}
+.pdf-tag-remove:hover { color: var(--accent-red); }
+
+/* Instructivo */
+.instructivo {
+    background: rgba(88, 166, 255, 0.04);
+    border-color: rgba(88, 166, 255, 0.2);
+}
+.instructivo ol {
+    margin: 0.75rem 0 0;
+    padding-left: 1.25rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.7;
+}
+.instructivo ol code {
+    background: var(--bg-elevated);
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+}
+
 /* Options */
 .options {
     display: flex;

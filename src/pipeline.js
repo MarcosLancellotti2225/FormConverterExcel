@@ -2,10 +2,13 @@
  * Pipeline Orchestrator
  * Pure in-memory pipeline. Takes buffers (no I/O) and returns the Lovable JSON.
  * Reused by both the Node CLI (src/index.js) and the browser build (src/browser.js).
+ *
+ * Supports any number of forms — no hardcoded product list.
+ * The matrix "Código Formulario" column groups rows per form.
  */
 'use strict';
 
-const { parseMatrixFromBuffer }        = require('./parsers/excel-parser');
+const { parseMatrixFromBuffer, groupFieldsByFormCode } = require('./parsers/excel-parser');
 const { parseCatalogsFromBuffer }      = require('./parsers/catalogs-parser');
 const { parsePdfFromBuffer, bufferToBase64 } = require('./parsers/pdf-analyzer');
 const { applyRules }                   = require('./parsers/rule-parser');
@@ -15,34 +18,28 @@ const { groupBySections, resolveTriggerConditionals } = require('./transformers/
 const { buildLovableJson }             = require('./builders/json-builder');
 const { loadClientPathsFromText, validateLovableJson } = require('./validators/prefillkey-validator');
 
-const KNOWN_PRODUCTS = {
-    '1009052': { productName: 'Vida Colectiva',       productKey: 'vida_colectiva' },
-    'D0306':   { productName: 'Vida Universal Plus',  productKey: 'vida_universal' },
-    'D0309':   { productName: 'Protección Crediticia', productKey: 'proteccion_crediticia' }
-};
-
 /**
- * Run the full pipeline for ONE product.
+ * Run the full pipeline for ONE form (identified by formCode).
  *
  * @param {Object} inputs
- * @param {ArrayBuffer|Uint8Array|Buffer} inputs.matrixBuffer       (required)
- * @param {ArrayBuffer|Uint8Array|Buffer} [inputs.catalogsBuffer]   (optional — options inferred from matrix if absent)
- * @param {ArrayBuffer|Uint8Array|Buffer} [inputs.pdfBuffer]        (optional — no coordinates without it)
- * @param {string}  [inputs.clientJsonText]                          (optional — enables prefillKey validation)
- * @param {string}  inputs.pdfId                                     (1009052 | D0306 | D0309 | any)
- * @param {string}  [inputs.pdfFileName]                             original upload name, used in _sourcePdf
+ * @param {Field[]} inputs.fields                                     pre-filtered fields for this form
+ * @param {ArrayBuffer|Uint8Array|Buffer} [inputs.catalogsBuffer]     (optional)
+ * @param {ArrayBuffer|Uint8Array|Buffer} [inputs.pdfBuffer]          (optional)
+ * @param {string}  [inputs.clientJsonText]                            (optional)
+ * @param {string}  inputs.formCode                                    form identifier (matches PDF filename)
+ * @param {string}  [inputs.pdfFileName]                               original upload name
  * @param {Object}  [options]
- * @param {boolean} [options.embedPdf=true]    include _sourcePdf.b64 in output
- * @param {string}  [options.strategy='pdf_page']  section-grouper strategy
+ * @param {boolean} [options.embedPdf=true]
+ * @param {string}  [options.strategy='pdf_page']
  * @returns {Promise<{ json:Object, warnings:Array, issues:Array }>}
  */
-async function runPipeline(inputs, options = {}) {
+async function runPipelineForForm(inputs, options = {}) {
     const {
-        matrixBuffer,
+        fields: inputFields,
         catalogsBuffer,
         pdfBuffer,
         clientJsonText,
-        pdfId,
+        formCode,
         pdfFileName
     } = inputs;
 
@@ -51,34 +48,23 @@ async function runPipeline(inputs, options = {}) {
         strategy = 'pdf_page'
     } = options;
 
-    if (!matrixBuffer) throw new Error('matrixBuffer is required');
-    if (!pdfId)        throw new Error('pdfId is required');
+    if (!inputFields || !inputFields.length) throw new Error('fields[] is required and must not be empty');
+    if (!formCode) throw new Error('formCode is required');
 
-    const productMeta = KNOWN_PRODUCTS[pdfId] || { productName: pdfId, productKey: null };
     const warnings = [];
 
-    // 1. Parse matrix
-    const { fields: baseFields } = parseMatrixFromBuffer(matrixBuffer);
+    // Deep-clone
+    let fields = inputFields.map(cloneField);
 
-    // Deep-clone so the caller can reuse baseFields across products
-    let fields = baseFields.map(cloneField);
-
-    // 2. Filter by productScope
-    if (productMeta.productKey) {
-        fields = fields.filter(f =>
-            f.productScope.includes('all') || f.productScope.includes(productMeta.productKey)
-        );
-    }
-
-    // 3. Parse catalogs + resolve options (optional)
+    // Parse catalogs + resolve options (optional)
     const catalogs = catalogsBuffer ? parseCatalogsFromBuffer(catalogsBuffer) : {};
     mergeCatalogs(fields, catalogs);
 
-    // 4. Apply rules (validations + conditionals)
+    // Apply rules (validations + conditionals)
     const ruleResult = applyRules(fields);
     for (const w of ruleResult.warnings) warnings.push({ stage: 'rules', ...w });
 
-    // 5. Parse PDF coordinates (optional)
+    // Parse PDF coordinates (optional)
     let pdfBase64 = null;
     let pdfData = null;
     if (pdfBuffer) {
@@ -90,22 +76,22 @@ async function runPipeline(inputs, options = {}) {
         }
     }
 
-    // 6. Group sections + resolve triggers
+    // Group sections + resolve triggers
     const sections = groupBySections(fields, strategy);
     resolveTriggerConditionals(sections);
 
-    // 7. Build final JSON (Lovable shape)
+    // Build final JSON (Lovable shape)
     const json = buildLovableJson({
         sections,
-        pdfId,
+        pdfId: formCode,
         pdfBase64,
         pdfData,
-        pdfFileName: pdfFileName || (pdfData ? `${pdfId}.pdf` : null),
-        meta: productMeta,
+        pdfFileName: pdfFileName || (pdfData ? `${formCode}.pdf` : null),
+        meta: { productName: formCode },
         catalogs
     });
 
-    // 8. Validate prefillKeys against client JSON
+    // Validate prefillKeys against client JSON
     let issues = [];
     if (clientJsonText) {
         const clientPaths = loadClientPathsFromText(clientJsonText);
@@ -113,6 +99,56 @@ async function runPipeline(inputs, options = {}) {
     }
 
     return { json, warnings, issues };
+}
+
+/**
+ * High-level: parse the matrix, group by formCode, and run the pipeline
+ * for every form that has a matching PDF (or for all forms if no PDFs given).
+ *
+ * @param {Object} inputs
+ * @param {ArrayBuffer|Uint8Array|Buffer} inputs.matrixBuffer
+ * @param {ArrayBuffer|Uint8Array|Buffer} [inputs.catalogsBuffer]
+ * @param {Object<string, { buffer, fileName }>} [inputs.pdfMap]   formCode → { buffer, fileName }
+ * @param {string} [inputs.clientJsonText]
+ * @param {Object} [options]
+ * @returns {Promise<{ results:Array, formCodes:string[], hasFormCodeColumn:boolean }>}
+ */
+async function runPipelineAll(inputs, options = {}) {
+    const { matrixBuffer, catalogsBuffer, pdfMap = {}, clientJsonText } = inputs;
+    if (!matrixBuffer) throw new Error('matrixBuffer is required');
+
+    const { fields: allFields, formCodes, hasFormCodeColumn } = parseMatrixFromBuffer(matrixBuffer);
+    const groups = groupFieldsByFormCode(allFields);
+
+    // Decide which form codes to process
+    let codesToProcess;
+    const pdfCodes = Object.keys(pdfMap);
+
+    if (pdfCodes.length > 0) {
+        codesToProcess = pdfCodes;
+    } else {
+        codesToProcess = [...groups.keys()];
+    }
+
+    const results = [];
+    for (const code of codesToProcess) {
+        const fields = groups.get(code) || groups.get('_all') || [];
+        if (!fields.length) continue;
+
+        const pdf = pdfMap[code];
+        const result = await runPipelineForForm({
+            fields,
+            catalogsBuffer,
+            pdfBuffer: pdf?.buffer || null,
+            clientJsonText,
+            formCode: code,
+            pdfFileName: pdf?.fileName || null
+        }, options);
+
+        results.push({ formCode: code, ...result });
+    }
+
+    return { results, formCodes, hasFormCodeColumn };
 }
 
 function cloneField(f) {
@@ -123,4 +159,4 @@ function cloneField(f) {
     };
 }
 
-module.exports = { runPipeline, KNOWN_PRODUCTS };
+module.exports = { runPipelineForForm, runPipelineAll, parseMatrixFromBuffer, groupFieldsByFormCode };
