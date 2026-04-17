@@ -155,11 +155,13 @@ function buildSourceMeta(f) {
     if (!f.sourceMeta && !f.pdfCoords) return null;
 
     const rect = f.pdfCoords?.rect ? rectFromArray(f.pdfCoords.rect) : null;
+    // Lovable expects 1-indexed pages (page:1 = first page, matching sec_page_1)
+    const page = f.pdfCoords?.page != null ? f.pdfCoords.page + 1 : 1;
     return {
         kind: 'pdf',
         sourceName: f.sourceMeta?.sourceName || f.pdfFieldName || null,
         sourceNames: null,
-        page: f.pdfCoords?.page ?? 0,
+        page,
         rect,
         sourceRects: rect ? [rect] : null,
         buttonFlags: null,
@@ -237,7 +239,7 @@ function buildFieldPositions(pdfData) {
         if (!widgets.length) {
             out.push({
                 sourceName: name,
-                page: entry.page ?? 0,
+                page: (entry.page ?? 0) + 1,
                 hasCoordinates: false,
                 xPx: 0, yPx: 0, widthPx: 0, heightPx: 0,
                 xInt: 0, yInt: 0, widthInt: 0, heightInt: 0
@@ -249,7 +251,7 @@ function buildFieldPositions(pdfData) {
             const [x, y, width, height] = w.rect || [0, 0, 0, 0];
             out.push({
                 sourceName: name,
-                page: w.page ?? 0,
+                page: (w.page ?? 0) + 1,
                 hasCoordinates: !!w.rect,
                 xPx: x, yPx: y, widthPx: width, heightPx: height,
                 xInt: Math.round(x),
