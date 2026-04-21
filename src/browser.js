@@ -4,7 +4,7 @@
  */
 'use strict';
 
-const { runPipelineAll } = require('./pipeline');
+const { runPipelineAll, runEnrichAll } = require('./pipeline');
 
 async function fileToUint8Array(file) {
     const ab = await file.arrayBuffer();
@@ -24,25 +24,41 @@ function formCodeFromFile(file) {
 }
 
 /**
+ * Derive formCode from a Lovable JSON file.
+ * Tries to extract from _sourcePdf.fileName, falls back to file name.
+ */
+function formCodeFromLovableJson(jsonText, fileName) {
+    try {
+        const parsed = JSON.parse(jsonText);
+        const sp = parsed?._sourcePdf || parsed?.data?.jsonDefinition?._sourcePdf || parsed?.jsonDefinition?._sourcePdf;
+        if (sp?.fileName) {
+            return sp.fileName.replace(/\.pdf$/i, '').replace(/_v\d+$/i, '');
+        }
+    } catch { /* fall through */ }
+    return fileName.replace(/\.json$/i, '');
+}
+
+/**
  * Run the full pipeline for all uploaded PDFs.
+ * When Lovable JSON files are provided, runs enrichment mode instead.
  *
  * @param {Object} inputs
  * @param {File}   inputs.matrixFile           (required)
  * @param {File[]} [inputs.pdfFiles]           array of PDF File objects (any number)
  * @param {File}   [inputs.catalogsFile]       (optional)
  * @param {File}   [inputs.clientJsonFile]     (optional)
+ * @param {File[]} [inputs.lovableJsonFiles]   (optional) Lovable JSON files for enrichment
  * @param {Object} [options]
  * @returns {Promise<{ results, formCodes, hasFormCodeColumn }>}
  */
 async function runAll(inputs, options = {}) {
-    const { matrixFile, pdfFiles = [], catalogsFile, clientJsonFile } = inputs;
+    const { matrixFile, pdfFiles = [], catalogsFile, clientJsonFile, lovableJsonFiles = [] } = inputs;
     if (!matrixFile) throw new Error('matrixFile is required');
 
     const matrixBuffer   = await fileToUint8Array(matrixFile);
     const catalogsBuffer = catalogsFile ? await fileToUint8Array(catalogsFile) : null;
     const clientJsonText = clientJsonFile ? await fileToText(clientJsonFile) : null;
 
-    // Build pdfMap: formCode → { buffer, fileName }
     const pdfMap = {};
     for (const pdfFile of pdfFiles) {
         const code = formCodeFromFile(pdfFile);
@@ -50,6 +66,23 @@ async function runAll(inputs, options = {}) {
             buffer: await fileToUint8Array(pdfFile),
             fileName: pdfFile.name
         };
+    }
+
+    if (lovableJsonFiles.length > 0) {
+        const lovableJsonMap = {};
+        for (const file of lovableJsonFiles) {
+            const text = await fileToText(file);
+            const code = formCodeFromLovableJson(text, file.name);
+            lovableJsonMap[code] = text;
+        }
+
+        return runEnrichAll({
+            matrixBuffer,
+            lovableJsonMap,
+            catalogsBuffer,
+            pdfMap,
+            clientJsonText
+        }, options);
     }
 
     return runPipelineAll({

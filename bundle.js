@@ -55963,6 +55963,171 @@ var InsPipelineBundle = (() => {
     }
   });
 
+  // src/transformers/enrich-lovable.js
+  var require_enrich_lovable = __commonJS({
+    "src/transformers/enrich-lovable.js"(exports, module) {
+      "use strict";
+      function enrichLovableWithMatrix(lovableJson, excelFields, options = {}) {
+        const { catalogs = {}, clientPaths = null } = options;
+        const warnings = [];
+        const excelIndex = buildExcelIndex(excelFields);
+        const enriched = JSON.parse(JSON.stringify(lovableJson));
+        const sections = extractSections(enriched);
+        let matchCount = 0;
+        let missCount = 0;
+        for (const section of sections) {
+          for (const field of section.fields) {
+            const sourceName = field.sourceMeta?.sourceName;
+            if (!sourceName) {
+              warnings.push({
+                stage: "enrich",
+                type: "no_source_name",
+                field: field.label || field.id,
+                reason: "Field has no sourceMeta.sourceName \u2014 cannot match with Excel"
+              });
+              missCount++;
+              continue;
+            }
+            const excelMatch = findExcelMatch(sourceName, excelIndex);
+            if (!excelMatch) {
+              warnings.push({
+                stage: "enrich",
+                type: "no_excel_match",
+                field: field.label || field.id,
+                reason: `sourceName "${sourceName}" not found in Excel "Nombre del Campo en PDF" column`
+              });
+              missCount++;
+              continue;
+            }
+            applyExcelData(field, excelMatch);
+            matchCount++;
+          }
+        }
+        const matchedExcelIds = /* @__PURE__ */ new Set();
+        for (const section of sections) {
+          for (const field of section.fields) {
+            const sn = field.sourceMeta?.sourceName;
+            if (sn) matchedExcelIds.add(normalizeKey(sn));
+          }
+        }
+        for (const ef of excelFields) {
+          if (ef.pdfFieldName && !matchedExcelIds.has(normalizeKey(ef.pdfFieldName))) {
+            warnings.push({
+              stage: "enrich",
+              type: "excel_field_unused",
+              field: ef.label || ef.pdfFieldName,
+              reason: `Excel row "${ef.pdfFieldName}" has no matching field in the Lovable JSON`
+            });
+          }
+        }
+        writeSectionsBack(enriched, sections);
+        return {
+          json: enriched,
+          warnings,
+          stats: { matchCount, missCount, totalLovable: countFields(sections), totalExcel: excelFields.length }
+        };
+      }
+      function extractSections(json) {
+        if (json?.data?.jsonDefinition?.sections) return json.data.jsonDefinition.sections;
+        if (json?.sections) return json.sections;
+        if (json?.jsonDefinition?.sections) return json.jsonDefinition.sections;
+        throw new Error("Could not find sections[] in Lovable JSON");
+      }
+      function writeSectionsBack(json, sections) {
+        if (json?.data?.jsonDefinition?.sections) {
+          json.data.jsonDefinition.sections = sections;
+          return;
+        }
+        if (json?.sections) {
+          json.sections = sections;
+          return;
+        }
+        if (json?.jsonDefinition?.sections) {
+          json.jsonDefinition.sections = sections;
+          return;
+        }
+      }
+      function buildExcelIndex(fields) {
+        const byExact = /* @__PURE__ */ new Map();
+        const byNormalized = /* @__PURE__ */ new Map();
+        for (const f of fields) {
+          if (f.pdfFieldName) {
+            byExact.set(f.pdfFieldName, f);
+            byNormalized.set(normalizeKey(f.pdfFieldName), f);
+          }
+          if (f.pdfLabel) {
+            byNormalized.set(normalizeKey(f.pdfLabel), f);
+          }
+          if (f.label) {
+            byNormalized.set(normalizeKey(f.label), f);
+          }
+        }
+        return { byExact, byNormalized };
+      }
+      function findExcelMatch(sourceName, index) {
+        if (index.byExact.has(sourceName)) return index.byExact.get(sourceName);
+        const norm = normalizeKey(sourceName);
+        if (index.byNormalized.has(norm)) return index.byNormalized.get(norm);
+        return null;
+      }
+      function applyExcelData(lovableField, excelField) {
+        if (excelField.required !== void 0) {
+          lovableField.required = !!excelField.required;
+        }
+        if (excelField.validationPattern) {
+          lovableField.validationPattern = excelField.validationPattern;
+        }
+        if (excelField.conditionalVisibility) {
+          lovableField.conditionalVisibility = excelField.conditionalVisibility;
+        }
+        if (excelField.jsonName) {
+          const key = resolveKey(excelField.jsonName);
+          if (key) {
+            lovableField.prefillKey = key;
+            lovableField.prefillMode = lovableField.required ? "required" : "optional";
+          }
+        }
+        if (excelField.options && excelField.options.length) {
+          lovableField.options = excelField.options.map((o) => {
+            if (typeof o === "string") return o;
+            return o.label || o.code || "";
+          }).filter(Boolean);
+        }
+        if (excelField.readOnly) {
+          lovableField.readOnly = true;
+        }
+        if (excelField.hidden) {
+          lovableField.hidden = true;
+        }
+        if (excelField.maxLength) {
+          lovableField.maxLength = excelField.maxLength;
+        }
+        if (excelField.rule) {
+          lovableField._excelRule = excelField.rule;
+        }
+        if (excelField.obs) {
+          lovableField._excelObs = excelField.obs;
+        }
+        if (excelField.step || excelField.section) {
+          lovableField._excelStep = excelField.step || "";
+          lovableField._excelSection = excelField.section || "";
+        }
+      }
+      function resolveKey(raw) {
+        const s = (raw || "").trim();
+        if (!s) return null;
+        return s.split(/[,;/]|\s+y\s+/i)[0].trim() || null;
+      }
+      function normalizeKey(str) {
+        return String(str || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\[\d+\]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+      }
+      function countFields(sections) {
+        return sections.reduce((n, s) => n + s.fields.length, 0);
+      }
+      module.exports = { enrichLovableWithMatrix };
+    }
+  });
+
   // src/builders/json-builder.js
   var require_json_builder = __commonJS({
     "src/builders/json-builder.js"(exports, module) {
@@ -56285,6 +56450,7 @@ var InsPipelineBundle = (() => {
       var { mergeCatalogs } = require_merge_catalogs();
       var { mergePdfCoords } = require_merge_pdf_coords();
       var { groupBySections, resolveTriggerConditionals } = require_section_grouper();
+      var { enrichLovableWithMatrix } = require_enrich_lovable();
       var { buildLovableJson } = require_json_builder();
       var { loadClientPathsFromText, validateLovableJson } = require_prefillkey_validator();
       async function runPipelineForForm(inputs, options = {}) {
@@ -56365,6 +56531,73 @@ var InsPipelineBundle = (() => {
         }
         return { results, formCodes, hasFormCodeColumn };
       }
+      async function runEnrichPipeline(inputs, options = {}) {
+        const {
+          lovableJsonText,
+          fields: inputFields,
+          catalogsBuffer,
+          pdfBuffer,
+          clientJsonText,
+          formCode,
+          pdfFileName
+        } = inputs;
+        const { embedPdf = true } = options;
+        const lovableJson = JSON.parse(lovableJsonText);
+        const warnings = [];
+        let fields = inputFields.map(cloneField);
+        const catalogs = catalogsBuffer ? parseCatalogsFromBuffer(catalogsBuffer) : {};
+        mergeCatalogs(fields, catalogs);
+        const ruleResult = applyRules(fields);
+        for (const w of ruleResult.warnings) warnings.push({ stage: "rules", ...w });
+        const enrichResult = enrichLovableWithMatrix(lovableJson, fields, { catalogs });
+        for (const w of enrichResult.warnings) warnings.push(w);
+        let enrichedJson = enrichResult.json;
+        if (pdfBuffer && embedPdf) {
+          const pdfBase64 = bufferToBase64(pdfBuffer);
+          const pdfData = await parsePdfFromBuffer(pdfBuffer);
+          const jd = enrichedJson?.data?.jsonDefinition || enrichedJson?.jsonDefinition || enrichedJson;
+          if (jd._sourcePdf) {
+            jd._sourcePdf.b64 = pdfBase64;
+          } else {
+            jd._sourcePdf = {
+              fileName: pdfFileName || `${formCode}.pdf`,
+              pageCount: pdfData.numPages,
+              b64: pdfBase64
+            };
+          }
+        }
+        let issues = [];
+        if (clientJsonText) {
+          const clientPaths = loadClientPathsFromText(clientJsonText);
+          issues = validateLovableJson(enrichedJson, clientPaths);
+        }
+        return { json: enrichedJson, warnings, issues, stats: enrichResult.stats };
+      }
+      async function runEnrichAll(inputs, options = {}) {
+        const { matrixBuffer, lovableJsonMap, catalogsBuffer, pdfMap = {}, clientJsonText } = inputs;
+        if (!matrixBuffer) throw new Error("matrixBuffer is required");
+        if (!lovableJsonMap || !Object.keys(lovableJsonMap).length) {
+          throw new Error("At least one Lovable JSON is required for enrichment");
+        }
+        const { fields: allFields, formCodes, hasFormCodeColumn } = parseMatrixFromBuffer(matrixBuffer);
+        const groups = groupFieldsByFormCode(allFields);
+        const results = [];
+        for (const [code, jsonText] of Object.entries(lovableJsonMap)) {
+          const fields = groups.get(code) || groups.get("_all") || [];
+          const pdf = pdfMap[code];
+          const result = await runEnrichPipeline({
+            lovableJsonText: jsonText,
+            fields,
+            catalogsBuffer,
+            pdfBuffer: pdf?.buffer || null,
+            clientJsonText,
+            formCode: code,
+            pdfFileName: pdf?.fileName || null
+          }, options);
+          results.push({ formCode: code, ...result });
+        }
+        return { results, formCodes, hasFormCodeColumn };
+      }
       function cloneField(f) {
         return {
           ...f,
@@ -56372,14 +56605,14 @@ var InsPipelineBundle = (() => {
           productScope: [...f.productScope]
         };
       }
-      module.exports = { runPipelineForForm, runPipelineAll, parseMatrixFromBuffer, groupFieldsByFormCode };
+      module.exports = { runPipelineForForm, runPipelineAll, runEnrichPipeline, runEnrichAll, parseMatrixFromBuffer, groupFieldsByFormCode };
     }
   });
 
   // src/browser.js
   var require_browser = __commonJS({
     "src/browser.js"(exports, module) {
-      var { runPipelineAll } = require_pipeline();
+      var { runPipelineAll, runEnrichAll } = require_pipeline();
       async function fileToUint8Array(file) {
         const ab = await file.arrayBuffer();
         return new Uint8Array(ab);
@@ -56390,8 +56623,19 @@ var InsPipelineBundle = (() => {
       function formCodeFromFile(file) {
         return file.name.replace(/\.pdf$/i, "");
       }
+      function formCodeFromLovableJson(jsonText, fileName) {
+        try {
+          const parsed = JSON.parse(jsonText);
+          const sp = parsed?._sourcePdf || parsed?.data?.jsonDefinition?._sourcePdf || parsed?.jsonDefinition?._sourcePdf;
+          if (sp?.fileName) {
+            return sp.fileName.replace(/\.pdf$/i, "").replace(/_v\d+$/i, "");
+          }
+        } catch {
+        }
+        return fileName.replace(/\.json$/i, "");
+      }
       async function runAll(inputs, options = {}) {
-        const { matrixFile, pdfFiles = [], catalogsFile, clientJsonFile } = inputs;
+        const { matrixFile, pdfFiles = [], catalogsFile, clientJsonFile, lovableJsonFiles = [] } = inputs;
         if (!matrixFile) throw new Error("matrixFile is required");
         const matrixBuffer = await fileToUint8Array(matrixFile);
         const catalogsBuffer = catalogsFile ? await fileToUint8Array(catalogsFile) : null;
@@ -56403,6 +56647,21 @@ var InsPipelineBundle = (() => {
             buffer: await fileToUint8Array(pdfFile),
             fileName: pdfFile.name
           };
+        }
+        if (lovableJsonFiles.length > 0) {
+          const lovableJsonMap = {};
+          for (const file of lovableJsonFiles) {
+            const text = await fileToText(file);
+            const code = formCodeFromLovableJson(text, file.name);
+            lovableJsonMap[code] = text;
+          }
+          return runEnrichAll({
+            matrixBuffer,
+            lovableJsonMap,
+            catalogsBuffer,
+            pdfMap,
+            clientJsonText
+          }, options);
         }
         return runPipelineAll({
           matrixBuffer,

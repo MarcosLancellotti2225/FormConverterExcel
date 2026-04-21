@@ -15,6 +15,7 @@ const { applyRules }                   = require('./parsers/rule-parser');
 const { mergeCatalogs }                = require('./transformers/merge-catalogs');
 const { mergePdfCoords }               = require('./transformers/merge-pdf-coords');
 const { groupBySections, resolveTriggerConditionals } = require('./transformers/section-grouper');
+const { enrichLovableWithMatrix }      = require('./transformers/enrich-lovable');
 const { buildLovableJson }             = require('./builders/json-builder');
 const { loadClientPathsFromText, validateLovableJson } = require('./validators/prefillkey-validator');
 
@@ -151,6 +152,119 @@ async function runPipelineAll(inputs, options = {}) {
     return { results, formCodes, hasFormCodeColumn };
 }
 
+/**
+ * Enrich a Lovable JSON (from Lovable's PDF scanner) with data from the Excel matrix.
+ * The Lovable JSON provides field coordinates; the Excel provides business rules.
+ *
+ * @param {Object} inputs
+ * @param {string} inputs.lovableJsonText               Lovable JSON string
+ * @param {Field[]} inputs.fields                       Excel fields for this form
+ * @param {ArrayBuffer|Uint8Array|Buffer} [inputs.catalogsBuffer]
+ * @param {ArrayBuffer|Uint8Array|Buffer} [inputs.pdfBuffer]
+ * @param {string} [inputs.clientJsonText]
+ * @param {string} inputs.formCode
+ * @param {string} [inputs.pdfFileName]
+ * @param {Object} [options]
+ * @returns {Promise<{ json:Object, warnings:Array, issues:Array }>}
+ */
+async function runEnrichPipeline(inputs, options = {}) {
+    const {
+        lovableJsonText,
+        fields: inputFields,
+        catalogsBuffer,
+        pdfBuffer,
+        clientJsonText,
+        formCode,
+        pdfFileName
+    } = inputs;
+
+    const { embedPdf = true } = options;
+
+    const lovableJson = JSON.parse(lovableJsonText);
+    const warnings = [];
+
+    let fields = inputFields.map(cloneField);
+
+    const catalogs = catalogsBuffer ? parseCatalogsFromBuffer(catalogsBuffer) : {};
+    mergeCatalogs(fields, catalogs);
+
+    const ruleResult = applyRules(fields);
+    for (const w of ruleResult.warnings) warnings.push({ stage: 'rules', ...w });
+
+    const enrichResult = enrichLovableWithMatrix(lovableJson, fields, { catalogs });
+    for (const w of enrichResult.warnings) warnings.push(w);
+
+    let enrichedJson = enrichResult.json;
+
+    if (pdfBuffer && embedPdf) {
+        const pdfBase64 = bufferToBase64(pdfBuffer);
+        const pdfData = await parsePdfFromBuffer(pdfBuffer);
+        const jd = enrichedJson?.data?.jsonDefinition
+                || enrichedJson?.jsonDefinition
+                || enrichedJson;
+        if (jd._sourcePdf) {
+            jd._sourcePdf.b64 = pdfBase64;
+        } else {
+            jd._sourcePdf = {
+                fileName: pdfFileName || `${formCode}.pdf`,
+                pageCount: pdfData.numPages,
+                b64: pdfBase64
+            };
+        }
+    }
+
+    let issues = [];
+    if (clientJsonText) {
+        const clientPaths = loadClientPathsFromText(clientJsonText);
+        issues = validateLovableJson(enrichedJson, clientPaths);
+    }
+
+    return { json: enrichedJson, warnings, issues, stats: enrichResult.stats };
+}
+
+/**
+ * High-level: run enrichment for all Lovable JSONs provided.
+ *
+ * @param {Object} inputs
+ * @param {ArrayBuffer|Uint8Array|Buffer} inputs.matrixBuffer
+ * @param {Object<string, string>} inputs.lovableJsonMap    formCode → JSON text
+ * @param {ArrayBuffer|Uint8Array|Buffer} [inputs.catalogsBuffer]
+ * @param {Object<string, { buffer, fileName }>} [inputs.pdfMap]
+ * @param {string} [inputs.clientJsonText]
+ * @param {Object} [options]
+ * @returns {Promise<{ results:Array, formCodes:string[], hasFormCodeColumn:boolean }>}
+ */
+async function runEnrichAll(inputs, options = {}) {
+    const { matrixBuffer, lovableJsonMap, catalogsBuffer, pdfMap = {}, clientJsonText } = inputs;
+    if (!matrixBuffer) throw new Error('matrixBuffer is required');
+    if (!lovableJsonMap || !Object.keys(lovableJsonMap).length) {
+        throw new Error('At least one Lovable JSON is required for enrichment');
+    }
+
+    const { fields: allFields, formCodes, hasFormCodeColumn } = parseMatrixFromBuffer(matrixBuffer);
+    const groups = groupFieldsByFormCode(allFields);
+
+    const results = [];
+    for (const [code, jsonText] of Object.entries(lovableJsonMap)) {
+        const fields = groups.get(code) || groups.get('_all') || [];
+
+        const pdf = pdfMap[code];
+        const result = await runEnrichPipeline({
+            lovableJsonText: jsonText,
+            fields,
+            catalogsBuffer,
+            pdfBuffer: pdf?.buffer || null,
+            clientJsonText,
+            formCode: code,
+            pdfFileName: pdf?.fileName || null
+        }, options);
+
+        results.push({ formCode: code, ...result });
+    }
+
+    return { results, formCodes, hasFormCodeColumn };
+}
+
 function cloneField(f) {
     return {
         ...f,
@@ -159,4 +273,4 @@ function cloneField(f) {
     };
 }
 
-module.exports = { runPipelineForForm, runPipelineAll, parseMatrixFromBuffer, groupFieldsByFormCode };
+module.exports = { runPipelineForForm, runPipelineAll, runEnrichPipeline, runEnrichAll, parseMatrixFromBuffer, groupFieldsByFormCode };

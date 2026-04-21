@@ -6,7 +6,8 @@
         matrix: null,
         catalogs: null,
         client: null,
-        pdfs: []    // File[]
+        pdfs: [],           // File[]
+        lovableJsons: []    // File[]
     };
 
     let lastResults = null;
@@ -16,6 +17,7 @@
 
     function init() {
         wireSingleFileInputs();
+        wireLovableDropZone();
         wirePdfDropZone();
         wireButtons();
     }
@@ -48,6 +50,94 @@
         slot.classList.add('loaded');
         statusEl.textContent = '\u2713 ' + file.name + ' (' + formatSize(file.size) + ')';
         refreshButtons();
+    }
+
+    // --- Lovable JSON drop zone ---
+
+    function wireLovableDropZone() {
+        var zone = $('#lovableDropZone');
+        var fileInput = $('#lovableFileInput');
+        var browseBtn = $('#lovableBrowseBtn');
+
+        browseBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', function() {
+            addLovableFiles(Array.from(fileInput.files));
+            fileInput.value = '';
+        });
+
+        zone.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            zone.classList.add('drag-over');
+        });
+        zone.addEventListener('dragleave', function() {
+            zone.classList.remove('drag-over');
+        });
+        zone.addEventListener('drop', function(e) {
+            e.preventDefault();
+            zone.classList.remove('drag-over');
+            var files = Array.from(e.dataTransfer.files).filter(function(f) {
+                return /\.json$/i.test(f.name);
+            });
+            addLovableFiles(files);
+        });
+    }
+
+    function addLovableFiles(files) {
+        var existingNames = new Set(state.lovableJsons.map(function(f) { return f.name; }));
+        for (var i = 0; i < files.length; i++) {
+            if (!existingNames.has(files[i].name)) {
+                state.lovableJsons.push(files[i]);
+            }
+        }
+        renderLovableList();
+        refreshButtons();
+    }
+
+    function removeLovable(index) {
+        state.lovableJsons.splice(index, 1);
+        renderLovableList();
+        refreshButtons();
+    }
+
+    function renderLovableList() {
+        var list = $('#lovableList');
+        list.innerHTML = '';
+        if (!state.lovableJsons.length) return;
+
+        for (var i = 0; i < state.lovableJsons.length; i++) {
+            (function(idx) {
+                var f = state.lovableJsons[idx];
+                var tag = document.createElement('div');
+                tag.className = 'pdf-tag';
+
+                var codeSpan = document.createElement('span');
+                codeSpan.className = 'pdf-tag-code';
+                codeSpan.textContent = f.name.replace(/\.json$/i, '');
+                tag.appendChild(codeSpan);
+
+                var sizeSpan = document.createElement('span');
+                sizeSpan.className = 'pdf-tag-size';
+                sizeSpan.textContent = formatSize(f.size);
+                tag.appendChild(sizeSpan);
+
+                var removeBtn = document.createElement('button');
+                removeBtn.className = 'pdf-tag-remove';
+                removeBtn.textContent = '×';
+                removeBtn.title = 'Quitar';
+                removeBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    removeLovable(idx);
+                });
+                tag.appendChild(removeBtn);
+
+                list.appendChild(tag);
+            })(i);
+        }
     }
 
     // --- PDF drop zone ---
@@ -165,10 +255,11 @@
         try {
             var t0 = performance.now();
             var out = await InsPipelineBundle.runAll({
-                matrixFile:     state.matrix,
-                pdfFiles:       state.pdfs,
-                catalogsFile:   state.catalogs,
-                clientJsonFile: state.client
+                matrixFile:       state.matrix,
+                pdfFiles:         state.pdfs,
+                catalogsFile:     state.catalogs,
+                clientJsonFile:   state.client,
+                lovableJsonFiles: state.lovableJsons
             }, options);
             var t1 = performance.now();
 
@@ -176,7 +267,16 @@
             renderResults(out.results);
             renderWarnings(out.results, $('#optVerbose').checked);
 
-            var msg = '\u2713 Listo. ' + out.results.length + ' JSON generado(s) en ' + Math.round(t1 - t0) + 'ms.';
+            var isEnrich = state.lovableJsons.length > 0;
+            var modeLabel = isEnrich ? 'enriquecido(s)' : 'generado(s)';
+            var msg = '\u2713 Listo. ' + out.results.length + ' JSON ' + modeLabel + ' en ' + Math.round(t1 - t0) + 'ms.';
+            if (isEnrich) {
+                var totalStats = out.results.reduce(function(acc, r) {
+                    if (r.stats) { acc.matched += r.stats.matchCount; acc.missed += r.stats.missCount; }
+                    return acc;
+                }, { matched: 0, missed: 0 });
+                msg += ' (' + totalStats.matched + ' campos matcheados, ' + totalStats.missed + ' sin match)';
+            }
             if (!out.hasFormCodeColumn) {
                 msg += ' (Tip: Agrega la columna "C\u00f3digo Formulario" a la matriz para agrupar campos por PDF.)';
             }
@@ -200,7 +300,10 @@
 
         for (var i = 0; i < results.length; i++) {
             (function(r) {
-                var sections = (r.json && r.json.data && r.json.data.jsonDefinition && r.json.data.jsonDefinition.sections) || [];
+                var sections = (r.json && r.json.data && r.json.data.jsonDefinition && r.json.data.jsonDefinition.sections)
+                    || (r.json && r.json.sections)
+                    || (r.json && r.json.jsonDefinition && r.json.jsonDefinition.sections)
+                    || [];
                 var fieldCount = sections.reduce(function(n, s) { return n + s.fields.length; }, 0);
                 var card = document.createElement('div');
                 card.className = 'result-card';

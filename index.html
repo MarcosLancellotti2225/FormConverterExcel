@@ -12,7 +12,7 @@
             <div class="logo">INS</div>
             <div class="titles">
                 <h1>Lovable JSON Generator</h1>
-                <p>Matriz Excel + PDFs → JSON Lovable</p>
+                <p>Matriz Excel + PDFs + JSON Lovable → JSON completo</p>
             </div>
         </div>
         <a class="repo-link" href="https://github.com/MarcosLancellotti2225/FormConverterExcel" target="_blank">repo</a>
@@ -26,10 +26,11 @@
                 <ol>
                     <li><strong>Preparar la Matriz Excel:</strong> Agregar una columna <code>Código Formulario</code> que identifique a qué formulario pertenece cada fila. El valor debe coincidir con el nombre del archivo PDF (sin la extensión <code>.pdf</code>). Las filas con valor vacío o "Todos" se incluyen en todos los formularios.</li>
                     <li><strong>Subir la Matriz:</strong> Hacer click o arrastrar el archivo <code>.xlsx</code> en el slot "Matriz Excel".</li>
+                    <li><strong>(Opcional) JSON Lovable:</strong> Si ya tenés un JSON generado por Lovable (escaneando el PDF), subilo para usar el <strong>modo enriquecimiento</strong>: el JSON Lovable provee las coordenadas y campos del PDF, y el Excel agrega reglas, validaciones, opciones y prefillKeys. El código de formulario se extrae de <code>_sourcePdf.fileName</code>.</li>
                     <li><strong>Subir los PDFs:</strong> Arrastrar uno o más archivos <code>.pdf</code> a la zona de PDFs. El nombre del archivo (ej: <code>1009052.pdf</code>) se usa como código para vincular con la columna <code>Código Formulario</code> de la matriz.</li>
                     <li><strong>(Opcional) Catálogos:</strong> Si tenés un Excel de catálogos, subilo para enriquecer los options de combos/selects.</li>
                     <li><strong>(Opcional) JSON cliente:</strong> Subilo para validar que los prefillKey existan en la estructura del cliente.</li>
-                    <li><strong>Generar:</strong> Click en "Generar JSON" para producir un JSON Lovable por cada PDF. Se genera un JSON por formulario.</li>
+                    <li><strong>Generar:</strong> Click en "Generar JSON" para producir un JSON Lovable por cada PDF o JSON Lovable cargado.</li>
                     <li><strong>Descargar:</strong> Descargá cada JSON individualmente o todos juntos en ZIP.</li>
                 </ol>
             </details>
@@ -61,6 +62,17 @@
                     <input type="file" accept=".txt,.json" data-input="client">
                     <span class="file-status"></span>
                 </label>
+            </div>
+
+            <h3 class="subhead">JSON Lovable (opcional — arrastrá uno o más)</h3>
+            <p class="hint">Si cargás JSONs de Lovable, se usa el modo "enriquecimiento": el JSON Lovable provee las coordenadas y el Excel agrega reglas, validaciones y prefillKeys.</p>
+            <div id="lovableDropZone" class="pdf-drop-zone">
+                <input type="file" id="lovableFileInput" accept=".json" multiple hidden>
+                <div class="drop-label">
+                    <span class="drop-icon">+</span>
+                    <span>Arrastrá JSONs Lovable aquí o <button type="button" id="lovableBrowseBtn" class="link-btn">buscá archivos</button></span>
+                </div>
+                <div id="lovableList" class="pdf-list"></div>
             </div>
 
             <h3 class="subhead">PDFs (opcional — arrastrá uno o más)</h3>
