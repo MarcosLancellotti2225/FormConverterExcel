@@ -370,6 +370,7 @@
 
         $('#btnAnalyze').addEventListener('click', runAnalysis);
         $('#btnGeneratePdf').addEventListener('click', runExport);
+        $('#btnGenerateHtml').addEventListener('click', runHtmlExport);
         $('#filterUnmatched').addEventListener('change', function() {
             renderMatchTable(convState.matches, this.checked);
         });
@@ -535,6 +536,26 @@
             if (result.warnings.length) {
                 renderConvWarnings(result.warnings);
             }
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
+    }
+
+    async function runHtmlExport() {
+        var statusEl = $('#convExportStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Generando HTML (renderizando paginas)...';
+
+        try {
+            var html = await InsPipelineBundle.generateHtml(convState.pdfBytes, convState.matches);
+            var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+            var fileName = (convState.pdf ? convState.pdf.name.replace(/\.pdf$/i, '') : 'formulario') + '.html';
+            InsPipelineBundle.downloadBlob(blob, fileName);
+
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ HTML generado con ' + convState.matches.length + ' campos. Descargando...';
         } catch (err) {
             console.error(err);
             statusEl.className = 'status active error';

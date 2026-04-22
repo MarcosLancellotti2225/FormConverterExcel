@@ -215,8 +215,109 @@ async function renderPreview(pdfBytes, matches, container) {
     };
 }
 
-if (typeof window !== 'undefined') {
-    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview };
+async function generateHtml(pdfBytes, matches) {
+    const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.mjs');
+    const webWorker = new Worker('pdf.worker.min.mjs', { type: 'module' });
+    const pdfWorker = new pdfjsLib.PDFWorker({ port: webWorker });
+    const doc = await pdfjsLib.getDocument({ data: pdfBytes.slice(), worker: pdfWorker }).promise;
+
+    const SCALE = 1.5;
+    const fieldsByPage = {};
+    for (const m of matches) {
+        if (!fieldsByPage[m.page]) fieldsByPage[m.page] = [];
+        fieldsByPage[m.page].push(m);
+    }
+
+    const pages = [];
+    for (let p = 1; p <= doc.numPages; p++) {
+        const page = await doc.getPage(p);
+        const viewport = page.getViewport({ scale: SCALE });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        const bgDataUrl = canvas.toDataURL('image/png');
+
+        const fields = [];
+        for (const m of (fieldsByPage[p - 1] || [])) {
+            const r = m.rect;
+            const [x1, y1] = viewport.convertToViewportPoint(r.x, r.y + r.height);
+            const [x2, y2] = viewport.convertToViewportPoint(r.x + r.width, r.y);
+            fields.push({
+                name: m.newName || m.originalName,
+                originalName: m.originalName,
+                type: m.type,
+                left: Math.min(x1, x2),
+                top: Math.min(y1, y2),
+                width: Math.abs(x2 - x1),
+                height: Math.abs(y2 - y1),
+            });
+        }
+
+        pages.push({ bgDataUrl, width: canvas.width, height: canvas.height, fields, pageNum: p });
+    }
+
+    pdfWorker.destroy();
+    webWorker.terminate();
+
+    return buildHtmlString(pages);
 }
 
-module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview };
+function buildHtmlString(pages) {
+    let fieldsHtml = '';
+    for (const pg of pages) {
+        let pageFields = '';
+        for (const f of pg.fields) {
+            const inputHtml = buildFieldInput(f);
+            pageFields += `      <div class="field" style="left:${r(f.left)}px;top:${r(f.top)}px;width:${r(f.width)}px;height:${r(f.height)}px" title="${esc(f.originalName)}">\n        ${inputHtml}\n      </div>\n`;
+        }
+        fieldsHtml += `    <div class="page" style="width:${pg.width}px;height:${pg.height}px;background-image:url('${pg.bgDataUrl}')">\n      <div class="page-label">Pag ${pg.pageNum}</div>\n${pageFields}    </div>\n`;
+    }
+
+    return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Formulario HTML</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #1a1a2e; font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; gap: 16px; }
+.page { position: relative; background-size: 100% 100%; background-repeat: no-repeat; box-shadow: 0 2px 12px rgba(0,0,0,0.5); border-radius: 4px; }
+.page-label { position: absolute; top: 6px; right: 8px; background: rgba(0,0,0,0.6); color: #aaa; font-size: 11px; padding: 2px 8px; border-radius: 3px; z-index: 5; }
+.field { position: absolute; z-index: 2; }
+.field input[type="text"], .field select { width: 100%; height: 100%; border: 1px solid rgba(88,166,255,0.4); background: rgba(255,255,255,0.85); font-size: 11px; padding: 0 4px; border-radius: 2px; outline: none; color: #222; }
+.field input[type="text"]:focus, .field select:focus { border-color: #58a6ff; background: #fff; box-shadow: 0 0 0 2px rgba(88,166,255,0.25); }
+.field input[type="checkbox"] { width: 100%; height: 100%; margin: 0; cursor: pointer; accent-color: #58a6ff; }
+.field:hover { z-index: 10; }
+.field:hover::after { content: attr(title); position: absolute; bottom: calc(100% + 4px); left: 0; background: #1c232d; color: #e0e0e0; padding: 3px 8px; border-radius: 4px; font-size: 10px; white-space: nowrap; border: 1px solid rgba(88,166,255,0.4); z-index: 20; font-family: monospace; }
+</style>
+</head>
+<body>
+${fieldsHtml}</body>
+</html>`;
+}
+
+function buildFieldInput(f) {
+    if (f.type === 'checkbox') {
+        return `<input type="checkbox" name="${esc(f.name)}">`;
+    }
+    if (f.type === 'select') {
+        return `<select name="${esc(f.name)}"><option value=""></option></select>`;
+    }
+    return `<input type="text" name="${esc(f.name)}" placeholder="${esc(f.name)}">`;
+}
+
+function esc(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function r(n) {
+    return Math.round(n * 10) / 10;
+}
+
+if (typeof window !== 'undefined') {
+    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml };
+}
+
+module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml };
