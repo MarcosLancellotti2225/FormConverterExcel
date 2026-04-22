@@ -76,8 +76,14 @@
                 <div id="convStatus" class="status"></div>
             </section>
 
+            <section class="panel" id="previewPanel" hidden>
+                <h2>3. Preview del PDF</h2>
+                <p class="hint">Los campos detectados estan resaltados. Click en uno para ir a la fila en la tabla. Azul = matcheado, rojo = sin match.</p>
+                <div id="pdfPreview" class="pdf-preview"></div>
+            </section>
+
             <section class="panel" id="matchTablePanel" hidden>
-                <h2>3. Tabla de Match</h2>
+                <h2>4. Tabla de Match</h2>
                 <p class="hint">Revisa y edita los nombres propuestos. Los campos sin match estan resaltados.</p>
                 <div class="match-filters">
                     <span id="matchStats" class="match-stats"></span>
@@ -104,7 +110,7 @@
             </section>
 
             <section class="panel" id="convExportPanel" hidden>
-                <h2>4. Exportar</h2>
+                <h2>5. Exportar</h2>
                 <div class="actions">
                     <button id="btnGeneratePdf" class="primary">Generar y descargar PDF</button>
                 </div>

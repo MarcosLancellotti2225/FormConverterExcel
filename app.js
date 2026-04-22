@@ -348,7 +348,8 @@
         excel: null,
         refJson: null,
         pdfBytes: null,
-        matches: null
+        matches: null,
+        preview: null
     };
 
     function initConvertPdfFlow() {
@@ -407,6 +408,11 @@
             convState.pdfBytes = result.pdfBytes;
             convState.matches = result.matches;
 
+            if (convState.preview) {
+                convState.preview.destroy();
+                convState.preview = null;
+            }
+
             renderMatchTable(result.matches, false);
             renderConvWarnings(result.warnings);
 
@@ -416,8 +422,27 @@
                 s.totalFields + ' campos, ' + s.withLabel + ' con label, ' +
                 s.matched + ' matcheados, ' + s.unchanged + ' sin match.';
 
+            $('#previewPanel').hidden = false;
             $('#matchTablePanel').hidden = false;
             $('#convExportPanel').hidden = false;
+
+            statusEl.textContent += ' Renderizando preview...';
+            var previewContainer = $('#pdfPreview');
+            previewContainer.innerHTML = '';
+            convState.preview = await InsPipelineBundle.renderPreview(
+                convState.pdfBytes, result.matches, previewContainer
+            );
+            convState.preview.onFieldClick(function(fieldName) {
+                var row = document.querySelector('#matchTableBody tr[data-field-name="' + CSS.escape(fieldName) + '"]');
+                if (row) {
+                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    row.classList.add('row-highlight');
+                    setTimeout(function() { row.classList.remove('row-highlight'); }, 2000);
+                }
+            });
+            statusEl.textContent = '✓ Analisis completo en ' + Math.round(t1 - t0) + 'ms. ' +
+                s.totalFields + ' campos, ' + s.withLabel + ' con label, ' +
+                s.matched + ' matcheados, ' + s.unchanged + ' sin match.';
         } catch (err) {
             console.error(err);
             statusEl.className = 'status active error';
@@ -441,7 +466,15 @@
             (function(m, idx) {
                 var globalIdx = matches.indexOf(m);
                 var tr = document.createElement('tr');
+                tr.dataset.fieldName = m.originalName;
                 if (m.source === 'unchanged') tr.className = 'row-unchanged';
+
+                tr.addEventListener('mouseenter', function() {
+                    if (convState.preview) convState.preview.highlightField(m.originalName);
+                });
+                tr.addEventListener('mouseleave', function() {
+                    if (convState.preview) convState.preview.clearHighlights();
+                });
 
                 var confClass = m.confidence >= 80 ? 'conf-high' : (m.confidence >= 50 ? 'conf-mid' : 'conf-low');
 

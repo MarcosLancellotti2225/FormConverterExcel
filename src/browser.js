@@ -127,8 +127,96 @@ async function runConvertGenerate(pdfBytes, finalMatches) {
     return result;
 }
 
-if (typeof window !== 'undefined') {
-    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate };
+async function renderPreview(pdfBytes, matches, container) {
+    const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.mjs');
+    const webWorker = new Worker('pdf.worker.min.mjs', { type: 'module' });
+    const pdfWorker = new pdfjsLib.PDFWorker({ port: webWorker });
+    const doc = await pdfjsLib.getDocument({ data: pdfBytes, worker: pdfWorker }).promise;
+
+    const fieldsByPage = {};
+    for (const m of matches) {
+        if (!fieldsByPage[m.page]) fieldsByPage[m.page] = [];
+        fieldsByPage[m.page].push(m);
+    }
+
+    for (let p = 1; p <= doc.numPages; p++) {
+        const page = await doc.getPage(p);
+        const baseVp = page.getViewport({ scale: 1 });
+        const cw = container.clientWidth - 24;
+        const scale = Math.min(cw / baseVp.width, 1.5);
+        const viewport = page.getViewport({ scale });
+
+        const pageDiv = document.createElement('div');
+        pageDiv.className = 'preview-page';
+        pageDiv.style.width = Math.floor(viewport.width) + 'px';
+        pageDiv.style.height = Math.floor(viewport.height) + 'px';
+
+        const pageLabel = document.createElement('div');
+        pageLabel.className = 'preview-page-label';
+        pageLabel.textContent = 'Pag ' + p;
+        pageDiv.appendChild(pageLabel);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        pageDiv.appendChild(canvas);
+
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+        const pageFields = fieldsByPage[p - 1] || [];
+        for (const m of pageFields) {
+            const r = m.rect;
+            const [x1, y1] = viewport.convertToViewportPoint(r.x, r.y + r.height);
+            const [x2, y2] = viewport.convertToViewportPoint(r.x + r.width, r.y);
+            const left = Math.min(x1, x2);
+            const top = Math.min(y1, y2);
+            const w = Math.abs(x2 - x1);
+            const h = Math.abs(y2 - y1);
+
+            const fd = document.createElement('div');
+            fd.className = 'preview-field' + (m.source === 'unchanged' ? ' unmatched' : '');
+            fd.dataset.fieldName = m.originalName;
+            fd.style.cssText = 'left:' + left + 'px;top:' + top + 'px;width:' + w + 'px;height:' + h + 'px';
+
+            const tip = document.createElement('span');
+            tip.className = 'preview-tooltip';
+            tip.textContent = m.newName || m.originalName;
+            fd.appendChild(tip);
+            pageDiv.appendChild(fd);
+        }
+
+        container.appendChild(pageDiv);
+    }
+
+    return {
+        highlightField(originalName) {
+            container.querySelectorAll('.preview-field.highlighted').forEach(el => el.classList.remove('highlighted'));
+            const sel = '.preview-field[data-field-name="' + CSS.escape(originalName) + '"]';
+            const target = container.querySelector(sel);
+            if (target) {
+                target.classList.add('highlighted');
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        },
+        clearHighlights() {
+            container.querySelectorAll('.preview-field.highlighted').forEach(el => el.classList.remove('highlighted'));
+        },
+        onFieldClick(callback) {
+            container.addEventListener('click', e => {
+                const fd = e.target.closest('.preview-field');
+                if (fd) callback(fd.dataset.fieldName);
+            });
+        },
+        destroy() {
+            pdfWorker.destroy();
+            webWorker.terminate();
+            container.innerHTML = '';
+        }
+    };
 }
 
-module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate };
+if (typeof window !== 'undefined') {
+    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview };
+}
+
+module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview };

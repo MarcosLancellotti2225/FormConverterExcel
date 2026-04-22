@@ -575,6 +575,109 @@ details summary:hover { color: var(--text); }
 }
 .toggle-sm input { width: 14px; height: 14px; }
 
+/* ── PDF Preview ── */
+
+.pdf-preview {
+    max-height: 650px;
+    overflow-y: auto;
+    background: #111318;
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.preview-page {
+    position: relative;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.6);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.preview-page canvas {
+    display: block;
+}
+
+.preview-page-label {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    background: rgba(0,0,0,0.6);
+    color: #aaa;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    z-index: 15;
+    pointer-events: none;
+}
+
+.preview-field {
+    position: absolute;
+    border: 2px solid rgba(88,166,255,0.55);
+    background: rgba(88,166,255,0.08);
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+    box-sizing: border-box;
+    border-radius: 2px;
+}
+
+.preview-field:hover {
+    border-color: var(--accent);
+    background: rgba(88,166,255,0.22);
+    z-index: 10;
+}
+
+.preview-field.highlighted {
+    border-color: #ffd700;
+    background: rgba(255,215,0,0.22);
+    z-index: 10;
+}
+
+.preview-field.unmatched {
+    border-color: rgba(248,81,73,0.55);
+    background: rgba(248,81,73,0.08);
+}
+
+.preview-field.unmatched:hover {
+    border-color: var(--accent-red);
+    background: rgba(248,81,73,0.22);
+}
+
+.preview-tooltip {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0;
+    background: #1c232d;
+    color: #e0e0e0;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    white-space: nowrap;
+    pointer-events: none;
+    border: 1px solid rgba(88,166,255,0.4);
+    z-index: 20;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.preview-field:hover .preview-tooltip,
+.preview-field.highlighted .preview-tooltip {
+    display: block;
+}
+
+.row-highlight {
+    outline: 2px solid #ffd700;
+    outline-offset: -2px;
+    animation: row-flash 2s ease-out;
+}
+
+@keyframes row-flash {
+    0%   { background-color: rgba(255,215,0,0.25); }
+    100% { background-color: transparent; }
+}
+
 footer {
     text-align: center;
     padding: 2rem 1rem;
