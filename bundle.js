@@ -87946,22 +87946,24 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
   var require_pdf_rewriter = __commonJS({
     "src/pdf-converter/pdf-rewriter.js"(exports, module) {
       "use strict";
-      var { PDFDocument, PDFName, PDFHexString, PDFArray, PDFRef } = require_cjs();
+      var { PDFDocument, PDFName, PDFHexString } = require_cjs();
       async function rewritePdf(pdfBytes, renameMap) {
         const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
         const form = pdfDoc.getForm();
         const context = pdfDoc.context;
         const warnings = [];
-        const acroForm = pdfDoc.catalog.lookup(PDFName.of("AcroForm"));
-        const rootFieldsArray = acroForm ? acroForm.lookup(PDFName.of("Fields")) : null;
+        const acroFormDict = pdfDoc.catalog.get(PDFName.of("AcroForm"));
+        const acroFormResolved = acroFormDict ? context.lookup(acroFormDict) : null;
+        const rootFieldsArray = acroFormResolved ? acroFormResolved.get(PDFName.of("Fields")) : null;
+        const rootFields = rootFieldsArray ? context.lookup(rootFieldsArray) : null;
         for (const { oldName, newName } of renameMap) {
           if (oldName === newName) continue;
           try {
             const field = form.getField(oldName);
             const dict = field.acroField.dict;
-            const hasParent = dict.has(PDFName.of("Parent"));
+            const hasParent = dict.get(PDFName.of("Parent")) !== void 0;
             if (hasParent) {
-              flattenField(dict, rootFieldsArray, context, newName);
+              flattenField(dict, rootFields, context, newName);
             } else {
               dict.set(PDFName.of("T"), PDFHexString.fromText(newName));
             }
@@ -87976,16 +87978,17 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const newBytes = await pdfDoc.save();
         return { pdfBytes: newBytes, warnings };
       }
-      function flattenField(dict, rootFieldsArray, context, newName) {
+      function flattenField(dict, rootFields, context, newName) {
         const parentRef = dict.get(PDFName.of("Parent"));
+        if (!parentRef) return;
         removeFromParentKids(dict, parentRef, context);
         dict.delete(PDFName.of("Parent"));
         dict.set(PDFName.of("T"), PDFHexString.fromText(newName));
         copyInheritedEntries(dict, parentRef, context);
-        if (rootFieldsArray instanceof PDFArray) {
+        if (rootFields && typeof rootFields.push === "function") {
           const fieldRef = context.getObjectRef(dict);
           if (fieldRef) {
-            rootFieldsArray.push(fieldRef);
+            rootFields.push(fieldRef);
           }
         }
       }
@@ -87993,15 +87996,22 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         if (!parentRef) return;
         const parent = context.lookup(parentRef);
         if (!parent) return;
-        const kidsObj = parent.get(PDFName.of("Kids"));
-        if (!(kidsObj instanceof PDFArray)) return;
+        const kidsRef = parent.get(PDFName.of("Kids"));
+        if (!kidsRef) return;
+        const kids = kidsRef === parent ? kidsRef : context.lookup(kidsRef) || kidsRef;
+        if (!kids || typeof kids.size !== "function") return;
         const fieldRef = context.getObjectRef(dict);
         if (!fieldRef) return;
+        const newEntries = [];
+        for (let i = 0; i < kids.size(); i++) {
+          const kidRef = kids.get(i);
+          if (kidRef && kidRef.objectNumber === fieldRef.objectNumber) continue;
+          newEntries.push(kidRef);
+        }
+        const { PDFArray } = require_cjs();
         const newKids = PDFArray.withContext(context);
-        for (let i = 0; i < kidsObj.size(); i++) {
-          const kidRef = kidsObj.get(i);
-          if (kidRef instanceof PDFRef && kidRef.objectNumber === fieldRef.objectNumber) continue;
-          newKids.push(kidRef);
+        for (const entry of newEntries) {
+          newKids.push(entry);
         }
         parent.set(PDFName.of("Kids"), newKids);
       }
@@ -88010,10 +88020,10 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         let ref = parentRef;
         while (ref) {
           const parent = context.lookup(ref);
-          if (!parent) break;
+          if (!parent || typeof parent.get !== "function") break;
           for (const key of INHERITABLE) {
             const pdfKey = PDFName.of(key);
-            if (!dict.has(pdfKey) && parent.has(pdfKey)) {
+            if (dict.get(pdfKey) === void 0 && parent.get(pdfKey) !== void 0) {
               dict.set(pdfKey, parent.get(pdfKey));
             }
           }
