@@ -87465,15 +87465,10 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       var _pdfjsLib = null;
       async function loadPdfjs() {
         if (_pdfjsLib) return _pdfjsLib;
-        if (typeof window !== "undefined") {
-          const pdfjsLib2 = (init_pdf(), __toCommonJS(pdf_exports));
-          if (pdfjsLib2.GlobalWorkerOptions) {
-            pdfjsLib2.GlobalWorkerOptions.workerSrc = "";
-          }
-          _pdfjsLib = pdfjsLib2;
-          return pdfjsLib2;
-        }
         const pdfjsLib = (init_pdf(), __toCommonJS(pdf_exports));
+        if (typeof window !== "undefined" && pdfjsLib.GlobalWorkerOptions) {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = "pdf.worker.min.mjs";
+        }
         _pdfjsLib = pdfjsLib;
         return pdfjsLib;
       }
