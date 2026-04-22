@@ -88311,7 +88311,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const webWorker = new Worker("pdf.worker.min.mjs", { type: "module" });
         const pdfWorker = new pdfjsLib.PDFWorker({ port: webWorker });
         const doc = await pdfjsLib.getDocument({ data: pdfBytes.slice(), worker: pdfWorker }).promise;
-        const SCALE = 1.5;
+        const SCALE = 2;
         const fieldsByPage = {};
         for (const m of matches) {
           if (!fieldsByPage[m.page]) fieldsByPage[m.page] = [];
@@ -88321,23 +88321,11 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         for (let p = 1; p <= doc.numPages; p++) {
           const page = await doc.getPage(p);
           const viewport = page.getViewport({ scale: SCALE });
-          const content = await page.getTextContent();
-          const textItems = [];
-          for (const item of content.items) {
-            if (!item.str || !item.str.trim()) continue;
-            const tx = item.transform[4];
-            const ty = item.transform[5];
-            const fontSize = Math.abs(item.transform[0]) || Math.abs(item.transform[3]) || 10;
-            const [vx, vy] = viewport.convertToViewportPoint(tx, ty);
-            textItems.push({
-              str: item.str,
-              left: vx,
-              top: vy - fontSize * SCALE * 0.85,
-              fontSize: Math.round(fontSize * SCALE * 10) / 10,
-              width: item.width * SCALE,
-              bold: /bold/i.test(item.fontName || "")
-            });
-          }
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.floor(viewport.width);
+          canvas.height = Math.floor(viewport.height);
+          await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+          const bgDataUrl = canvas.toDataURL("image/png");
           const fields = [];
           for (const m of fieldsByPage[p - 1] || []) {
             const rc = m.rect;
@@ -88353,82 +88341,15 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
               height: Math.abs(y2 - y1)
             });
           }
-          const opContent = await page.getOperatorList();
-          const lines = extractLines(opContent, viewport);
-          pages.push({ width: Math.floor(viewport.width), height: Math.floor(viewport.height), textItems, fields, lines, pageNum: p });
+          pages.push({ bgDataUrl, width: canvas.width, height: canvas.height, fields, pageNum: p });
         }
         pdfWorker.destroy();
         webWorker.terminate();
-        return buildFormHtmlString(pages);
+        return buildHtmlString(pages);
       }
-      function extractLines(opList, viewport) {
-        const pdfjsLib = (init_pdf(), __toCommonJS(pdf_exports));
-        const OPS2 = pdfjsLib.OPS;
-        const lines = [];
-        let curX = 0, curY = 0;
-        let lineWidth = 1;
-        const COLOR = "#333";
-        for (let i = 0; i < opList.fnArray.length; i++) {
-          const fn = opList.fnArray[i];
-          const args = opList.argsArray[i];
-          if (fn === OPS2.setLineWidth) {
-            lineWidth = args[0] || 1;
-          } else if (fn === OPS2.moveTo) {
-            curX = args[0];
-            curY = args[1];
-          } else if (fn === OPS2.lineTo) {
-            const [vx1, vy1] = viewport.convertToViewportPoint(curX, curY);
-            const [vx2, vy2] = viewport.convertToViewportPoint(args[0], args[1]);
-            const lw = Math.max(lineWidth * viewport.scale, 0.5);
-            if (Math.abs(vy1 - vy2) < 2 || Math.abs(vx1 - vx2) < 2) {
-              lines.push({ x1: r(vx1), y1: r(vy1), x2: r(vx2), y2: r(vy2), width: Math.min(r(lw), 2), color: COLOR });
-            }
-            curX = args[0];
-            curY = args[1];
-          } else if (fn === OPS2.rectangle) {
-            const [rx, ry, rw, rh] = args;
-            const [vx1, vy1] = viewport.convertToViewportPoint(rx, ry + rh);
-            const [vx2, vy2] = viewport.convertToViewportPoint(rx + rw, ry);
-            const left = Math.min(vx1, vx2);
-            const top = Math.min(vy1, vy2);
-            const w = Math.abs(vx2 - vx1);
-            const h = Math.abs(vy2 - vy1);
-            if (w > 3 && h > 3) {
-              const lw = Math.max(lineWidth * viewport.scale, 0.5);
-              lines.push({ rect: true, x: r(left), y: r(top), w: r(w), h: r(h), width: Math.min(r(lw), 2), color: COLOR });
-            }
-          }
-        }
-        return lines;
-      }
-      function buildFormHtmlString(pages) {
+      function buildHtmlString(pages) {
         let pagesHtml = "";
         for (const pg of pages) {
-          let textHtml = "";
-          for (const t of pg.textItems) {
-            const weight = t.bold ? "font-weight:700;" : "";
-            textHtml += `      <span class="txt" style="left:${r(t.left)}px;top:${r(t.top)}px;font-size:${t.fontSize}px;${weight}">${esc(t.str)}</span>
-`;
-          }
-          let linesHtml = "";
-          for (const l of pg.lines) {
-            if (l.rect) {
-              linesHtml += `      <div class="ln" style="left:${l.x}px;top:${l.y}px;width:${l.w}px;height:${l.h}px;border:${l.width}px solid ${l.color}"></div>
-`;
-            } else {
-              if (Math.abs(l.y1 - l.y2) < 2) {
-                const left = Math.min(l.x1, l.x2);
-                const w = Math.abs(l.x2 - l.x1);
-                linesHtml += `      <div class="ln" style="left:${left}px;top:${l.y1}px;width:${w}px;height:0;border-top:${l.width}px solid ${l.color}"></div>
-`;
-              } else {
-                const top = Math.min(l.y1, l.y2);
-                const h = Math.abs(l.y2 - l.y1);
-                linesHtml += `      <div class="ln" style="left:${l.x1}px;top:${top}px;width:0;height:${h}px;border-left:${l.width}px solid ${l.color}"></div>
-`;
-              }
-            }
-          }
           let fieldsHtml = "";
           for (const f of pg.fields) {
             const inputHtml = buildFieldInput(f);
@@ -88437,9 +88358,9 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       </div>
 `;
           }
-          pagesHtml += `    <div class="page" style="width:${pg.width}px;height:${pg.height}px">
+          pagesHtml += `    <div class="page" style="width:${pg.width}px;height:${pg.height}px;background-image:url('${pg.bgDataUrl}')">
       <div class="page-label">Pag ${pg.pageNum}</div>
-${linesHtml}${textHtml}${fieldsHtml}    </div>
+${fieldsHtml}    </div>
 `;
         }
         return `<!DOCTYPE html>
@@ -88451,19 +88372,19 @@ ${linesHtml}${textHtml}${fieldsHtml}    </div>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: #f0f0f0; font-family: Arial, Helvetica, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; gap: 20px; }
-.page { position: relative; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.15); overflow: hidden; }
-.page-label { position: absolute; top: 4px; right: 6px; color: #999; font-size: 10px; z-index: 50; }
-.txt { position: absolute; white-space: nowrap; color: #000; line-height: 1.15; pointer-events: none; }
-.ln { position: absolute; }
+.page { position: relative; background-size: 100% 100%; background-repeat: no-repeat; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.page-label { position: absolute; top: 4px; right: 6px; background: rgba(0,0,0,0.5); color: #fff; font-size: 10px; padding: 2px 8px; border-radius: 3px; z-index: 50; pointer-events: none; }
 .field { position: absolute; z-index: 2; }
 .field input[type="text"], .field select, .field textarea {
-  width: 100%; height: 100%; border: 1px solid #999; background: rgba(255,255,200,0.3);
-  font-size: 11px; padding: 0 3px; outline: none; color: #222; font-family: Arial, Helvetica, sans-serif;
+  width: 100%; height: 100%; border: 1px solid transparent; background: transparent;
+  font-size: 11px; padding: 0 3px; outline: none; color: #000; font-family: Arial, Helvetica, sans-serif;
 }
+.field input[type="text"]:hover, .field select:hover { background: rgba(255,255,200,0.4); border-color: rgba(0,100,200,0.3); }
 .field input[type="text"]:focus, .field select:focus, .field textarea:focus {
-  border-color: #0066cc; background: #ffffee; box-shadow: 0 0 0 1px rgba(0,102,204,0.3);
+  border-color: #0066cc; background: rgba(255,255,255,0.9); box-shadow: 0 0 0 1px rgba(0,102,204,0.3);
 }
-.field input[type="checkbox"], .field input[type="radio"] { width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.field input[type="checkbox"], .field input[type="radio"] { width: 100%; height: 100%; margin: 0; cursor: pointer; opacity: 0.01; }
+.field input[type="checkbox"]:checked, .field input[type="radio"]:checked { opacity: 1; }
 .field:hover { z-index: 10; }
 .field:hover::after {
   content: attr(title); position: absolute; bottom: calc(100% + 2px); left: 0;
@@ -88475,6 +88396,7 @@ body { background: #f0f0f0; font-family: Arial, Helvetica, sans-serif; display: 
   .page { box-shadow: none; page-break-after: always; }
   .page-label { display: none; }
   .field:hover::after { display: none; }
+  .field input[type="text"], .field select { border-color: transparent; background: transparent; }
 }
 </style>
 </head>
