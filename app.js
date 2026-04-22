@@ -37,10 +37,10 @@
         $('#convertPdfFlow').hidden = !isConvertLike;
         $('#generateJsonFlow').hidden = mode !== 'generate-json';
         $('#btnBackToHome').hidden = !mode;
-        if (isConvertLike) {
-            $('#btnGeneratePdf').hidden = mode === 'pdf-to-html';
-            $('#btnGenerateHtml').hidden = mode === 'convert-pdf';
-        }
+        var pdfBtn = $('#btnGeneratePdf');
+        var htmlBtn = $('#btnGenerateHtml');
+        if (pdfBtn) pdfBtn.hidden = !isConvertLike || mode === 'pdf-to-html';
+        if (htmlBtn) htmlBtn.hidden = !isConvertLike || mode === 'convert-pdf';
     }
 
     function formatSize(n) {

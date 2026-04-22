@@ -17,10 +17,12 @@ async function analyzePdf(inputs) {
     const { fields, pageCount } = await extractFields(pdfBytes);
     const textItems = await extractText(pdfBytes);
     const labeledFields = detectLabels(fields, textItems);
-    const { matches, warnings } = resolveNames(labeledFields, excelBuffer, referenceJson);
+    const collapsed = collapseWidgets(labeledFields);
+    const { matches, warnings } = resolveNames(collapsed, excelBuffer, referenceJson);
 
+    const totalUnique = collapsed.length;
     const noLabel = matches.filter(m => !m.detectedLabel).length;
-    const noLabelPct = fields.length > 0 ? Math.round(noLabel / fields.length * 100) : 0;
+    const noLabelPct = totalUnique > 0 ? Math.round(noLabel / totalUnique * 100) : 0;
     if (noLabelPct > 40) {
         warnings.push({
             type: 'low_label_coverage',
@@ -32,9 +34,10 @@ async function analyzePdf(inputs) {
         matches,
         warnings,
         stats: {
-            totalFields: fields.length,
+            totalFields: totalUnique,
+            totalWidgets: fields.length,
             pageCount,
-            withLabel: fields.length - noLabel,
+            withLabel: totalUnique - noLabel,
             matched: matches.filter(m => m.source !== 'unchanged').length,
             unchanged: matches.filter(m => m.source === 'unchanged').length,
         }
@@ -42,14 +45,36 @@ async function analyzePdf(inputs) {
 }
 
 async function generatePdf(pdfBytes, finalMatches) {
-    const renameMap = finalMatches
-        .filter(m => m.newName !== m.originalName)
-        .map(m => ({ oldName: m.originalName, newName: m.newName }));
+    const seen = new Set();
+    const renameMap = [];
+    for (const m of finalMatches) {
+        if (m.newName === m.originalName) continue;
+        if (seen.has(m.originalName)) continue;
+        seen.add(m.originalName);
+        renameMap.push({ oldName: m.originalName, newName: m.newName });
+    }
 
     const deduped = deduplicateNames(renameMap);
     const { pdfBytes: newPdfBytes, warnings } = await rewritePdf(pdfBytes, deduped);
 
     return { pdfBytes: newPdfBytes, warnings, renamedCount: deduped.length };
+}
+
+function collapseWidgets(labeledFields) {
+    const byName = new Map();
+    for (const f of labeledFields) {
+        const existing = byName.get(f.name);
+        if (!existing) {
+            byName.set(f.name, f);
+        } else {
+            const curLen = (existing.detectedLabel || '').length;
+            const newLen = (f.detectedLabel || '').length;
+            if (newLen > curLen) {
+                byName.set(f.name, f);
+            }
+        }
+    }
+    return Array.from(byName.values());
 }
 
 function deduplicateNames(renameMap) {
