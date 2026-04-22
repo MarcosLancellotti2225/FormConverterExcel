@@ -14,6 +14,7 @@
         wireBackButton();
         initGenerateJsonFlow();
         initConvertPdfFlow();
+        initPdfToHtmlFlow();
     }
 
     function wireModeSelector() {
@@ -33,14 +34,10 @@
     function selectMode(mode) {
         currentMode = mode;
         $('#modeSelector').hidden = !!mode;
-        var isConvertLike = mode === 'convert-pdf' || mode === 'pdf-to-html';
-        $('#convertPdfFlow').hidden = !isConvertLike;
+        $('#convertPdfFlow').hidden = mode !== 'convert-pdf';
+        $('#pdfToHtmlFlow').hidden = mode !== 'pdf-to-html';
         $('#generateJsonFlow').hidden = mode !== 'generate-json';
         $('#btnBackToHome').hidden = !mode;
-        var pdfBtn = $('#btnGeneratePdf');
-        var htmlBtn = $('#btnGenerateHtml');
-        if (pdfBtn) pdfBtn.hidden = !isConvertLike || mode === 'pdf-to-html';
-        if (htmlBtn) htmlBtn.hidden = !isConvertLike || mode === 'convert-pdf';
     }
 
     function formatSize(n) {
@@ -375,7 +372,6 @@
 
         $('#btnAnalyze').addEventListener('click', runAnalysis);
         $('#btnGeneratePdf').addEventListener('click', runExport);
-        $('#btnGenerateHtml').addEventListener('click', runHtmlExport);
         $('#filterUnmatched').addEventListener('change', function() {
             renderMatchTable(convState.matches, this.checked);
         });
@@ -430,8 +426,6 @@
 
             $('#splitView').hidden = false;
             $('#convExportPanel').hidden = false;
-            $('#btnGeneratePdf').hidden = currentMode !== 'convert-pdf';
-            $('#btnGenerateHtml').hidden = currentMode !== 'pdf-to-html';
 
             statusEl.textContent += ' Renderizando preview...';
             var previewContainer = $('#pdfPreview');
@@ -549,19 +543,55 @@
         }
     }
 
-    async function runHtmlExport() {
-        var statusEl = $('#convExportStatus');
+    // ==================== PDF TO HTML FLOW ====================
+
+    var htmlState = {
+        pdf: null,
+        excel: null
+    };
+
+    function initPdfToHtmlFlow() {
+        $('#htmlPdfInput').addEventListener('change', function(e) {
+            htmlState.pdf = e.target.files[0] || null;
+            updateConvFileStatus('htmlPdfStatus', htmlState.pdf);
+            refreshHtmlButton();
+        });
+        $('#htmlExcelInput').addEventListener('change', function(e) {
+            htmlState.excel = e.target.files[0] || null;
+            updateConvFileStatus('htmlExcelStatus', htmlState.excel);
+            refreshHtmlButton();
+        });
+        $('#btnGenerateHtmlDirect').addEventListener('click', runDirectHtmlExport);
+    }
+
+    function refreshHtmlButton() {
+        $('#btnGenerateHtmlDirect').disabled = !(htmlState.pdf && htmlState.excel);
+    }
+
+    async function runDirectHtmlExport() {
+        var statusEl = $('#htmlStatus');
         statusEl.className = 'status active';
-        statusEl.textContent = '⟳ Generando HTML (renderizando paginas)...';
+        statusEl.textContent = '⟳ Analizando PDF y generando HTML...';
 
         try {
-            var html = await InsPipelineBundle.generateHtml(convState.pdfBytes, convState.matches);
+            var t0 = performance.now();
+            var result = await InsPipelineBundle.runConvertAnalysis({
+                pdfFile: htmlState.pdf,
+                matrixFile: htmlState.excel,
+                referenceJsonFile: null
+            });
+
+            statusEl.textContent = '⟳ Renderizando paginas...';
+            var html = await InsPipelineBundle.generateHtml(result.pdfBytes, result.matches);
             var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-            var fileName = (convState.pdf ? convState.pdf.name.replace(/\.pdf$/i, '') : 'formulario') + '.html';
+            var fileName = (htmlState.pdf ? htmlState.pdf.name.replace(/\.pdf$/i, '') : 'formulario') + '.html';
             InsPipelineBundle.downloadBlob(blob, fileName);
 
+            var t1 = performance.now();
+            var s = result.stats;
             statusEl.className = 'status active success';
-            statusEl.textContent = '✓ HTML generado con ' + convState.matches.length + ' campos. Descargando...';
+            statusEl.textContent = '✓ HTML generado en ' + Math.round(t1 - t0) + 'ms — ' +
+                s.totalFields + ' campos, ' + s.matched + ' matcheados. Descargando...';
         } catch (err) {
             console.error(err);
             statusEl.className = 'status active error';

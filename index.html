@@ -121,7 +121,6 @@
                 <h2>4. Exportar</h2>
                 <div class="actions">
                     <button id="btnGeneratePdf" class="primary">Generar y descargar PDF</button>
-                    <button id="btnGenerateHtml" class="secondary">Exportar como HTML</button>
                 </div>
                 <div id="convExportStatus" class="status"></div>
             </section>
@@ -132,6 +131,38 @@
                     <summary id="convWarningsSummary"></summary>
                     <pre id="convWarningsLog"></pre>
                 </details>
+            </section>
+        </div>
+
+        <!-- ============ PDF TO HTML FLOW ============ -->
+        <div id="pdfToHtmlFlow" hidden>
+            <section class="panel">
+                <h2>1. Archivos</h2>
+                <p class="hint">Subi el PDF y la Matriz Excel. Se genera un HTML identico al PDF con los campos editables.</p>
+
+                <div class="inputs-grid">
+                    <label class="file-slot required" data-slot="html-pdf">
+                        <span class="label">PDF original</span>
+                        <span class="desc">El PDF con campos AcroForm</span>
+                        <input type="file" accept=".pdf" id="htmlPdfInput">
+                        <span class="file-status" id="htmlPdfStatus"></span>
+                    </label>
+
+                    <label class="file-slot required" data-slot="html-excel">
+                        <span class="label">Matriz Excel</span>
+                        <span class="desc">Columnas: Nombre en PDF, Nombre del Campo en PDF</span>
+                        <input type="file" accept=".xlsx,.xls" id="htmlExcelInput">
+                        <span class="file-status" id="htmlExcelStatus"></span>
+                    </label>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>2. Generar</h2>
+                <div class="actions">
+                    <button id="btnGenerateHtmlDirect" class="primary" disabled>Generar HTML</button>
+                </div>
+                <div id="htmlStatus" class="status"></div>
             </section>
         </div>
 
