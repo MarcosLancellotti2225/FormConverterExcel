@@ -430,6 +430,8 @@
 
             $('#splitView').hidden = false;
             $('#convExportPanel').hidden = false;
+            $('#btnGeneratePdf').hidden = currentMode !== 'convert-pdf';
+            $('#btnGenerateHtml').hidden = currentMode !== 'pdf-to-html';
 
             statusEl.textContent += ' Renderizando preview...';
             var previewContainer = $('#pdfPreview');
