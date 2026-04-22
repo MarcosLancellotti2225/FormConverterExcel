@@ -30,10 +30,8 @@ let _pdfjsLib = null;
 async function loadPdfjs() {
     if (_pdfjsLib) return _pdfjsLib;
 
+    require('pdfjs-dist/legacy/build/pdf.worker.mjs');
     const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.mjs');
-    if (typeof window !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.mjs';
-    }
     _pdfjsLib = pdfjsLib;
     return pdfjsLib;
 }
