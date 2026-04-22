@@ -76,41 +76,43 @@
                 <div id="convStatus" class="status"></div>
             </section>
 
-            <section class="panel" id="previewPanel" hidden>
-                <h2>3. Preview del PDF</h2>
-                <p class="hint">Los campos detectados estan resaltados. Click en uno para ir a la fila en la tabla. Azul = matcheado, rojo = sin match.</p>
-                <div id="pdfPreview" class="pdf-preview"></div>
-            </section>
+            <div id="splitView" class="split-view" hidden>
+                <section class="panel split-left" id="matchTablePanel">
+                    <h2>3. Tabla de Match</h2>
+                    <p class="hint">Revisa y edita. Click en una fila para verla en el PDF.</p>
+                    <div class="match-filters">
+                        <span id="matchStats" class="match-stats"></span>
+                        <label class="toggle toggle-sm">
+                            <input type="checkbox" id="filterUnmatched">
+                            <span>Solo sin match</span>
+                        </label>
+                    </div>
+                    <div class="match-table-wrap">
+                        <table id="matchTable" class="match-table">
+                            <thead>
+                                <tr>
+                                    <th>Pag</th>
+                                    <th>Nombre Original</th>
+                                    <th>Label Detectado</th>
+                                    <th>Nombre Nuevo</th>
+                                    <th>Fuente</th>
+                                    <th>Conf.</th>
+                                </tr>
+                            </thead>
+                            <tbody id="matchTableBody"></tbody>
+                        </table>
+                    </div>
+                </section>
 
-            <section class="panel" id="matchTablePanel" hidden>
-                <h2>4. Tabla de Match</h2>
-                <p class="hint">Revisa y edita los nombres propuestos. Los campos sin match estan resaltados.</p>
-                <div class="match-filters">
-                    <span id="matchStats" class="match-stats"></span>
-                    <label class="toggle toggle-sm">
-                        <input type="checkbox" id="filterUnmatched">
-                        <span>Solo sin match</span>
-                    </label>
-                </div>
-                <div class="match-table-wrap">
-                    <table id="matchTable" class="match-table">
-                        <thead>
-                            <tr>
-                                <th>Pag</th>
-                                <th>Nombre Original</th>
-                                <th>Label Detectado</th>
-                                <th>Nombre Nuevo</th>
-                                <th>Fuente</th>
-                                <th>Conf.</th>
-                            </tr>
-                        </thead>
-                        <tbody id="matchTableBody"></tbody>
-                    </table>
-                </div>
-            </section>
+                <section class="panel split-right" id="previewPanel">
+                    <h2>Preview</h2>
+                    <p class="hint">Azul = matcheado, rojo = sin match. Click para ir a la fila.</p>
+                    <div id="pdfPreview" class="pdf-preview"></div>
+                </section>
+            </div>
 
             <section class="panel" id="convExportPanel" hidden>
-                <h2>5. Exportar</h2>
+                <h2>4. Exportar</h2>
                 <div class="actions">
                     <button id="btnGeneratePdf" class="primary">Generar y descargar PDF</button>
                     <button id="btnGenerateHtml" class="secondary">Exportar como HTML</button>

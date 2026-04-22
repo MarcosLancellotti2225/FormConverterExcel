@@ -423,8 +423,7 @@
                 s.totalFields + ' campos, ' + s.withLabel + ' con label, ' +
                 s.matched + ' matcheados, ' + s.unchanged + ' sin match.';
 
-            $('#previewPanel').hidden = false;
-            $('#matchTablePanel').hidden = false;
+            $('#splitView').hidden = false;
             $('#convExportPanel').hidden = false;
 
             statusEl.textContent += ' Renderizando preview...';

@@ -473,8 +473,15 @@ details summary:hover { color: var(--text); }
 
 /* Match table */
 .match-table-wrap {
-    overflow-x: auto;
+    overflow: auto;
     margin-top: 0.75rem;
+}
+
+.match-table thead th {
+    position: sticky;
+    top: 0;
+    background: var(--bg-elevated);
+    z-index: 2;
 }
 
 .match-table {
@@ -575,10 +582,52 @@ details summary:hover { color: var(--text); }
 }
 .toggle-sm input { width: 14px; height: 14px; }
 
+/* ── Split View (table left + preview right) ── */
+
+.split-view {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    max-height: calc(100vh - 200px);
+    min-height: 500px;
+}
+
+.split-left {
+    flex: 1 1 55%;
+    min-width: 0;
+    overflow-y: auto;
+    max-height: calc(100vh - 200px);
+}
+
+.split-right {
+    flex: 1 1 45%;
+    min-width: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 200px);
+}
+
+.split-right .pdf-preview {
+    flex: 1;
+    min-height: 0;
+}
+
+@media (max-width: 900px) {
+    .split-view {
+        flex-direction: column;
+        max-height: none;
+    }
+    .split-left, .split-right {
+        flex: none;
+        width: 100%;
+        max-height: 50vh;
+    }
+}
+
 /* ── PDF Preview ── */
 
 .pdf-preview {
-    max-height: 650px;
     overflow-y: auto;
     background: #111318;
     border-radius: 8px;
