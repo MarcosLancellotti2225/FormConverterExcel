@@ -2,16 +2,34 @@
 
 const { PDFDocument, PDFName, PDFHexString } = require('pdf-lib');
 
+const FIELD_TYPE_MAP = {
+    PDFTextField: 'Tx',
+    PDFCheckBox: 'Btn',
+    PDFRadioGroup: 'Btn',
+    PDFDropdown: 'Ch',
+    PDFOptionList: 'Ch',
+    PDFButton: 'Btn',
+    PDFSignature: 'Sig',
+};
+
 async function rewritePdf(pdfBytes, renameMap) {
     const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
     const form = pdfDoc.getForm();
     const context = pdfDoc.context;
     const warnings = [];
 
-    const acroFormDict = pdfDoc.catalog.get(PDFName.of('AcroForm'));
-    const acroFormResolved = acroFormDict ? context.lookup(acroFormDict) : null;
-    const rootFieldsArray = acroFormResolved ? acroFormResolved.get(PDFName.of('Fields')) : null;
-    const rootFields = rootFieldsArray ? context.lookup(rootFieldsArray) : null;
+    const acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
+    let rootFields = null;
+    if (acroFormRef) {
+        const acroForm = context.lookup(acroFormRef);
+        if (acroForm && typeof acroForm.get === 'function') {
+            const fieldsRef = acroForm.get(PDFName.of('Fields'));
+            if (fieldsRef) {
+                const resolved = context.lookup(fieldsRef);
+                rootFields = (resolved && typeof resolved.push === 'function') ? resolved : fieldsRef;
+            }
+        }
+    }
 
     for (const { oldName, newName } of renameMap) {
         if (oldName === newName) continue;
@@ -19,10 +37,11 @@ async function rewritePdf(pdfBytes, renameMap) {
         try {
             const field = form.getField(oldName);
             const dict = field.acroField.dict;
-            const hasParent = dict.get(PDFName.of('Parent')) !== undefined;
+            const parentRef = dict.get(PDFName.of('Parent'));
 
-            if (hasParent) {
-                flattenField(dict, rootFields, context, newName);
+            if (parentRef !== undefined) {
+                const ftName = FIELD_TYPE_MAP[field.constructor.name] || 'Tx';
+                flattenField(dict, parentRef, rootFields, context, newName, ftName);
             } else {
                 dict.set(PDFName.of('T'), PDFHexString.fromText(newName));
             }
@@ -35,20 +54,17 @@ async function rewritePdf(pdfBytes, renameMap) {
         }
     }
 
-    const newBytes = await pdfDoc.save();
+    const newBytes = await pdfDoc.save({ updateFieldAppearances: false });
     return { pdfBytes: newBytes, warnings };
 }
 
-function flattenField(dict, rootFields, context, newName) {
-    const parentRef = dict.get(PDFName.of('Parent'));
-    if (!parentRef) return;
+function flattenField(dict, parentRef, rootFields, context, newName, ftName) {
+    collectInherited(dict, parentRef, context, ftName);
 
     removeFromParentKids(dict, parentRef, context);
 
     dict.delete(PDFName.of('Parent'));
     dict.set(PDFName.of('T'), PDFHexString.fromText(newName));
-
-    copyInheritedEntries(dict, parentRef, context);
 
     if (rootFields && typeof rootFields.push === 'function') {
         const fieldRef = context.getObjectRef(dict);
@@ -58,51 +74,52 @@ function flattenField(dict, rootFields, context, newName) {
     }
 }
 
-function removeFromParentKids(dict, parentRef, context) {
-    if (!parentRef) return;
-    const parent = context.lookup(parentRef);
-    if (!parent) return;
-
-    const kidsRef = parent.get(PDFName.of('Kids'));
-    if (!kidsRef) return;
-    const kids = (kidsRef === parent) ? kidsRef : context.lookup(kidsRef) || kidsRef;
-    if (!kids || typeof kids.size !== 'function') return;
-
-    const fieldRef = context.getObjectRef(dict);
-    if (!fieldRef) return;
-
-    const newEntries = [];
-    for (let i = 0; i < kids.size(); i++) {
-        const kidRef = kids.get(i);
-        if (kidRef && kidRef.objectNumber === fieldRef.objectNumber) continue;
-        newEntries.push(kidRef);
+function collectInherited(dict, parentRef, context, ftName) {
+    if (dict.get(PDFName.of('FT')) === undefined) {
+        dict.set(PDFName.of('FT'), PDFName.of(ftName));
     }
 
-    const { PDFArray } = require('pdf-lib');
-    const newKids = PDFArray.withContext(context);
-    for (const entry of newEntries) {
-        newKids.push(entry);
-    }
-    parent.set(PDFName.of('Kids'), newKids);
-}
-
-function copyInheritedEntries(dict, parentRef, context) {
-    const INHERITABLE = ['FT', 'Ff', 'V', 'DV'];
+    const INHERITABLE = ['Ff', 'V', 'DV', 'DA', 'DR', 'Q'];
     let ref = parentRef;
-
     while (ref) {
         const parent = context.lookup(ref);
         if (!parent || typeof parent.get !== 'function') break;
 
         for (const key of INHERITABLE) {
             const pdfKey = PDFName.of(key);
-            if (dict.get(pdfKey) === undefined && parent.get(pdfKey) !== undefined) {
-                dict.set(pdfKey, parent.get(pdfKey));
+            if (dict.get(pdfKey) === undefined) {
+                const val = parent.get(pdfKey);
+                if (val !== undefined) {
+                    dict.set(pdfKey, val);
+                }
             }
         }
 
-        ref = parent.get(PDFName.of('Parent')) || null;
+        ref = parent.get(PDFName.of('Parent'));
+        if (ref === undefined) break;
     }
+}
+
+function removeFromParentKids(dict, parentRef, context) {
+    const parent = context.lookup(parentRef);
+    if (!parent || typeof parent.get !== 'function') return;
+
+    const kidsVal = parent.get(PDFName.of('Kids'));
+    if (!kidsVal) return;
+    const kids = context.lookup(kidsVal);
+    if (!kids || typeof kids.size !== 'function') return;
+
+    const fieldRef = context.getObjectRef(dict);
+    if (!fieldRef) return;
+
+    const { PDFArray } = require('pdf-lib');
+    const newKids = PDFArray.withContext(context);
+    for (let i = 0; i < kids.size(); i++) {
+        const kidRef = kids.get(i);
+        if (kidRef && kidRef.objectNumber === fieldRef.objectNumber) continue;
+        newKids.push(kidRef);
+    }
+    parent.set(PDFName.of('Kids'), newKids);
 }
 
 module.exports = { rewritePdf };
