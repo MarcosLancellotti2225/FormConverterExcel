@@ -131,7 +131,7 @@ async function renderPreview(pdfBytes, matches, container) {
     const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.mjs');
     const webWorker = new Worker('pdf.worker.min.mjs', { type: 'module' });
     const pdfWorker = new pdfjsLib.PDFWorker({ port: webWorker });
-    const doc = await pdfjsLib.getDocument({ data: pdfBytes, worker: pdfWorker }).promise;
+    const doc = await pdfjsLib.getDocument({ data: pdfBytes.slice(), worker: pdfWorker }).promise;
 
     const fieldsByPage = {};
     for (const m of matches) {

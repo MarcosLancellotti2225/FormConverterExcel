@@ -6,7 +6,7 @@ let _pdfWorker = null;
 async function extractText(pdfBytes) {
     const pdfjsLib = await loadPdfjs();
     const worker = await getWorker(pdfjsLib);
-    const loadingTask = pdfjsLib.getDocument({ data: pdfBytes, worker });
+    const loadingTask = pdfjsLib.getDocument({ data: pdfBytes.slice(), worker });
     const pdf = await loadingTask.promise;
     const textItems = [];
 

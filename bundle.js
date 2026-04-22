@@ -87445,7 +87445,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       async function extractText(pdfBytes) {
         const pdfjsLib = await loadPdfjs();
         const worker = await getWorker(pdfjsLib);
-        const loadingTask = pdfjsLib.getDocument({ data: pdfBytes, worker });
+        const loadingTask = pdfjsLib.getDocument({ data: pdfBytes.slice(), worker });
         const pdf = await loadingTask.promise;
         const textItems = [];
         for (let p = 1; p <= pdf.numPages; p++) {
@@ -88128,7 +88128,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const pdfjsLib = (init_pdf(), __toCommonJS(pdf_exports));
         const webWorker = new Worker("pdf.worker.min.mjs", { type: "module" });
         const pdfWorker = new pdfjsLib.PDFWorker({ port: webWorker });
-        const doc = await pdfjsLib.getDocument({ data: pdfBytes, worker: pdfWorker }).promise;
+        const doc = await pdfjsLib.getDocument({ data: pdfBytes.slice(), worker: pdfWorker }).promise;
         const fieldsByPage = {};
         for (const m of matches) {
           if (!fieldsByPage[m.page]) fieldsByPage[m.page] = [];
