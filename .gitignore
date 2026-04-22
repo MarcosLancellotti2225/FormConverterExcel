@@ -20,4 +20,3 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
-pdf.worker.min.mjs

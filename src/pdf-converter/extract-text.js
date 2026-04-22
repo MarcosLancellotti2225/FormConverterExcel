@@ -1,8 +1,12 @@
 'use strict';
 
+let _pdfjsLib = null;
+let _pdfWorker = null;
+
 async function extractText(pdfBytes) {
     const pdfjsLib = await loadPdfjs();
-    const loadingTask = pdfjsLib.getDocument({ data: pdfBytes });
+    const worker = await getWorker(pdfjsLib);
+    const loadingTask = pdfjsLib.getDocument({ data: pdfBytes, worker });
     const pdf = await loadingTask.promise;
     const textItems = [];
 
@@ -25,15 +29,18 @@ async function extractText(pdfBytes) {
     return textItems;
 }
 
-let _pdfjsLib = null;
-
 async function loadPdfjs() {
     if (_pdfjsLib) return _pdfjsLib;
-
-    require('pdfjs-dist/legacy/build/pdf.worker.mjs');
     const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.mjs');
     _pdfjsLib = pdfjsLib;
     return pdfjsLib;
+}
+
+async function getWorker(pdfjsLib) {
+    if (_pdfWorker && !_pdfWorker.destroyed) return _pdfWorker;
+    const webWorker = new Worker('pdf.worker.min.mjs', { type: 'module' });
+    _pdfWorker = new pdfjsLib.PDFWorker({ port: webWorker });
+    return _pdfWorker;
 }
 
 module.exports = { extractText };
