@@ -400,7 +400,7 @@ details summary:hover { color: var(--text); }
 /* Mode selector grid */
 .mode-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, 1fr);
     gap: 1.5rem;
     min-height: 50vh;
     align-items: stretch;
@@ -440,6 +440,10 @@ details summary:hover { color: var(--text); }
 }
 .mode-card[data-mode="generate-json"] .mode-icon {
     background: linear-gradient(135deg, var(--accent-teal), var(--accent));
+    color: #0d1117;
+}
+.mode-card[data-mode="pdf-to-html"] .mode-icon {
+    background: linear-gradient(135deg, var(--accent-green), var(--accent-teal));
     color: #0d1117;
 }
 

@@ -33,9 +33,14 @@
     function selectMode(mode) {
         currentMode = mode;
         $('#modeSelector').hidden = !!mode;
-        $('#convertPdfFlow').hidden = mode !== 'convert-pdf';
+        var isConvertLike = mode === 'convert-pdf' || mode === 'pdf-to-html';
+        $('#convertPdfFlow').hidden = !isConvertLike;
         $('#generateJsonFlow').hidden = mode !== 'generate-json';
         $('#btnBackToHome').hidden = !mode;
+        if (isConvertLike) {
+            $('#btnGeneratePdf').hidden = mode === 'pdf-to-html';
+            $('#btnGenerateHtml').hidden = mode === 'convert-pdf';
+        }
     }
 
     function formatSize(n) {
