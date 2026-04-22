@@ -232,17 +232,30 @@ async function generateHtml(pdfBytes, matches) {
     for (let p = 1; p <= doc.numPages; p++) {
         const page = await doc.getPage(p);
         const viewport = page.getViewport({ scale: SCALE });
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.floor(viewport.width);
-        canvas.height = Math.floor(viewport.height);
-        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-        const bgDataUrl = canvas.toDataURL('image/png');
+
+        const content = await page.getTextContent();
+        const textItems = [];
+        for (const item of content.items) {
+            if (!item.str || !item.str.trim()) continue;
+            const tx = item.transform[4];
+            const ty = item.transform[5];
+            const fontSize = Math.abs(item.transform[0]) || Math.abs(item.transform[3]) || 10;
+            const [vx, vy] = viewport.convertToViewportPoint(tx, ty);
+            textItems.push({
+                str: item.str,
+                left: vx,
+                top: vy - fontSize * SCALE * 0.85,
+                fontSize: Math.round(fontSize * SCALE * 10) / 10,
+                width: item.width * SCALE,
+                bold: /bold/i.test(item.fontName || ''),
+            });
+        }
 
         const fields = [];
         for (const m of (fieldsByPage[p - 1] || [])) {
-            const r = m.rect;
-            const [x1, y1] = viewport.convertToViewportPoint(r.x, r.y + r.height);
-            const [x2, y2] = viewport.convertToViewportPoint(r.x + r.width, r.y);
+            const rc = m.rect;
+            const [x1, y1] = viewport.convertToViewportPoint(rc.x, rc.y + rc.height);
+            const [x2, y2] = viewport.convertToViewportPoint(rc.x + rc.width, rc.y);
             fields.push({
                 name: m.newName || m.originalName,
                 originalName: m.originalName,
@@ -254,24 +267,92 @@ async function generateHtml(pdfBytes, matches) {
             });
         }
 
-        pages.push({ bgDataUrl, width: canvas.width, height: canvas.height, fields, pageNum: p });
+        const opContent = await page.getOperatorList();
+        const lines = extractLines(opContent, viewport);
+
+        pages.push({ width: Math.floor(viewport.width), height: Math.floor(viewport.height), textItems, fields, lines, pageNum: p });
     }
 
     pdfWorker.destroy();
     webWorker.terminate();
 
-    return buildHtmlString(pages);
+    return buildFormHtmlString(pages);
 }
 
-function buildHtmlString(pages) {
-    let fieldsHtml = '';
+function extractLines(opList, viewport) {
+    const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.mjs');
+    const OPS = pdfjsLib.OPS;
+    const lines = [];
+    let curX = 0, curY = 0;
+    let lineWidth = 1;
+    const COLOR = '#333';
+
+    for (let i = 0; i < opList.fnArray.length; i++) {
+        const fn = opList.fnArray[i];
+        const args = opList.argsArray[i];
+
+        if (fn === OPS.setLineWidth) {
+            lineWidth = args[0] || 1;
+        } else if (fn === OPS.moveTo) {
+            curX = args[0]; curY = args[1];
+        } else if (fn === OPS.lineTo) {
+            const [vx1, vy1] = viewport.convertToViewportPoint(curX, curY);
+            const [vx2, vy2] = viewport.convertToViewportPoint(args[0], args[1]);
+            const lw = Math.max(lineWidth * viewport.scale, 0.5);
+            if (Math.abs(vy1 - vy2) < 2 || Math.abs(vx1 - vx2) < 2) {
+                lines.push({ x1: r(vx1), y1: r(vy1), x2: r(vx2), y2: r(vy2), width: Math.min(r(lw), 2), color: COLOR });
+            }
+            curX = args[0]; curY = args[1];
+        } else if (fn === OPS.rectangle) {
+            const [rx, ry, rw, rh] = args;
+            const [vx1, vy1] = viewport.convertToViewportPoint(rx, ry + rh);
+            const [vx2, vy2] = viewport.convertToViewportPoint(rx + rw, ry);
+            const left = Math.min(vx1, vx2);
+            const top = Math.min(vy1, vy2);
+            const w = Math.abs(vx2 - vx1);
+            const h = Math.abs(vy2 - vy1);
+            if (w > 3 && h > 3) {
+                const lw = Math.max(lineWidth * viewport.scale, 0.5);
+                lines.push({ rect: true, x: r(left), y: r(top), w: r(w), h: r(h), width: Math.min(r(lw), 2), color: COLOR });
+            }
+        }
+    }
+    return lines;
+}
+
+function buildFormHtmlString(pages) {
+    let pagesHtml = '';
     for (const pg of pages) {
-        let pageFields = '';
+        let textHtml = '';
+        for (const t of pg.textItems) {
+            const weight = t.bold ? 'font-weight:700;' : '';
+            textHtml += `      <span class="txt" style="left:${r(t.left)}px;top:${r(t.top)}px;font-size:${t.fontSize}px;${weight}">${esc(t.str)}</span>\n`;
+        }
+
+        let linesHtml = '';
+        for (const l of pg.lines) {
+            if (l.rect) {
+                linesHtml += `      <div class="ln" style="left:${l.x}px;top:${l.y}px;width:${l.w}px;height:${l.h}px;border:${l.width}px solid ${l.color}"></div>\n`;
+            } else {
+                if (Math.abs(l.y1 - l.y2) < 2) {
+                    const left = Math.min(l.x1, l.x2);
+                    const w = Math.abs(l.x2 - l.x1);
+                    linesHtml += `      <div class="ln" style="left:${left}px;top:${l.y1}px;width:${w}px;height:0;border-top:${l.width}px solid ${l.color}"></div>\n`;
+                } else {
+                    const top = Math.min(l.y1, l.y2);
+                    const h = Math.abs(l.y2 - l.y1);
+                    linesHtml += `      <div class="ln" style="left:${l.x1}px;top:${top}px;width:0;height:${h}px;border-left:${l.width}px solid ${l.color}"></div>\n`;
+                }
+            }
+        }
+
+        let fieldsHtml = '';
         for (const f of pg.fields) {
             const inputHtml = buildFieldInput(f);
-            pageFields += `      <div class="field" style="left:${r(f.left)}px;top:${r(f.top)}px;width:${r(f.width)}px;height:${r(f.height)}px" title="${esc(f.originalName)}">\n        ${inputHtml}\n      </div>\n`;
+            fieldsHtml += `      <div class="field" style="left:${r(f.left)}px;top:${r(f.top)}px;width:${r(f.width)}px;height:${r(f.height)}px" title="${esc(f.originalName)}">\n        ${inputHtml}\n      </div>\n`;
         }
-        fieldsHtml += `    <div class="page" style="width:${pg.width}px;height:${pg.height}px;background-image:url('${pg.bgDataUrl}')">\n      <div class="page-label">Pag ${pg.pageNum}</div>\n${pageFields}    </div>\n`;
+
+        pagesHtml += `    <div class="page" style="width:${pg.width}px;height:${pg.height}px">\n      <div class="page-label">Pag ${pg.pageNum}</div>\n${linesHtml}${textHtml}${fieldsHtml}    </div>\n`;
     }
 
     return `<!DOCTYPE html>
@@ -282,25 +363,45 @@ function buildHtmlString(pages) {
 <title>Formulario HTML</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #1a1a2e; font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; gap: 16px; }
-.page { position: relative; background-size: 100% 100%; background-repeat: no-repeat; box-shadow: 0 2px 12px rgba(0,0,0,0.5); border-radius: 4px; }
-.page-label { position: absolute; top: 6px; right: 8px; background: rgba(0,0,0,0.6); color: #aaa; font-size: 11px; padding: 2px 8px; border-radius: 3px; z-index: 5; }
+body { background: #f0f0f0; font-family: Arial, Helvetica, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; gap: 20px; }
+.page { position: relative; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.15); overflow: hidden; }
+.page-label { position: absolute; top: 4px; right: 6px; color: #999; font-size: 10px; z-index: 50; }
+.txt { position: absolute; white-space: nowrap; color: #000; line-height: 1.15; pointer-events: none; }
+.ln { position: absolute; }
 .field { position: absolute; z-index: 2; }
-.field input[type="text"], .field select { width: 100%; height: 100%; border: 1px solid rgba(88,166,255,0.4); background: rgba(255,255,255,0.85); font-size: 11px; padding: 0 4px; border-radius: 2px; outline: none; color: #222; }
-.field input[type="text"]:focus, .field select:focus { border-color: #58a6ff; background: #fff; box-shadow: 0 0 0 2px rgba(88,166,255,0.25); }
-.field input[type="checkbox"] { width: 100%; height: 100%; margin: 0; cursor: pointer; accent-color: #58a6ff; }
+.field input[type="text"], .field select, .field textarea {
+  width: 100%; height: 100%; border: 1px solid #999; background: rgba(255,255,200,0.3);
+  font-size: 11px; padding: 0 3px; outline: none; color: #222; font-family: Arial, Helvetica, sans-serif;
+}
+.field input[type="text"]:focus, .field select:focus, .field textarea:focus {
+  border-color: #0066cc; background: #ffffee; box-shadow: 0 0 0 1px rgba(0,102,204,0.3);
+}
+.field input[type="checkbox"], .field input[type="radio"] { width: 100%; height: 100%; margin: 0; cursor: pointer; }
 .field:hover { z-index: 10; }
-.field:hover::after { content: attr(title); position: absolute; bottom: calc(100% + 4px); left: 0; background: #1c232d; color: #e0e0e0; padding: 3px 8px; border-radius: 4px; font-size: 10px; white-space: nowrap; border: 1px solid rgba(88,166,255,0.4); z-index: 20; font-family: monospace; }
+.field:hover::after {
+  content: attr(title); position: absolute; bottom: calc(100% + 2px); left: 0;
+  background: #333; color: #fff; padding: 2px 6px; border-radius: 3px;
+  font-size: 9px; white-space: nowrap; z-index: 20; font-family: monospace;
+}
+@media print {
+  body { background: #fff; padding: 0; gap: 0; }
+  .page { box-shadow: none; page-break-after: always; }
+  .page-label { display: none; }
+  .field:hover::after { display: none; }
+}
 </style>
 </head>
 <body>
-${fieldsHtml}</body>
+${pagesHtml}</body>
 </html>`;
 }
 
 function buildFieldInput(f) {
     if (f.type === 'checkbox') {
         return `<input type="checkbox" name="${esc(f.name)}">`;
+    }
+    if (f.type === 'radio') {
+        return `<input type="radio" name="${esc(f.name)}">`;
     }
     if (f.type === 'select') {
         return `<select name="${esc(f.name)}"><option value=""></option></select>`;
