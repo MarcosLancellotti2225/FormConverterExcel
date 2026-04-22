@@ -326,7 +326,7 @@ function buildFieldInput(f) {
     if (f.type === 'select') {
         return `<select name="${esc(f.name)}"><option value=""></option></select>`;
     }
-    return `<input type="text" name="${esc(f.name)}" placeholder="${esc(f.name)}">`;
+    return `<input type="text" name="${esc(f.name)}">`;
 }
 
 function esc(s) {
