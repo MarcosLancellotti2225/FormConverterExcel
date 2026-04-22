@@ -2,250 +2,169 @@
 (function () {
     'use strict';
 
-    const state = {
-        matrix: null,
-        catalogs: null,
-        client: null,
-        pdfs: [],           // File[]
-        lovableJsons: []    // File[]
-    };
+    // ==================== SHARED ====================
 
-    let lastResults = null;
+    var currentMode = null;
 
-    const $ = (sel, root = document) => root.querySelector(sel);
-    const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+    var $ = function(sel, root) { return (root || document).querySelector(sel); };
+    var $$ = function(sel, root) { return Array.from((root || document).querySelectorAll(sel)); };
 
     function init() {
-        wireSingleFileInputs();
-        wireLovableDropZone();
-        wirePdfDropZone();
-        wireButtons();
+        wireModeSelector();
+        wireBackButton();
+        initGenerateJsonFlow();
+        initConvertPdfFlow();
     }
 
-    // --- Single-file inputs (matrix, catalogs, client) ---
-
-    function wireSingleFileInputs() {
-        $$('input[data-input]').forEach(input => {
-            if (input.dataset.input === 'pdf') return; // handled by drop zone
-            input.addEventListener('change', handleSingleFile);
+    function wireModeSelector() {
+        $$('.mode-card').forEach(function(card) {
+            card.addEventListener('click', function() {
+                selectMode(card.dataset.mode);
+            });
         });
     }
 
-    function handleSingleFile(e) {
-        const input = e.target;
-        const file = input.files[0];
-        const slot = input.closest('.file-slot');
-        const statusEl = slot.querySelector('.file-status');
-        const kind = input.dataset.input;
+    function wireBackButton() {
+        $('#btnBackToHome').addEventListener('click', function() {
+            selectMode(null);
+        });
+    }
+
+    function selectMode(mode) {
+        currentMode = mode;
+        $('#modeSelector').hidden = !!mode;
+        $('#convertPdfFlow').hidden = mode !== 'convert-pdf';
+        $('#generateJsonFlow').hidden = mode !== 'generate-json';
+        $('#btnBackToHome').hidden = !mode;
+    }
+
+    function formatSize(n) {
+        if (n < 1024) return n + ' B';
+        if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+        return (n / 1024 / 1024).toFixed(1) + ' MB';
+    }
+
+    function escapeHtml(s) {
+        return s.replace(/[&<>"']/g, function(c) {
+            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+        });
+    }
+
+    // ==================== GENERATE JSON FLOW ====================
+
+    var genState = {
+        matrix: null,
+        catalogs: null,
+        client: null,
+        pdfs: [],
+        lovableJsons: []
+    };
+    var lastResults = null;
+
+    function initGenerateJsonFlow() {
+        $$('#generateJsonFlow input[data-input]').forEach(function(input) {
+            input.addEventListener('change', handleGenSingleFile);
+        });
+        wireLovableDropZone();
+        wirePdfDropZone();
+        $('#btnRun').addEventListener('click', runGenerate);
+        $('#btnDownloadAll').addEventListener('click', downloadAllAsZip);
+    }
+
+    function handleGenSingleFile(e) {
+        var input = e.target;
+        var file = input.files[0];
+        var slot = input.closest('.file-slot');
+        var statusEl = slot.querySelector('.file-status');
+        var kind = input.dataset.input;
 
         if (!file) {
             slot.classList.remove('loaded');
             statusEl.textContent = '';
-            state[kind] = null;
-            refreshButtons();
+            genState[kind] = null;
+            refreshGenButtons();
             return;
         }
 
-        state[kind] = file;
+        genState[kind] = file;
         slot.classList.add('loaded');
-        statusEl.textContent = '\u2713 ' + file.name + ' (' + formatSize(file.size) + ')';
-        refreshButtons();
+        statusEl.textContent = '✓ ' + file.name + ' (' + formatSize(file.size) + ')';
+        refreshGenButtons();
     }
-
-    // --- Lovable JSON drop zone ---
 
     function wireLovableDropZone() {
         var zone = $('#lovableDropZone');
         var fileInput = $('#lovableFileInput');
         var browseBtn = $('#lovableBrowseBtn');
 
-        browseBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            fileInput.click();
-        });
-
-        fileInput.addEventListener('change', function() {
-            addLovableFiles(Array.from(fileInput.files));
-            fileInput.value = '';
-        });
-
-        zone.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            zone.classList.add('drag-over');
-        });
-        zone.addEventListener('dragleave', function() {
-            zone.classList.remove('drag-over');
-        });
+        browseBtn.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); fileInput.click(); });
+        fileInput.addEventListener('change', function() { addLovableFiles(Array.from(fileInput.files)); fileInput.value = ''; });
+        zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('drag-over'); });
+        zone.addEventListener('dragleave', function() { zone.classList.remove('drag-over'); });
         zone.addEventListener('drop', function(e) {
-            e.preventDefault();
-            zone.classList.remove('drag-over');
-            var files = Array.from(e.dataTransfer.files).filter(function(f) {
-                return /\.json$/i.test(f.name);
-            });
-            addLovableFiles(files);
+            e.preventDefault(); zone.classList.remove('drag-over');
+            addLovableFiles(Array.from(e.dataTransfer.files).filter(function(f) { return /\.json$/i.test(f.name); }));
         });
     }
 
     function addLovableFiles(files) {
-        var existingNames = new Set(state.lovableJsons.map(function(f) { return f.name; }));
-        for (var i = 0; i < files.length; i++) {
-            if (!existingNames.has(files[i].name)) {
-                state.lovableJsons.push(files[i]);
-            }
-        }
-        renderLovableList();
-        refreshButtons();
+        var existing = new Set(genState.lovableJsons.map(function(f) { return f.name; }));
+        for (var i = 0; i < files.length; i++) { if (!existing.has(files[i].name)) genState.lovableJsons.push(files[i]); }
+        renderDropList('#lovableList', genState.lovableJsons, '.json', function(idx) { genState.lovableJsons.splice(idx, 1); renderDropList('#lovableList', genState.lovableJsons, '.json', arguments.callee); refreshGenButtons(); });
+        refreshGenButtons();
     }
-
-    function removeLovable(index) {
-        state.lovableJsons.splice(index, 1);
-        renderLovableList();
-        refreshButtons();
-    }
-
-    function renderLovableList() {
-        var list = $('#lovableList');
-        list.innerHTML = '';
-        if (!state.lovableJsons.length) return;
-
-        for (var i = 0; i < state.lovableJsons.length; i++) {
-            (function(idx) {
-                var f = state.lovableJsons[idx];
-                var tag = document.createElement('div');
-                tag.className = 'pdf-tag';
-
-                var codeSpan = document.createElement('span');
-                codeSpan.className = 'pdf-tag-code';
-                codeSpan.textContent = f.name.replace(/\.json$/i, '');
-                tag.appendChild(codeSpan);
-
-                var sizeSpan = document.createElement('span');
-                sizeSpan.className = 'pdf-tag-size';
-                sizeSpan.textContent = formatSize(f.size);
-                tag.appendChild(sizeSpan);
-
-                var removeBtn = document.createElement('button');
-                removeBtn.className = 'pdf-tag-remove';
-                removeBtn.textContent = '×';
-                removeBtn.title = 'Quitar';
-                removeBtn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    removeLovable(idx);
-                });
-                tag.appendChild(removeBtn);
-
-                list.appendChild(tag);
-            })(i);
-        }
-    }
-
-    // --- PDF drop zone ---
 
     function wirePdfDropZone() {
-        const zone = $('#pdfDropZone');
-        const fileInput = $('#pdfFileInput');
-        const browseBtn = $('#pdfBrowseBtn');
+        var zone = $('#pdfDropZone');
+        var fileInput = $('#pdfFileInput');
+        var browseBtn = $('#pdfBrowseBtn');
 
-        browseBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            fileInput.click();
-        });
-
-        fileInput.addEventListener('change', function() {
-            addPdfFiles(Array.from(fileInput.files));
-            fileInput.value = '';
-        });
-
-        zone.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            zone.classList.add('drag-over');
-        });
-        zone.addEventListener('dragleave', function() {
-            zone.classList.remove('drag-over');
-        });
+        browseBtn.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); fileInput.click(); });
+        fileInput.addEventListener('change', function() { addPdfFiles(Array.from(fileInput.files)); fileInput.value = ''; });
+        zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('drag-over'); });
+        zone.addEventListener('dragleave', function() { zone.classList.remove('drag-over'); });
         zone.addEventListener('drop', function(e) {
-            e.preventDefault();
-            zone.classList.remove('drag-over');
-            var files = Array.from(e.dataTransfer.files).filter(function(f) {
-                return /\.pdf$/i.test(f.name);
-            });
-            addPdfFiles(files);
+            e.preventDefault(); zone.classList.remove('drag-over');
+            addPdfFiles(Array.from(e.dataTransfer.files).filter(function(f) { return /\.pdf$/i.test(f.name); }));
         });
     }
 
     function addPdfFiles(files) {
-        var existingNames = new Set(state.pdfs.map(function(f) { return f.name; }));
-        for (var i = 0; i < files.length; i++) {
-            if (!existingNames.has(files[i].name)) {
-                state.pdfs.push(files[i]);
-            }
-        }
-        renderPdfList();
-        refreshButtons();
+        var existing = new Set(genState.pdfs.map(function(f) { return f.name; }));
+        for (var i = 0; i < files.length; i++) { if (!existing.has(files[i].name)) genState.pdfs.push(files[i]); }
+        renderDropList('#pdfList', genState.pdfs, '.pdf', function(idx) { genState.pdfs.splice(idx, 1); renderDropList('#pdfList', genState.pdfs, '.pdf', arguments.callee); refreshGenButtons(); });
+        refreshGenButtons();
     }
 
-    function removePdf(index) {
-        state.pdfs.splice(index, 1);
-        renderPdfList();
-        refreshButtons();
-    }
-
-    function renderPdfList() {
-        var list = $('#pdfList');
+    function renderDropList(selector, files, ext, onRemove) {
+        var list = $(selector);
         list.innerHTML = '';
-        if (!state.pdfs.length) return;
-
-        for (var i = 0; i < state.pdfs.length; i++) {
+        for (var i = 0; i < files.length; i++) {
             (function(idx) {
-                var f = state.pdfs[idx];
+                var f = files[idx];
                 var tag = document.createElement('div');
                 tag.className = 'pdf-tag';
-
-                var codeSpan = document.createElement('span');
-                codeSpan.className = 'pdf-tag-code';
-                codeSpan.textContent = f.name.replace(/\.pdf$/i, '');
-                tag.appendChild(codeSpan);
-
-                var sizeSpan = document.createElement('span');
-                sizeSpan.className = 'pdf-tag-size';
-                sizeSpan.textContent = formatSize(f.size);
-                tag.appendChild(sizeSpan);
-
-                var removeBtn = document.createElement('button');
-                removeBtn.className = 'pdf-tag-remove';
-                removeBtn.textContent = '\u00d7';
-                removeBtn.title = 'Quitar';
-                removeBtn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    removePdf(idx);
-                });
-                tag.appendChild(removeBtn);
-
+                tag.innerHTML = '<span class="pdf-tag-code">' + escapeHtml(f.name.replace(new RegExp(ext.replace('.', '\\.') + '$', 'i'), '')) + '</span>' +
+                    '<span class="pdf-tag-size">' + formatSize(f.size) + '</span>';
+                var btn = document.createElement('button');
+                btn.className = 'pdf-tag-remove';
+                btn.textContent = '×';
+                btn.title = 'Quitar';
+                btn.addEventListener('click', function(e) { e.stopPropagation(); onRemove(idx); });
+                tag.appendChild(btn);
                 list.appendChild(tag);
             })(i);
         }
     }
 
-    // --- Buttons ---
-
-    function wireButtons() {
-        $('#btnRun').addEventListener('click', run);
-        $('#btnDownloadAll').addEventListener('click', downloadAllAsZip);
+    function refreshGenButtons() {
+        $('#btnRun').disabled = !genState.matrix;
     }
 
-    function refreshButtons() {
-        var ready = !!state.matrix;
-        $('#btnRun').disabled = !ready;
-    }
-
-    // --- Run pipeline ---
-
-    async function run() {
+    async function runGenerate() {
         var statusEl = $('#status');
         statusEl.className = 'status active';
-        statusEl.textContent = '\u27f3 Procesando...';
+        statusEl.textContent = '⟳ Procesando...';
 
         var options = {
             embedPdf: $('#optEmbedPdf').checked,
@@ -255,11 +174,11 @@
         try {
             var t0 = performance.now();
             var out = await InsPipelineBundle.runAll({
-                matrixFile:       state.matrix,
-                pdfFiles:         state.pdfs,
-                catalogsFile:     state.catalogs,
-                clientJsonFile:   state.client,
-                lovableJsonFiles: state.lovableJsons
+                matrixFile: genState.matrix,
+                pdfFiles: genState.pdfs,
+                catalogsFile: genState.catalogs,
+                clientJsonFile: genState.client,
+                lovableJsonFiles: genState.lovableJsons
             }, options);
             var t1 = performance.now();
 
@@ -267,9 +186,9 @@
             renderResults(out.results);
             renderWarnings(out.results, $('#optVerbose').checked);
 
-            var isEnrich = state.lovableJsons.length > 0;
+            var isEnrich = genState.lovableJsons.length > 0;
             var modeLabel = isEnrich ? 'enriquecido(s)' : 'generado(s)';
-            var msg = '\u2713 Listo. ' + out.results.length + ' JSON ' + modeLabel + ' en ' + Math.round(t1 - t0) + 'ms.';
+            var msg = '✓ Listo. ' + out.results.length + ' JSON ' + modeLabel + ' en ' + Math.round(t1 - t0) + 'ms.';
             if (isEnrich) {
                 var totalStats = out.results.reduce(function(acc, r) {
                     if (r.stats) { acc.matched += r.stats.matchCount; acc.missed += r.stats.missCount; }
@@ -278,20 +197,17 @@
                 msg += ' (' + totalStats.matched + ' campos matcheados, ' + totalStats.missed + ' sin match)';
             }
             if (!out.hasFormCodeColumn) {
-                msg += ' (Tip: Agrega la columna "C\u00f3digo Formulario" a la matriz para agrupar campos por PDF.)';
+                msg += ' (Tip: Agrega la columna "Código Formulario" a la matriz.)';
             }
             statusEl.className = 'status active success';
             statusEl.textContent = msg;
-
             $('#btnDownloadAll').hidden = out.results.length < 2;
         } catch (err) {
             console.error(err);
             statusEl.className = 'status active error';
-            statusEl.textContent = '\u2717 ' + err.message;
+            statusEl.textContent = '✗ ' + err.message;
         }
     }
-
-    // --- Render results ---
 
     function renderResults(results) {
         var panel = $('#resultsPanel');
@@ -311,9 +227,9 @@
                     '<div class="meta">' +
                         '<span class="product-id">' + escapeHtml(r.formCode) + '</span>' +
                         '<span class="product-stats">' +
-                            fieldCount + ' campos \u00b7 ' + sections.length + ' secciones' +
-                            ' \u00b7 ' + r.warnings.length + ' warnings' +
-                            ' \u00b7 ' + r.issues.length + ' prefillKey mismatches' +
+                            fieldCount + ' campos · ' + sections.length + ' secciones' +
+                            ' · ' + r.warnings.length + ' warnings' +
+                            ' · ' + r.issues.length + ' prefillKey mismatches' +
                         '</span>' +
                     '</div>' +
                     '<div class="buttons">' +
@@ -341,7 +257,6 @@
         var panel = $('#warningsPanel');
         var summary = $('#warningsSummary');
         var log = $('#warningsLog');
-
         var lines = [];
         var totalW = 0;
         var totalI = 0;
@@ -352,37 +267,28 @@
             totalI += r.issues.length;
             if (!verbose && !r.warnings.length && !r.issues.length) continue;
 
-            lines.push('\u2500\u2500 ' + r.formCode + ' \u2500\u2500');
+            lines.push('── ' + r.formCode + ' ──');
             for (var wi = 0; wi < r.warnings.length; wi++) {
                 var w = r.warnings[wi];
-                lines.push('  [' + w.stage + ':' + w.type + '] ' + (w.field || '') + ' \u2014 ' + (w.reason || ''));
+                lines.push('  [' + w.stage + ':' + w.type + '] ' + (w.field || '') + ' — ' + (w.reason || ''));
             }
             for (var ii = 0; ii < r.issues.length; ii++) {
                 var issue = r.issues[ii];
-                lines.push('  [prefillKey] ' + issue.field + ' (' + issue.prefillKey + ') \u2014 ' + issue.reason);
+                lines.push('  [prefillKey] ' + issue.field + ' (' + issue.prefillKey + ') — ' + issue.reason);
             }
             lines.push('');
         }
 
-        if (totalW === 0 && totalI === 0) {
-            panel.hidden = true;
-            return;
-        }
+        if (totalW === 0 && totalI === 0) { panel.hidden = true; return; }
         panel.hidden = false;
-        summary.textContent = totalW + ' warnings \u00b7 ' + totalI + ' prefillKey mismatches';
+        summary.textContent = totalW + ' warnings · ' + totalI + ' prefillKey mismatches';
         log.textContent = lines.join('\n') || 'Sin detalles.';
     }
 
-    // --- Download all as ZIP ---
-
     async function downloadAllAsZip() {
         if (!lastResults || lastResults.length < 2) return;
-        // Inline minimal ZIP builder (no dependencies)
         var files = lastResults.map(function(r) {
-            return {
-                name: r.formCode + '.json',
-                content: JSON.stringify(r.json, null, 2)
-            };
+            return { name: r.formCode + '.json', content: JSON.stringify(r.json, null, 2) };
         });
         var blob = buildZipBlob(files);
         InsPipelineBundle.downloadBlob(blob, 'lovable-jsons.zip');
@@ -392,105 +298,218 @@
         var localHeaders = [];
         var centralHeaders = [];
         var offset = 0;
-
         for (var i = 0; i < files.length; i++) {
             var nameBytes = new TextEncoder().encode(files[i].name);
             var contentBytes = new TextEncoder().encode(files[i].content);
             var crc = crc32(contentBytes);
-
-            // Local file header
             var local = new Uint8Array(30 + nameBytes.length + contentBytes.length);
             var lv = new DataView(local.buffer);
-            lv.setUint32(0, 0x04034b50, true); // sig
-            lv.setUint16(4, 20, true); // version
-            lv.setUint16(6, 0, true);  // flags
-            lv.setUint16(8, 0, true);  // compression (store)
-            lv.setUint16(10, 0, true); // mod time
-            lv.setUint16(12, 0, true); // mod date
-            lv.setUint32(14, crc, true);
-            lv.setUint32(18, contentBytes.length, true); // compressed
-            lv.setUint32(22, contentBytes.length, true); // uncompressed
-            lv.setUint16(26, nameBytes.length, true);
-            lv.setUint16(28, 0, true); // extra length
-            local.set(nameBytes, 30);
-            local.set(contentBytes, 30 + nameBytes.length);
+            lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint16(6, 0, true);
+            lv.setUint16(8, 0, true); lv.setUint16(10, 0, true); lv.setUint16(12, 0, true);
+            lv.setUint32(14, crc, true); lv.setUint32(18, contentBytes.length, true);
+            lv.setUint32(22, contentBytes.length, true); lv.setUint16(26, nameBytes.length, true);
+            lv.setUint16(28, 0, true); local.set(nameBytes, 30); local.set(contentBytes, 30 + nameBytes.length);
             localHeaders.push(local);
-
-            // Central directory header
             var central = new Uint8Array(46 + nameBytes.length);
             var cv = new DataView(central.buffer);
-            cv.setUint32(0, 0x02014b50, true);
-            cv.setUint16(4, 20, true);
-            cv.setUint16(6, 20, true);
-            cv.setUint16(8, 0, true);
-            cv.setUint16(10, 0, true);
-            cv.setUint16(12, 0, true);
-            cv.setUint16(14, 0, true);
-            cv.setUint32(16, crc, true);
-            cv.setUint32(20, contentBytes.length, true);
-            cv.setUint32(24, contentBytes.length, true);
-            cv.setUint16(28, nameBytes.length, true);
-            cv.setUint16(30, 0, true);
-            cv.setUint16(32, 0, true);
-            cv.setUint16(34, 0, true);
-            cv.setUint16(36, 0, true);
-            cv.setUint32(38, 0x20, true); // external attrs
-            cv.setUint32(42, offset, true);
-            central.set(nameBytes, 46);
-            centralHeaders.push(central);
-
+            cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true);
+            cv.setUint16(8, 0, true); cv.setUint16(10, 0, true); cv.setUint16(12, 0, true);
+            cv.setUint16(14, 0, true); cv.setUint32(16, crc, true); cv.setUint32(20, contentBytes.length, true);
+            cv.setUint32(24, contentBytes.length, true); cv.setUint16(28, nameBytes.length, true);
+            cv.setUint16(30, 0, true); cv.setUint16(32, 0, true); cv.setUint16(34, 0, true);
+            cv.setUint16(36, 0, true); cv.setUint32(38, 0x20, true); cv.setUint32(42, offset, true);
+            central.set(nameBytes, 46); centralHeaders.push(central);
             offset += local.length;
         }
-
         var centralSize = centralHeaders.reduce(function(s, c) { return s + c.length; }, 0);
-        // End of central directory
         var eocd = new Uint8Array(22);
         var ev = new DataView(eocd.buffer);
-        ev.setUint32(0, 0x06054b50, true);
-        ev.setUint16(4, 0, true);
-        ev.setUint16(6, 0, true);
-        ev.setUint16(8, files.length, true);
-        ev.setUint16(10, files.length, true);
-        ev.setUint32(12, centralSize, true);
-        ev.setUint32(16, offset, true);
-        ev.setUint16(20, 0, true);
-
-        var parts = localHeaders.concat(centralHeaders).concat([eocd]);
-        return new Blob(parts, { type: 'application/zip' });
+        ev.setUint32(0, 0x06054b50, true); ev.setUint16(4, 0, true); ev.setUint16(6, 0, true);
+        ev.setUint16(8, files.length, true); ev.setUint16(10, files.length, true);
+        ev.setUint32(12, centralSize, true); ev.setUint32(16, offset, true); ev.setUint16(20, 0, true);
+        return new Blob(localHeaders.concat(centralHeaders).concat([eocd]), { type: 'application/zip' });
     }
 
     function crc32(bytes) {
         var table = crc32.table;
         if (!table) {
             table = crc32.table = new Uint32Array(256);
-            for (var n = 0; n < 256; n++) {
-                var c = n;
-                for (var k = 0; k < 8; k++) {
-                    c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-                }
-                table[n] = c;
-            }
+            for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) { c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); } table[n] = c; }
         }
         var crc = 0xFFFFFFFF;
-        for (var i = 0; i < bytes.length; i++) {
-            crc = table[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
-        }
+        for (var i = 0; i < bytes.length; i++) { crc = table[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8); }
         return (crc ^ 0xFFFFFFFF) >>> 0;
     }
 
-    // --- Utilities ---
+    // ==================== CONVERT PDF FLOW ====================
 
-    function formatSize(n) {
-        if (n < 1024) return n + ' B';
-        if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
-        return (n / 1024 / 1024).toFixed(1) + ' MB';
-    }
+    var convState = {
+        pdf: null,
+        excel: null,
+        refJson: null,
+        pdfBytes: null,
+        matches: null
+    };
 
-    function escapeHtml(s) {
-        return s.replace(/[&<>"']/g, function(c) {
-            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+    function initConvertPdfFlow() {
+        $('#convPdfInput').addEventListener('change', function(e) {
+            convState.pdf = e.target.files[0] || null;
+            updateConvFileStatus('convPdfStatus', convState.pdf);
+            refreshConvButtons();
+        });
+        $('#convExcelInput').addEventListener('change', function(e) {
+            convState.excel = e.target.files[0] || null;
+            updateConvFileStatus('convExcelStatus', convState.excel);
+            refreshConvButtons();
+        });
+        $('#convRefInput').addEventListener('change', function(e) {
+            convState.refJson = e.target.files[0] || null;
+            updateConvFileStatus('convRefStatus', convState.refJson);
+        });
+
+        $('#btnAnalyze').addEventListener('click', runAnalysis);
+        $('#btnGeneratePdf').addEventListener('click', runExport);
+        $('#filterUnmatched').addEventListener('change', function() {
+            renderMatchTable(convState.matches, this.checked);
         });
     }
+
+    function updateConvFileStatus(id, file) {
+        var el = $('#' + id);
+        var slot = el.closest('.file-slot');
+        if (file) {
+            slot.classList.add('loaded');
+            el.textContent = '✓ ' + file.name + ' (' + formatSize(file.size) + ')';
+        } else {
+            slot.classList.remove('loaded');
+            el.textContent = '';
+        }
+    }
+
+    function refreshConvButtons() {
+        $('#btnAnalyze').disabled = !(convState.pdf && convState.excel);
+    }
+
+    async function runAnalysis() {
+        var statusEl = $('#convStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Analizando PDF...';
+
+        try {
+            var t0 = performance.now();
+            var result = await InsPipelineBundle.runConvertAnalysis({
+                pdfFile: convState.pdf,
+                matrixFile: convState.excel,
+                referenceJsonFile: convState.refJson
+            });
+            var t1 = performance.now();
+
+            convState.pdfBytes = result.pdfBytes;
+            convState.matches = result.matches;
+
+            renderMatchTable(result.matches, false);
+            renderConvWarnings(result.warnings);
+
+            var s = result.stats;
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ Analisis completo en ' + Math.round(t1 - t0) + 'ms. ' +
+                s.totalFields + ' campos, ' + s.withLabel + ' con label, ' +
+                s.matched + ' matcheados, ' + s.unchanged + ' sin match.';
+
+            $('#matchTablePanel').hidden = false;
+            $('#convExportPanel').hidden = false;
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
+    }
+
+    function renderMatchTable(matches, filterUnmatched) {
+        var tbody = $('#matchTableBody');
+        tbody.innerHTML = '';
+
+        var shown = filterUnmatched
+            ? matches.filter(function(m) { return m.source === 'unchanged'; })
+            : matches;
+
+        var stats = $('#matchStats');
+        var matched = matches.filter(function(m) { return m.source !== 'unchanged'; }).length;
+        stats.textContent = matched + '/' + matches.length + ' matcheados';
+
+        for (var i = 0; i < shown.length; i++) {
+            (function(m, idx) {
+                var globalIdx = matches.indexOf(m);
+                var tr = document.createElement('tr');
+                if (m.source === 'unchanged') tr.className = 'row-unchanged';
+
+                var confClass = m.confidence >= 80 ? 'conf-high' : (m.confidence >= 50 ? 'conf-mid' : 'conf-low');
+
+                tr.innerHTML =
+                    '<td>' + (m.page + 1) + '</td>' +
+                    '<td class="original-name">' + escapeHtml(m.originalName) + '</td>' +
+                    '<td class="detected-label">' + escapeHtml(m.detectedLabel || '—') + '</td>' +
+                    '<td></td>' +
+                    '<td><span class="source-badge ' + m.source + '">' + escapeHtml(m.source) + '</span></td>' +
+                    '<td class="conf ' + confClass + '">' + m.confidence + '</td>';
+
+                var nameCell = tr.children[3];
+                var input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'name-input';
+                input.value = m.newName;
+                input.addEventListener('change', function() {
+                    matches[globalIdx].newName = this.value.trim() || m.originalName;
+                    if (matches[globalIdx].newName !== m.originalName) {
+                        matches[globalIdx].source = 'manual';
+                        matches[globalIdx].confidence = 100;
+                    }
+                });
+                nameCell.appendChild(input);
+
+                tbody.appendChild(tr);
+            })(shown[i], i);
+        }
+    }
+
+    function renderConvWarnings(warnings) {
+        var panel = $('#convWarningsPanel');
+        if (!warnings.length) { panel.hidden = true; return; }
+
+        panel.hidden = false;
+        $('#convWarningsSummary').textContent = warnings.length + ' warnings';
+        var lines = warnings.map(function(w) {
+            return '  [' + (w.type || 'warn') + '] ' + (w.field || '') + ' — ' + (w.reason || '');
+        });
+        $('#convWarningsLog').textContent = lines.join('\n');
+    }
+
+    async function runExport() {
+        var statusEl = $('#convExportStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Generando PDF...';
+
+        try {
+            var result = await InsPipelineBundle.runConvertGenerate(convState.pdfBytes, convState.matches);
+
+            var blob = new Blob([result.pdfBytes], { type: 'application/pdf' });
+            var fileName = (convState.pdf ? convState.pdf.name.replace(/\.pdf$/i, '') : 'converted') + '_renamed.pdf';
+            InsPipelineBundle.downloadBlob(blob, fileName);
+
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ PDF generado. ' + result.renamedCount + ' campos renombrados. Descargando...';
+
+            if (result.warnings.length) {
+                renderConvWarnings(result.warnings);
+            }
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
+    }
+
+    // ==================== INIT ====================
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);

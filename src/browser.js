@@ -5,6 +5,7 @@
 'use strict';
 
 const { runPipelineAll, runEnrichAll } = require('./pipeline');
+const { analyzePdf, generatePdf } = require('./pdf-converter/pipeline-convert-pdf');
 
 async function fileToUint8Array(file) {
     const ab = await file.arrayBuffer();
@@ -108,8 +109,26 @@ function downloadBlob(blob, fileName) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-if (typeof window !== 'undefined') {
-    window.InsPipeline = { runAll, jsonToBlob, downloadBlob };
+async function runConvertAnalysis(inputs) {
+    const { pdfFile, matrixFile, referenceJsonFile } = inputs;
+    if (!pdfFile) throw new Error('PDF file is required');
+    if (!matrixFile) throw new Error('Excel matrix is required');
+
+    const pdfBytes = await fileToUint8Array(pdfFile);
+    const excelBuffer = await fileToUint8Array(matrixFile);
+    const referenceJsonText = referenceJsonFile ? await fileToText(referenceJsonFile) : null;
+
+    const result = await analyzePdf({ pdfBytes, excelBuffer, referenceJsonText });
+    return { ...result, pdfBytes };
 }
 
-module.exports = { runAll, jsonToBlob, downloadBlob };
+async function runConvertGenerate(pdfBytes, finalMatches) {
+    const result = await generatePdf(pdfBytes, finalMatches);
+    return result;
+}
+
+if (typeof window !== 'undefined') {
+    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate };
+}
+
+module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate };

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>INS Lovable JSON Generator</title>
+    <title>INS Form Tools</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -11,130 +11,228 @@
         <div class="brand">
             <div class="logo">INS</div>
             <div class="titles">
-                <h1>Lovable JSON Generator</h1>
-                <p>Matriz Excel + PDFs + JSON Lovable → JSON completo</p>
+                <h1>Form Tools</h1>
+                <p>Convertir PDFs + Generar JSON Lovable</p>
             </div>
         </div>
-        <a class="repo-link" href="https://github.com/MarcosLancellotti2225/FormConverterExcel" target="_blank">repo</a>
+        <div class="topbar-right">
+            <button id="btnBackToHome" class="secondary btn-sm" hidden>Volver al inicio</button>
+            <a class="repo-link" href="https://github.com/MarcosLancellotti2225/FormConverterExcel" target="_blank">repo</a>
+        </div>
     </header>
 
     <main>
-        <!-- INSTRUCTIVO -->
-        <section class="panel instructivo">
-            <details>
-                <summary><strong>Instructivo rápido</strong> (click para expandir)</summary>
-                <ol>
-                    <li><strong>Preparar la Matriz Excel:</strong> Agregar una columna <code>Código Formulario</code> que identifique a qué formulario pertenece cada fila. El valor debe coincidir con el nombre del archivo PDF (sin la extensión <code>.pdf</code>). Las filas con valor vacío o "Todos" se incluyen en todos los formularios.</li>
-                    <li><strong>Subir la Matriz:</strong> Hacer click o arrastrar el archivo <code>.xlsx</code> en el slot "Matriz Excel".</li>
-                    <li><strong>(Opcional) JSON Lovable:</strong> Si ya tenés un JSON generado por Lovable (escaneando el PDF), subilo para usar el <strong>modo enriquecimiento</strong>: el JSON Lovable provee las coordenadas y campos del PDF, y el Excel agrega reglas, validaciones, opciones y prefillKeys. El código de formulario se extrae de <code>_sourcePdf.fileName</code>.</li>
-                    <li><strong>Subir los PDFs:</strong> Arrastrar uno o más archivos <code>.pdf</code> a la zona de PDFs. El nombre del archivo (ej: <code>1009052.pdf</code>) se usa como código para vincular con la columna <code>Código Formulario</code> de la matriz.</li>
-                    <li><strong>(Opcional) Catálogos:</strong> Si tenés un Excel de catálogos, subilo para enriquecer los options de combos/selects.</li>
-                    <li><strong>(Opcional) JSON cliente:</strong> Subilo para validar que los prefillKey existan en la estructura del cliente.</li>
-                    <li><strong>Generar:</strong> Click en "Generar JSON" para producir un JSON Lovable por cada PDF o JSON Lovable cargado.</li>
-                    <li><strong>Descargar:</strong> Descargá cada JSON individualmente o todos juntos en ZIP.</li>
-                </ol>
-            </details>
-        </section>
-
-        <!-- PASO 1: INSUMOS -->
-        <section class="panel">
-            <h2>1. Insumos</h2>
-            <p class="hint">Solo la matriz es obligatoria. Catálogos, PDFs y JSON cliente son opcionales.</p>
-
-            <div class="inputs-grid">
-                <label class="file-slot required" data-slot="matrix">
-                    <span class="label">Matriz Excel</span>
-                    <span class="desc">Con columna "Código Formulario"</span>
-                    <input type="file" accept=".xlsx,.xls" data-input="matrix">
-                    <span class="file-status"></span>
-                </label>
-
-                <label class="file-slot" data-slot="catalogs">
-                    <span class="label">Catálogos Excel (opcional)</span>
-                    <span class="desc">Enriquece opciones de selects</span>
-                    <input type="file" accept=".xlsx,.xls" data-input="catalogs">
-                    <span class="file-status"></span>
-                </label>
-
-                <label class="file-slot" data-slot="client">
-                    <span class="label">JSON cliente (opcional)</span>
-                    <span class="desc">Valida prefillKey</span>
-                    <input type="file" accept=".txt,.json" data-input="client">
-                    <span class="file-status"></span>
-                </label>
+        <!-- ============ MODE SELECTOR ============ -->
+        <div id="modeSelector" class="mode-grid">
+            <div class="mode-card" data-mode="convert-pdf">
+                <div class="mode-icon">PDF</div>
+                <h2>Convertir PDF</h2>
+                <p>Renombra los campos AcroForm de un PDF "feo" (Text3, Check Box4) a nombres semanticos (lugar, primer_apellido) usando el Excel como diccionario.</p>
+                <button class="primary">Empezar</button>
             </div>
+            <div class="mode-card" data-mode="generate-json">
+                <div class="mode-icon">JSON</div>
+                <h2>Generar JSON Lovable</h2>
+                <p>Genera JSONs en formato Lovable a partir de la Matriz Excel + PDFs. Opcionalmente enriquece un JSON Lovable existente.</p>
+                <button class="primary">Empezar</button>
+            </div>
+        </div>
 
-            <h3 class="subhead">JSON Lovable (opcional — arrastrá uno o más)</h3>
-            <p class="hint">Si cargás JSONs de Lovable, se usa el modo "enriquecimiento": el JSON Lovable provee las coordenadas y el Excel agrega reglas, validaciones y prefillKeys.</p>
-            <div id="lovableDropZone" class="pdf-drop-zone">
-                <input type="file" id="lovableFileInput" accept=".json" multiple hidden>
-                <div class="drop-label">
-                    <span class="drop-icon">+</span>
-                    <span>Arrastrá JSONs Lovable aquí o <button type="button" id="lovableBrowseBtn" class="link-btn">buscá archivos</button></span>
+        <!-- ============ CONVERT PDF FLOW ============ -->
+        <div id="convertPdfFlow" hidden>
+            <section class="panel">
+                <h2>1. Archivos</h2>
+                <p class="hint">El PDF y la Matriz son obligatorios. El JSON de referencia es opcional (si tenes un JSON de otro PDF del mismo formulario con nombres buenos).</p>
+
+                <div class="inputs-grid">
+                    <label class="file-slot required" data-slot="conv-pdf">
+                        <span class="label">PDF original</span>
+                        <span class="desc">El PDF con nombres AcroForm feos</span>
+                        <input type="file" accept=".pdf" id="convPdfInput">
+                        <span class="file-status" id="convPdfStatus"></span>
+                    </label>
+
+                    <label class="file-slot required" data-slot="conv-excel">
+                        <span class="label">Matriz Excel</span>
+                        <span class="desc">Columnas: Nombre en PDF, Nombre del Campo en PDF</span>
+                        <input type="file" accept=".xlsx,.xls" id="convExcelInput">
+                        <span class="file-status" id="convExcelStatus"></span>
+                    </label>
+
+                    <label class="file-slot" data-slot="conv-ref">
+                        <span class="label">JSON Lovable referencia (opcional)</span>
+                        <span class="desc">Diccionario posicional de un PDF bueno</span>
+                        <input type="file" accept=".json" id="convRefInput">
+                        <span class="file-status" id="convRefStatus"></span>
+                    </label>
                 </div>
-                <div id="lovableList" class="pdf-list"></div>
-            </div>
+            </section>
 
-            <h3 class="subhead">PDFs (opcional — arrastrá uno o más)</h3>
-            <div id="pdfDropZone" class="pdf-drop-zone">
-                <input type="file" id="pdfFileInput" accept=".pdf" multiple hidden>
-                <div class="drop-label">
-                    <span class="drop-icon">+</span>
-                    <span>Arrastrá PDFs aquí o <button type="button" id="pdfBrowseBtn" class="link-btn">buscá archivos</button></span>
+            <section class="panel">
+                <h2>2. Analizar</h2>
+                <div class="actions">
+                    <button id="btnAnalyze" class="primary" disabled>Analizar PDF</button>
                 </div>
-                <div id="pdfList" class="pdf-list"></div>
-            </div>
-        </section>
+                <div id="convStatus" class="status"></div>
+            </section>
 
-        <!-- PASO 2: OPCIONES -->
-        <section class="panel">
-            <h2>2. Opciones</h2>
-            <div class="options">
-                <label class="toggle">
-                    <input type="checkbox" id="optEmbedPdf" checked>
-                    <span>Incrustar PDF en <code>_sourcePdf.b64</code></span>
-                </label>
-                <label class="toggle">
-                    <input type="checkbox" id="optVerbose">
-                    <span>Mostrar todos los warnings</span>
-                </label>
-                <label class="select-row">
-                    <span>Estrategia de secciones</span>
-                    <select id="optStrategy">
-                        <option value="pdf_page" selected>Por página del PDF (sec_page_N)</option>
-                        <option value="logical">Lógicas (Paso + Sección)</option>
-                    </select>
-                </label>
-            </div>
-        </section>
+            <section class="panel" id="matchTablePanel" hidden>
+                <h2>3. Tabla de Match</h2>
+                <p class="hint">Revisa y edita los nombres propuestos. Los campos sin match estan resaltados.</p>
+                <div class="match-filters">
+                    <span id="matchStats" class="match-stats"></span>
+                    <label class="toggle toggle-sm">
+                        <input type="checkbox" id="filterUnmatched">
+                        <span>Solo sin match</span>
+                    </label>
+                </div>
+                <div class="match-table-wrap">
+                    <table id="matchTable" class="match-table">
+                        <thead>
+                            <tr>
+                                <th>Pag</th>
+                                <th>Nombre Original</th>
+                                <th>Label Detectado</th>
+                                <th>Nombre Nuevo</th>
+                                <th>Fuente</th>
+                                <th>Conf.</th>
+                            </tr>
+                        </thead>
+                        <tbody id="matchTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
 
-        <!-- PASO 3: GENERAR -->
-        <section class="panel">
-            <h2>3. Generar</h2>
-            <div class="actions">
-                <button id="btnRun" class="primary" disabled>Generar JSON</button>
-                <button id="btnDownloadAll" class="secondary" hidden>Descargar todos (.zip)</button>
-            </div>
-            <div id="status" class="status"></div>
-        </section>
+            <section class="panel" id="convExportPanel" hidden>
+                <h2>4. Exportar</h2>
+                <div class="actions">
+                    <button id="btnGeneratePdf" class="primary">Generar y descargar PDF</button>
+                </div>
+                <div id="convExportStatus" class="status"></div>
+            </section>
 
-        <!-- PASO 4: RESULTADOS -->
-        <section class="panel" id="resultsPanel" hidden>
-            <h2>4. Resultados</h2>
-            <div id="results"></div>
-        </section>
+            <section class="panel" id="convWarningsPanel" hidden>
+                <h2>Warnings</h2>
+                <details open>
+                    <summary id="convWarningsSummary"></summary>
+                    <pre id="convWarningsLog"></pre>
+                </details>
+            </section>
+        </div>
 
-        <section class="panel" id="warningsPanel" hidden>
-            <h2>Warnings</h2>
-            <details open>
-                <summary id="warningsSummary"></summary>
-                <pre id="warningsLog"></pre>
-            </details>
-        </section>
+        <!-- ============ GENERATE JSON FLOW ============ -->
+        <div id="generateJsonFlow" hidden>
+            <section class="panel instructivo">
+                <details>
+                    <summary><strong>Instructivo rapido</strong> (click para expandir)</summary>
+                    <ol>
+                        <li><strong>Preparar la Matriz Excel:</strong> Agregar una columna <code>Codigo Formulario</code> que identifique a que formulario pertenece cada fila.</li>
+                        <li><strong>Subir la Matriz:</strong> Hacer click o arrastrar el archivo <code>.xlsx</code>.</li>
+                        <li><strong>(Opcional) JSON Lovable:</strong> Si ya tenes un JSON de Lovable, subilo para modo enriquecimiento.</li>
+                        <li><strong>Subir los PDFs:</strong> Arrastrar uno o mas archivos <code>.pdf</code>.</li>
+                        <li><strong>(Opcional) Catalogos:</strong> Subilo para enriquecer options de selects.</li>
+                        <li><strong>(Opcional) JSON cliente:</strong> Subilo para validar prefillKey.</li>
+                        <li><strong>Generar:</strong> Click en "Generar JSON".</li>
+                    </ol>
+                </details>
+            </section>
+
+            <section class="panel">
+                <h2>1. Insumos</h2>
+                <p class="hint">Solo la matriz es obligatoria. Catalogos, PDFs y JSON cliente son opcionales.</p>
+
+                <div class="inputs-grid">
+                    <label class="file-slot required" data-slot="matrix">
+                        <span class="label">Matriz Excel</span>
+                        <span class="desc">Con columna "Codigo Formulario"</span>
+                        <input type="file" accept=".xlsx,.xls" data-input="matrix">
+                        <span class="file-status"></span>
+                    </label>
+
+                    <label class="file-slot" data-slot="catalogs">
+                        <span class="label">Catalogos Excel (opcional)</span>
+                        <span class="desc">Enriquece opciones de selects</span>
+                        <input type="file" accept=".xlsx,.xls" data-input="catalogs">
+                        <span class="file-status"></span>
+                    </label>
+
+                    <label class="file-slot" data-slot="client">
+                        <span class="label">JSON cliente (opcional)</span>
+                        <span class="desc">Valida prefillKey</span>
+                        <input type="file" accept=".txt,.json" data-input="client">
+                        <span class="file-status"></span>
+                    </label>
+                </div>
+
+                <h3 class="subhead">JSON Lovable (opcional)</h3>
+                <p class="hint">Si cargas JSONs de Lovable, se usa el modo "enriquecimiento".</p>
+                <div id="lovableDropZone" class="pdf-drop-zone">
+                    <input type="file" id="lovableFileInput" accept=".json" multiple hidden>
+                    <div class="drop-label">
+                        <span class="drop-icon">+</span>
+                        <span>Arrastra JSONs Lovable aqui o <button type="button" id="lovableBrowseBtn" class="link-btn">busca archivos</button></span>
+                    </div>
+                    <div id="lovableList" class="pdf-list"></div>
+                </div>
+
+                <h3 class="subhead">PDFs (opcional)</h3>
+                <div id="pdfDropZone" class="pdf-drop-zone">
+                    <input type="file" id="pdfFileInput" accept=".pdf" multiple hidden>
+                    <div class="drop-label">
+                        <span class="drop-icon">+</span>
+                        <span>Arrastra PDFs aqui o <button type="button" id="pdfBrowseBtn" class="link-btn">busca archivos</button></span>
+                    </div>
+                    <div id="pdfList" class="pdf-list"></div>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>2. Opciones</h2>
+                <div class="options">
+                    <label class="toggle">
+                        <input type="checkbox" id="optEmbedPdf" checked>
+                        <span>Incrustar PDF en <code>_sourcePdf.b64</code></span>
+                    </label>
+                    <label class="toggle">
+                        <input type="checkbox" id="optVerbose">
+                        <span>Mostrar todos los warnings</span>
+                    </label>
+                    <label class="select-row">
+                        <span>Estrategia de secciones</span>
+                        <select id="optStrategy">
+                            <option value="pdf_page" selected>Por pagina del PDF (sec_page_N)</option>
+                            <option value="logical">Logicas (Paso + Seccion)</option>
+                        </select>
+                    </label>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>3. Generar</h2>
+                <div class="actions">
+                    <button id="btnRun" class="primary" disabled>Generar JSON</button>
+                    <button id="btnDownloadAll" class="secondary" hidden>Descargar todos (.zip)</button>
+                </div>
+                <div id="status" class="status"></div>
+            </section>
+
+            <section class="panel" id="resultsPanel" hidden>
+                <h2>4. Resultados</h2>
+                <div id="results"></div>
+            </section>
+
+            <section class="panel" id="warningsPanel" hidden>
+                <h2>Warnings</h2>
+                <details open>
+                    <summary id="warningsSummary"></summary>
+                    <pre id="warningsLog"></pre>
+                </details>
+            </section>
+        </div>
     </main>
 
     <footer>
-        <span>Pipeline 100% client-side — ningún archivo sale de tu browser.</span>
+        <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
     <script src="bundle.js"></script>

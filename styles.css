@@ -397,6 +397,184 @@ details summary {
 }
 details summary:hover { color: var(--text); }
 
+/* Mode selector grid */
+.mode-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    min-height: 50vh;
+    align-items: stretch;
+}
+
+.mode-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2.5rem 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 1rem;
+    transition: border-color 0.2s, transform 0.15s;
+    cursor: pointer;
+}
+.mode-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+}
+
+.mode-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+    font-size: 1rem;
+    letter-spacing: -0.02em;
+}
+.mode-card[data-mode="convert-pdf"] .mode-icon {
+    background: linear-gradient(135deg, var(--accent-amber), var(--accent-red));
+    color: #0d1117;
+}
+.mode-card[data-mode="generate-json"] .mode-icon {
+    background: linear-gradient(135deg, var(--accent-teal), var(--accent));
+    color: #0d1117;
+}
+
+.mode-card h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+.mode-card p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    line-height: 1.6;
+    max-width: 320px;
+}
+
+.topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.btn-sm {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.8rem;
+}
+
+@media (max-width: 700px) {
+    .mode-grid { grid-template-columns: 1fr; min-height: auto; }
+}
+
+/* Match table */
+.match-table-wrap {
+    overflow-x: auto;
+    margin-top: 0.75rem;
+}
+
+.match-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+}
+.match-table th {
+    text-align: left;
+    padding: 0.5rem 0.6rem;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+.match-table td {
+    padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+}
+.match-table tr:hover td {
+    background: rgba(88, 166, 255, 0.03);
+}
+
+.match-table .original-name {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+.match-table .detected-label {
+    color: var(--text);
+}
+
+.match-table input.name-input {
+    width: 100%;
+    min-width: 160px;
+    padding: 0.3rem 0.5rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+}
+.match-table input.name-input:focus {
+    border-color: var(--accent);
+    outline: none;
+}
+
+.match-table .source-badge {
+    display: inline-block;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.source-badge.excel-exact { background: rgba(63, 185, 80, 0.15); color: var(--accent-green); }
+.source-badge.excel-fuzzy { background: rgba(210, 153, 34, 0.15); color: var(--accent-amber); }
+.source-badge.reference-json { background: rgba(88, 166, 255, 0.15); color: var(--accent); }
+.source-badge.derived { background: rgba(57, 197, 207, 0.15); color: var(--accent-teal); }
+.source-badge.unchanged { background: rgba(248, 81, 73, 0.15); color: var(--accent-red); }
+
+.match-table .conf {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    text-align: center;
+}
+.conf-high { color: var(--accent-green); }
+.conf-mid { color: var(--accent-amber); }
+.conf-low { color: var(--accent-red); }
+
+.match-table tr.row-unchanged td {
+    background: rgba(248, 81, 73, 0.03);
+}
+
+.match-filters {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.match-stats {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.toggle-sm {
+    font-size: 0.8rem;
+}
+.toggle-sm input { width: 14px; height: 14px; }
+
 footer {
     text-align: center;
     padding: 2rem 1rem;
