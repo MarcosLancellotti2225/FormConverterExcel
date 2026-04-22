@@ -198,7 +198,7 @@ function deriveNameFromExcelRow(row, field) {
         let name = row.pdfFieldName;
         const rowNum = extractRowNumber(field.name);
         if (rowNum && !/_\d+_/.test(name) && !/\d$/.test(name)) {
-            name = applyBeneficiaryNumber(name, rowNum);
+            name = applyRowNumber(name, rowNum);
         }
         return sanitizeName(name);
     }
@@ -209,7 +209,7 @@ function deriveNameFromExcelRow(row, field) {
         let snake = camelToSnake(last);
         const rowNum = extractRowNumber(field.name);
         if (rowNum) {
-            snake = applyBeneficiaryNumber(snake, rowNum);
+            snake = applyRowNumber(snake, rowNum);
         }
         return sanitizeName(snake);
     }
@@ -279,12 +279,12 @@ function extractRowNumber(name) {
     return m ? parseInt(m[1], 10) : null;
 }
 
-function applyBeneficiaryNumber(name, num) {
+function applyRowNumber(name, num) {
     if (/beneficiario\d/i.test(name)) return name;
     if (/beneficiario/i.test(name)) {
         return name.replace(/beneficiario/i, `beneficiario${num}`);
     }
-    return name;
+    return name + '_' + num;
 }
 
 function toSnakeCase(str) {

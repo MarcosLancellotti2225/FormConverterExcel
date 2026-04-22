@@ -87822,7 +87822,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           let name = row.pdfFieldName;
           const rowNum = extractRowNumber(field.name);
           if (rowNum && !/_\d+_/.test(name) && !/\d$/.test(name)) {
-            name = applyBeneficiaryNumber(name, rowNum);
+            name = applyRowNumber(name, rowNum);
           }
           return sanitizeName(name);
         }
@@ -87832,7 +87832,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           let snake = camelToSnake(last);
           const rowNum = extractRowNumber(field.name);
           if (rowNum) {
-            snake = applyBeneficiaryNumber(snake, rowNum);
+            snake = applyRowNumber(snake, rowNum);
           }
           return sanitizeName(snake);
         }
@@ -87886,12 +87886,12 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const m = name.match(/Row\s*(\d+)/i) || name.match(/\.(\d+)\.\d+$/);
         return m ? parseInt(m[1], 10) : null;
       }
-      function applyBeneficiaryNumber(name, num) {
+      function applyRowNumber(name, num) {
         if (/beneficiario\d/i.test(name)) return name;
         if (/beneficiario/i.test(name)) {
           return name.replace(/beneficiario/i, `beneficiario${num}`);
         }
-        return name;
+        return name + "_" + num;
       }
       function toSnakeCase(str) {
         return normalize(str).replace(/\s+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
