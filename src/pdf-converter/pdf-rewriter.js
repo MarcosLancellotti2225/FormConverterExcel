@@ -1,6 +1,6 @@
 'use strict';
 
-const { PDFDocument, PDFName, PDFHexString } = require('pdf-lib');
+const { PDFDocument, PDFName, PDFHexString, PDFArray } = require('pdf-lib');
 
 const FIELD_TYPE_MAP = {
     PDFTextField: 'Tx',
@@ -18,6 +18,26 @@ async function rewritePdf(pdfBytes, renameMap) {
     const context = pdfDoc.context;
     const warnings = [];
 
+    const fieldCache = new Map();
+    for (const { oldName } of renameMap) {
+        if (fieldCache.has(oldName)) continue;
+        try {
+            const field = form.getField(oldName);
+            fieldCache.set(oldName, {
+                field,
+                dict: field.acroField.dict,
+                parentRef: field.acroField.dict.get(PDFName.of('Parent')),
+                ftName: FIELD_TYPE_MAP[field.constructor.name] || 'Tx',
+            });
+        } catch (err) {
+            warnings.push({
+                type: 'rename_failed',
+                field: oldName,
+                reason: `Field "${oldName}" not found: ${err.message}`
+            });
+        }
+    }
+
     const acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
     let rootFields = null;
     if (acroFormRef) {
@@ -32,13 +52,13 @@ async function rewritePdf(pdfBytes, renameMap) {
     }
 
     for (const { oldName, newName } of renameMap) {
+        const cached = fieldCache.get(oldName);
+        if (!cached) continue;
+
         try {
-            const field = form.getField(oldName);
-            const dict = field.acroField.dict;
-            const parentRef = dict.get(PDFName.of('Parent'));
+            const { dict, parentRef, ftName } = cached;
 
             if (parentRef !== undefined) {
-                const ftName = FIELD_TYPE_MAP[field.constructor.name] || 'Tx';
                 flattenField(dict, parentRef, rootFields, context, newName, ftName);
             } else if (oldName !== newName) {
                 dict.set(PDFName.of('T'), PDFHexString.fromText(newName));
@@ -110,7 +130,6 @@ function removeFromParentKids(dict, parentRef, context) {
 
     const fieldRef = context.getObjectRef(dict);
 
-    const { PDFArray } = require('pdf-lib');
     const newKids = PDFArray.withContext(context);
     for (let i = 0; i < kids.size(); i++) {
         const kidRef = kids.get(i);

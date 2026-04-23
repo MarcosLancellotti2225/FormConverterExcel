@@ -87946,7 +87946,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
   var require_pdf_rewriter = __commonJS({
     "src/pdf-converter/pdf-rewriter.js"(exports, module) {
       "use strict";
-      var { PDFDocument, PDFName, PDFHexString } = require_cjs();
+      var { PDFDocument, PDFName, PDFHexString, PDFArray } = require_cjs();
       var FIELD_TYPE_MAP = {
         PDFTextField: "Tx",
         PDFCheckBox: "Btn",
@@ -87961,6 +87961,25 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const form = pdfDoc.getForm();
         const context = pdfDoc.context;
         const warnings = [];
+        const fieldCache = /* @__PURE__ */ new Map();
+        for (const { oldName } of renameMap) {
+          if (fieldCache.has(oldName)) continue;
+          try {
+            const field = form.getField(oldName);
+            fieldCache.set(oldName, {
+              field,
+              dict: field.acroField.dict,
+              parentRef: field.acroField.dict.get(PDFName.of("Parent")),
+              ftName: FIELD_TYPE_MAP[field.constructor.name] || "Tx"
+            });
+          } catch (err) {
+            warnings.push({
+              type: "rename_failed",
+              field: oldName,
+              reason: `Field "${oldName}" not found: ${err.message}`
+            });
+          }
+        }
         const acroFormRef = pdfDoc.catalog.get(PDFName.of("AcroForm"));
         let rootFields = null;
         if (acroFormRef) {
@@ -87974,12 +87993,11 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           }
         }
         for (const { oldName, newName } of renameMap) {
+          const cached = fieldCache.get(oldName);
+          if (!cached) continue;
           try {
-            const field = form.getField(oldName);
-            const dict = field.acroField.dict;
-            const parentRef = dict.get(PDFName.of("Parent"));
+            const { dict, parentRef, ftName } = cached;
             if (parentRef !== void 0) {
-              const ftName = FIELD_TYPE_MAP[field.constructor.name] || "Tx";
               flattenField(dict, parentRef, rootFields, context, newName, ftName);
             } else if (oldName !== newName) {
               dict.set(PDFName.of("T"), PDFHexString.fromText(newName));
@@ -88038,7 +88056,6 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const kids = context.lookup(kidsVal);
         if (!kids || typeof kids.size !== "function") return;
         const fieldRef = context.getObjectRef(dict);
-        const { PDFArray } = require_cjs();
         const newKids = PDFArray.withContext(context);
         for (let i = 0; i < kids.size(); i++) {
           const kidRef = kids.get(i);
