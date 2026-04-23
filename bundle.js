@@ -87974,7 +87974,6 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           }
         }
         for (const { oldName, newName } of renameMap) {
-          if (oldName === newName) continue;
           try {
             const field = form.getField(oldName);
             const dict = field.acroField.dict;
@@ -87982,7 +87981,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             if (parentRef !== void 0) {
               const ftName = FIELD_TYPE_MAP[field.constructor.name] || "Tx";
               flattenField(dict, parentRef, rootFields, context, newName, ftName);
-            } else {
+            } else if (oldName !== newName) {
               dict.set(PDFName.of("T"), PDFHexString.fromText(newName));
             }
           } catch (err) {
@@ -88002,10 +88001,11 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         dict.delete(PDFName.of("Parent"));
         dict.set(PDFName.of("T"), PDFHexString.fromText(newName));
         if (rootFields && typeof rootFields.push === "function") {
-          const fieldRef = context.getObjectRef(dict);
-          if (fieldRef) {
-            rootFields.push(fieldRef);
+          let fieldRef = context.getObjectRef(dict);
+          if (!fieldRef) {
+            fieldRef = context.register(dict);
           }
+          rootFields.push(fieldRef);
         }
       }
       function collectInherited(dict, parentRef, context, ftName) {
@@ -88038,12 +88038,15 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const kids = context.lookup(kidsVal);
         if (!kids || typeof kids.size !== "function") return;
         const fieldRef = context.getObjectRef(dict);
-        if (!fieldRef) return;
         const { PDFArray } = require_cjs();
         const newKids = PDFArray.withContext(context);
         for (let i = 0; i < kids.size(); i++) {
           const kidRef = kids.get(i);
-          if (kidRef && kidRef.objectNumber === fieldRef.objectNumber) continue;
+          if (fieldRef && kidRef && kidRef.objectNumber === fieldRef.objectNumber) continue;
+          if (!fieldRef && kidRef) {
+            const resolved = context.lookup(kidRef);
+            if (resolved === dict) continue;
+          }
           newKids.push(kidRef);
         }
         parent.set(PDFName.of("Kids"), newKids);
@@ -88097,10 +88100,13 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const seen = /* @__PURE__ */ new Set();
         const renameMap = [];
         for (const m of finalMatches) {
-          if (m.newName === m.originalName) continue;
           if (seen.has(m.originalName)) continue;
           seen.add(m.originalName);
-          renameMap.push({ oldName: m.originalName, newName: m.newName });
+          let finalNewName = m.newName;
+          if (finalNewName === m.originalName && finalNewName.includes(".")) {
+            finalNewName = finalNewName.replace(/\./g, "_");
+          }
+          renameMap.push({ oldName: m.originalName, newName: finalNewName });
         }
         const deduped = deduplicateNames(renameMap);
         const { pdfBytes: newPdfBytes, warnings } = await rewritePdf(pdfBytes, deduped);

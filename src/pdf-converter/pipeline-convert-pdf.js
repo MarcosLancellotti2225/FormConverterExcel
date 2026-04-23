@@ -48,10 +48,13 @@ async function generatePdf(pdfBytes, finalMatches) {
     const seen = new Set();
     const renameMap = [];
     for (const m of finalMatches) {
-        if (m.newName === m.originalName) continue;
         if (seen.has(m.originalName)) continue;
         seen.add(m.originalName);
-        renameMap.push({ oldName: m.originalName, newName: m.newName });
+        let finalNewName = m.newName;
+        if (finalNewName === m.originalName && finalNewName.includes('.')) {
+            finalNewName = finalNewName.replace(/\./g, '_');
+        }
+        renameMap.push({ oldName: m.originalName, newName: finalNewName });
     }
 
     const deduped = deduplicateNames(renameMap);
