@@ -6,6 +6,7 @@
 
 const { runPipelineAll, runEnrichAll } = require('./pipeline');
 const { analyzePdf, generatePdf } = require('./pdf-converter/pipeline-convert-pdf');
+const { runEnrichPipeline } = require('./enricher/pipeline-enrich');
 
 async function fileToUint8Array(file) {
     const ab = await file.arrayBuffer();
@@ -337,8 +338,26 @@ function r(n) {
     return Math.round(n * 10) / 10;
 }
 
-if (typeof window !== 'undefined') {
-    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml };
+async function runEnrichJson(inputs) {
+    const { lovableJsonFile, matrixFile, catalogsFile, clientJsonFile } = inputs;
+    if (!lovableJsonFile) throw new Error('Lovable JSON file is required');
+    if (!matrixFile) throw new Error('Excel matrix is required');
+
+    const lovableJsonText = await fileToText(lovableJsonFile);
+    const matrixBuffer = await fileToUint8Array(matrixFile);
+    const catalogsBuffer = catalogsFile ? await fileToUint8Array(catalogsFile) : null;
+    const clientJsonText = clientJsonFile ? await fileToText(clientJsonFile) : null;
+
+    return runEnrichPipeline({
+        lovableJsonText,
+        matrixBuffer,
+        catalogsBuffer,
+        clientJsonText,
+    });
 }
 
-module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml };
+if (typeof window !== 'undefined') {
+    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson };
+}
+
+module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson };

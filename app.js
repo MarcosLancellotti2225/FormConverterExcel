@@ -12,7 +12,7 @@
     function init() {
         wireModeSelector();
         wireBackButton();
-        initGenerateJsonFlow();
+        initEnrichJsonFlow();
         initConvertPdfFlow();
         initPdfToHtmlFlow();
     }
@@ -36,7 +36,7 @@
         $('#modeSelector').hidden = !!mode;
         $('#convertPdfFlow').hidden = mode !== 'convert-pdf';
         $('#pdfToHtmlFlow').hidden = mode !== 'pdf-to-html';
-        $('#generateJsonFlow').hidden = mode !== 'generate-json';
+        $('#enrichJsonFlow').hidden = mode !== 'enrich-json';
         $('#btnBackToHome').hidden = !mode;
     }
 
@@ -52,158 +52,83 @@
         });
     }
 
-    // ==================== GENERATE JSON FLOW ====================
+    // ==================== ENRICH JSON FLOW ====================
 
-    var genState = {
+    var enrichState = {
+        lovableJson: null,
         matrix: null,
         catalogs: null,
         client: null,
-        pdfs: [],
-        lovableJsons: []
+        result: null
     };
-    var lastResults = null;
 
-    function initGenerateJsonFlow() {
-        $$('#generateJsonFlow input[data-input]').forEach(function(input) {
-            input.addEventListener('change', handleGenSingleFile);
+    function initEnrichJsonFlow() {
+        $('#enrichLovableInput').addEventListener('change', function(e) {
+            enrichState.lovableJson = e.target.files[0] || null;
+            updateEnrichFileStatus('enrichLovableStatus', enrichState.lovableJson);
+            refreshEnrichButton();
         });
-        wireLovableDropZone();
-        wirePdfDropZone();
-        $('#btnRun').addEventListener('click', runGenerate);
-        $('#btnDownloadAll').addEventListener('click', downloadAllAsZip);
+        $('#enrichMatrixInput').addEventListener('change', function(e) {
+            enrichState.matrix = e.target.files[0] || null;
+            updateEnrichFileStatus('enrichMatrixStatus', enrichState.matrix);
+            refreshEnrichButton();
+        });
+        $('#enrichCatalogsInput').addEventListener('change', function(e) {
+            enrichState.catalogs = e.target.files[0] || null;
+            updateEnrichFileStatus('enrichCatalogsStatus', enrichState.catalogs);
+        });
+        $('#enrichClientInput').addEventListener('change', function(e) {
+            enrichState.client = e.target.files[0] || null;
+            updateEnrichFileStatus('enrichClientStatus', enrichState.client);
+        });
+
+        $('#btnEnrich').addEventListener('click', runEnrich);
+        $('#btnDownloadEnriched').addEventListener('click', downloadEnriched);
     }
 
-    function handleGenSingleFile(e) {
-        var input = e.target;
-        var file = input.files[0];
-        var slot = input.closest('.file-slot');
-        var statusEl = slot.querySelector('.file-status');
-        var kind = input.dataset.input;
-
-        if (!file) {
+    function updateEnrichFileStatus(id, file) {
+        var el = $('#' + id);
+        var slot = el.closest('.file-slot');
+        if (file) {
+            slot.classList.add('loaded');
+            el.textContent = '✓ ' + file.name + ' (' + formatSize(file.size) + ')';
+        } else {
             slot.classList.remove('loaded');
-            statusEl.textContent = '';
-            genState[kind] = null;
-            refreshGenButtons();
-            return;
-        }
-
-        genState[kind] = file;
-        slot.classList.add('loaded');
-        statusEl.textContent = '✓ ' + file.name + ' (' + formatSize(file.size) + ')';
-        refreshGenButtons();
-    }
-
-    function wireLovableDropZone() {
-        var zone = $('#lovableDropZone');
-        var fileInput = $('#lovableFileInput');
-        var browseBtn = $('#lovableBrowseBtn');
-
-        browseBtn.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); fileInput.click(); });
-        fileInput.addEventListener('change', function() { addLovableFiles(Array.from(fileInput.files)); fileInput.value = ''; });
-        zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('drag-over'); });
-        zone.addEventListener('dragleave', function() { zone.classList.remove('drag-over'); });
-        zone.addEventListener('drop', function(e) {
-            e.preventDefault(); zone.classList.remove('drag-over');
-            addLovableFiles(Array.from(e.dataTransfer.files).filter(function(f) { return /\.json$/i.test(f.name); }));
-        });
-    }
-
-    function addLovableFiles(files) {
-        var existing = new Set(genState.lovableJsons.map(function(f) { return f.name; }));
-        for (var i = 0; i < files.length; i++) { if (!existing.has(files[i].name)) genState.lovableJsons.push(files[i]); }
-        renderDropList('#lovableList', genState.lovableJsons, '.json', function(idx) { genState.lovableJsons.splice(idx, 1); renderDropList('#lovableList', genState.lovableJsons, '.json', arguments.callee); refreshGenButtons(); });
-        refreshGenButtons();
-    }
-
-    function wirePdfDropZone() {
-        var zone = $('#pdfDropZone');
-        var fileInput = $('#pdfFileInput');
-        var browseBtn = $('#pdfBrowseBtn');
-
-        browseBtn.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); fileInput.click(); });
-        fileInput.addEventListener('change', function() { addPdfFiles(Array.from(fileInput.files)); fileInput.value = ''; });
-        zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('drag-over'); });
-        zone.addEventListener('dragleave', function() { zone.classList.remove('drag-over'); });
-        zone.addEventListener('drop', function(e) {
-            e.preventDefault(); zone.classList.remove('drag-over');
-            addPdfFiles(Array.from(e.dataTransfer.files).filter(function(f) { return /\.pdf$/i.test(f.name); }));
-        });
-    }
-
-    function addPdfFiles(files) {
-        var existing = new Set(genState.pdfs.map(function(f) { return f.name; }));
-        for (var i = 0; i < files.length; i++) { if (!existing.has(files[i].name)) genState.pdfs.push(files[i]); }
-        renderDropList('#pdfList', genState.pdfs, '.pdf', function(idx) { genState.pdfs.splice(idx, 1); renderDropList('#pdfList', genState.pdfs, '.pdf', arguments.callee); refreshGenButtons(); });
-        refreshGenButtons();
-    }
-
-    function renderDropList(selector, files, ext, onRemove) {
-        var list = $(selector);
-        list.innerHTML = '';
-        for (var i = 0; i < files.length; i++) {
-            (function(idx) {
-                var f = files[idx];
-                var tag = document.createElement('div');
-                tag.className = 'pdf-tag';
-                tag.innerHTML = '<span class="pdf-tag-code">' + escapeHtml(f.name.replace(new RegExp(ext.replace('.', '\\.') + '$', 'i'), '')) + '</span>' +
-                    '<span class="pdf-tag-size">' + formatSize(f.size) + '</span>';
-                var btn = document.createElement('button');
-                btn.className = 'pdf-tag-remove';
-                btn.textContent = '×';
-                btn.title = 'Quitar';
-                btn.addEventListener('click', function(e) { e.stopPropagation(); onRemove(idx); });
-                tag.appendChild(btn);
-                list.appendChild(tag);
-            })(i);
+            el.textContent = '';
         }
     }
 
-    function refreshGenButtons() {
-        $('#btnRun').disabled = !genState.matrix;
+    function refreshEnrichButton() {
+        $('#btnEnrich').disabled = !(enrichState.lovableJson && enrichState.matrix);
     }
 
-    async function runGenerate() {
-        var statusEl = $('#status');
+    async function runEnrich() {
+        var statusEl = $('#enrichStatus');
         statusEl.className = 'status active';
         statusEl.textContent = '⟳ Procesando...';
 
-        var options = {
-            embedPdf: $('#optEmbedPdf').checked,
-            strategy: $('#optStrategy').value
-        };
-
         try {
             var t0 = performance.now();
-            var out = await InsPipelineBundle.runAll({
-                matrixFile: genState.matrix,
-                pdfFiles: genState.pdfs,
-                catalogsFile: genState.catalogs,
-                clientJsonFile: genState.client,
-                lovableJsonFiles: genState.lovableJsons
-            }, options);
+            var result = await InsPipelineBundle.runEnrichJson({
+                lovableJsonFile: enrichState.lovableJson,
+                matrixFile: enrichState.matrix,
+                catalogsFile: enrichState.catalogs,
+                clientJsonFile: enrichState.client
+            });
             var t1 = performance.now();
 
-            lastResults = out.results;
-            renderResults(out.results);
-            renderWarnings(out.results, $('#optVerbose').checked);
+            enrichState.result = result;
 
-            var isEnrich = genState.lovableJsons.length > 0;
-            var modeLabel = isEnrich ? 'enriquecido(s)' : 'generado(s)';
-            var msg = '✓ Listo. ' + out.results.length + ' JSON ' + modeLabel + ' en ' + Math.round(t1 - t0) + 'ms.';
-            if (isEnrich) {
-                var totalStats = out.results.reduce(function(acc, r) {
-                    if (r.stats) { acc.matched += r.stats.matchCount; acc.missed += r.stats.missCount; }
-                    return acc;
-                }, { matched: 0, missed: 0 });
-                msg += ' (' + totalStats.matched + ' campos matcheados, ' + totalStats.missed + ' sin match)';
-            }
-            if (!out.hasFormCodeColumn) {
-                msg += ' (Tip: Agrega la columna "Código Formulario" a la matriz.)';
-            }
+            var s = result.stats;
             statusEl.className = 'status active success';
-            statusEl.textContent = msg;
-            $('#btnDownloadAll').hidden = out.results.length < 2;
+            statusEl.textContent = '✓ Enriquecido en ' + Math.round(t1 - t0) + 'ms. ' +
+                s.matchCount + '/' + s.totalLovable + ' campos matcheados, ' +
+                s.sectionsCreated + ' secciones creadas.';
+
+            renderEnrichStats(result);
+            renderEnrichWarnings(result.warnings, result.issues);
+
+            $('#btnDownloadEnriched').hidden = false;
         } catch (err) {
             console.error(err);
             statusEl.className = 'status active error';
@@ -211,136 +136,100 @@
         }
     }
 
-    function renderResults(results) {
-        var panel = $('#resultsPanel');
-        var container = $('#results');
-        container.innerHTML = '';
+    function renderEnrichStats(result) {
+        var panel = $('#enrichStatsPanel');
+        var container = $('#enrichStats');
+        var s = result.stats;
+        var sections = extractSections(result.json);
+        var withRequired = 0;
+        var withValidation = 0;
+        var withOptions = 0;
+        var withPrefill = 0;
+        var withConditional = 0;
+        var types = {};
 
-        for (var i = 0; i < results.length; i++) {
-            (function(r) {
-                var sections = (r.json && r.json.data && r.json.data.jsonDefinition && r.json.data.jsonDefinition.sections)
-                    || (r.json && r.json.sections)
-                    || (r.json && r.json.jsonDefinition && r.json.jsonDefinition.sections)
-                    || [];
-                var fieldCount = sections.reduce(function(n, s) { return n + s.fields.length; }, 0);
-                var card = document.createElement('div');
-                card.className = 'result-card';
-                card.innerHTML =
-                    '<div class="meta">' +
-                        '<span class="product-id">' + escapeHtml(r.formCode) + '</span>' +
-                        '<span class="product-stats">' +
-                            fieldCount + ' campos · ' + sections.length + ' secciones' +
-                            ' · ' + r.warnings.length + ' warnings' +
-                            ' · ' + r.issues.length + ' prefillKey mismatches' +
-                        '</span>' +
-                    '</div>' +
-                    '<div class="buttons">' +
-                        '<button class="secondary" data-action="preview">Ver JSON</button>' +
-                        '<button class="primary" data-action="download">Descargar</button>' +
-                    '</div>';
-
-                card.querySelector('[data-action="download"]').addEventListener('click', function() {
-                    var blob = InsPipelineBundle.jsonToBlob(r.json);
-                    InsPipelineBundle.downloadBlob(blob, r.formCode + '.json');
-                });
-                card.querySelector('[data-action="preview"]').addEventListener('click', function() {
-                    var w = window.open('', '_blank');
-                    w.document.write('<pre style="font-family:monospace;font-size:11px;background:#0d1117;color:#c9d1d9;padding:1rem;">' +
-                        escapeHtml(JSON.stringify(r.json, null, 2)) + '</pre>');
-                    w.document.title = r.formCode + '.json';
-                });
-                container.appendChild(card);
-            })(results[i]);
+        for (var si = 0; si < sections.length; si++) {
+            var fields = sections[si].fields;
+            for (var fi = 0; fi < fields.length; fi++) {
+                var f = fields[fi];
+                if (f.required) withRequired++;
+                if (f.validationPattern || f.maxLength) withValidation++;
+                if (f.options && f.options.length > 0) withOptions++;
+                if (f.prefillKey) withPrefill++;
+                if (f.conditionalVisibility) withConditional++;
+                types[f.type] = (types[f.type] || 0) + 1;
+            }
         }
+
+        var typeList = Object.keys(types).map(function(t) { return t + ': ' + types[t]; }).join(', ');
+
+        container.innerHTML =
+            '<div class="stat-grid">' +
+                '<div class="stat"><span class="stat-n">' + s.matchCount + '/' + s.totalLovable + '</span><span class="stat-l">Campos matcheados</span></div>' +
+                '<div class="stat"><span class="stat-n">' + s.sectionsCreated + '</span><span class="stat-l">Secciones</span></div>' +
+                '<div class="stat"><span class="stat-n">' + withRequired + '</span><span class="stat-l">Con required</span></div>' +
+                '<div class="stat"><span class="stat-n">' + withValidation + '</span><span class="stat-l">Con validacion</span></div>' +
+                '<div class="stat"><span class="stat-n">' + withOptions + '</span><span class="stat-l">Con opciones</span></div>' +
+                '<div class="stat"><span class="stat-n">' + withPrefill + '</span><span class="stat-l">Con prefillKey</span></div>' +
+                '<div class="stat"><span class="stat-n">' + withConditional + '</span><span class="stat-l">Con condicional</span></div>' +
+            '</div>' +
+            '<p class="hint">Tipos: ' + escapeHtml(typeList) + '</p>';
         panel.hidden = false;
     }
 
-    function renderWarnings(results, verbose) {
-        var panel = $('#warningsPanel');
-        var summary = $('#warningsSummary');
-        var log = $('#warningsLog');
+    function extractSections(json) {
+        if (json && json.data && json.data.jsonDefinition && json.data.jsonDefinition.sections) return json.data.jsonDefinition.sections;
+        if (json && json.sections) return json.sections;
+        if (json && json.jsonDefinition && json.jsonDefinition.sections) return json.jsonDefinition.sections;
+        return [];
+    }
+
+    function renderEnrichWarnings(warnings, issues) {
+        var panel = $('#enrichWarningsPanel');
+        if (!warnings.length && !issues.length) { panel.hidden = true; return; }
+
+        var byType = {};
+        for (var i = 0; i < warnings.length; i++) {
+            var w = warnings[i];
+            var t = w.type || 'other';
+            if (!byType[t]) byType[t] = [];
+            byType[t].push(w);
+        }
+
         var lines = [];
-        var totalW = 0;
-        var totalI = 0;
+        var typeOrder = ['no-match', 'low-confidence', 'rule-not-parsed', 'prefillkey-invalid', 'catalog-missing'];
+        var allTypes = Object.keys(byType);
+        var ordered = typeOrder.filter(function(t) { return byType[t]; })
+            .concat(allTypes.filter(function(t) { return typeOrder.indexOf(t) === -1; }));
 
-        for (var ri = 0; ri < results.length; ri++) {
-            var r = results[ri];
-            totalW += r.warnings.length;
-            totalI += r.issues.length;
-            if (!verbose && !r.warnings.length && !r.issues.length) continue;
-
-            lines.push('── ' + r.formCode + ' ──');
-            for (var wi = 0; wi < r.warnings.length; wi++) {
-                var w = r.warnings[wi];
-                lines.push('  [' + w.stage + ':' + w.type + '] ' + (w.field || '') + ' — ' + (w.reason || ''));
-            }
-            for (var ii = 0; ii < r.issues.length; ii++) {
-                var issue = r.issues[ii];
-                lines.push('  [prefillKey] ' + issue.field + ' (' + issue.prefillKey + ') — ' + issue.reason);
+        for (var ti = 0; ti < ordered.length; ti++) {
+            var type = ordered[ti];
+            var arr = byType[type];
+            if (!arr) continue;
+            lines.push('── ' + type + ' (' + arr.length + ') ──');
+            for (var wi = 0; wi < arr.length; wi++) {
+                lines.push('  [' + (arr[wi].stage || '') + ':' + arr[wi].type + '] ' + (arr[wi].field || '') + ' — ' + (arr[wi].reason || ''));
             }
             lines.push('');
         }
 
-        if (totalW === 0 && totalI === 0) { panel.hidden = true; return; }
+        if (issues.length) {
+            lines.push('── prefillKey mismatches (' + issues.length + ') ──');
+            for (var ii = 0; ii < issues.length; ii++) {
+                lines.push('  [prefillKey] ' + issues[ii].field + ' (' + issues[ii].prefillKey + ') — ' + issues[ii].reason);
+            }
+        }
+
         panel.hidden = false;
-        summary.textContent = totalW + ' warnings · ' + totalI + ' prefillKey mismatches';
-        log.textContent = lines.join('\n') || 'Sin detalles.';
+        $('#enrichWarningsSummary').textContent = warnings.length + ' warnings · ' + issues.length + ' prefillKey mismatches';
+        $('#enrichWarningsLog').textContent = lines.join('\n') || 'Sin detalles.';
     }
 
-    async function downloadAllAsZip() {
-        if (!lastResults || lastResults.length < 2) return;
-        var files = lastResults.map(function(r) {
-            return { name: r.formCode + '.json', content: JSON.stringify(r.json, null, 2) };
-        });
-        var blob = buildZipBlob(files);
-        InsPipelineBundle.downloadBlob(blob, 'lovable-jsons.zip');
-    }
-
-    function buildZipBlob(files) {
-        var localHeaders = [];
-        var centralHeaders = [];
-        var offset = 0;
-        for (var i = 0; i < files.length; i++) {
-            var nameBytes = new TextEncoder().encode(files[i].name);
-            var contentBytes = new TextEncoder().encode(files[i].content);
-            var crc = crc32(contentBytes);
-            var local = new Uint8Array(30 + nameBytes.length + contentBytes.length);
-            var lv = new DataView(local.buffer);
-            lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint16(6, 0, true);
-            lv.setUint16(8, 0, true); lv.setUint16(10, 0, true); lv.setUint16(12, 0, true);
-            lv.setUint32(14, crc, true); lv.setUint32(18, contentBytes.length, true);
-            lv.setUint32(22, contentBytes.length, true); lv.setUint16(26, nameBytes.length, true);
-            lv.setUint16(28, 0, true); local.set(nameBytes, 30); local.set(contentBytes, 30 + nameBytes.length);
-            localHeaders.push(local);
-            var central = new Uint8Array(46 + nameBytes.length);
-            var cv = new DataView(central.buffer);
-            cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true);
-            cv.setUint16(8, 0, true); cv.setUint16(10, 0, true); cv.setUint16(12, 0, true);
-            cv.setUint16(14, 0, true); cv.setUint32(16, crc, true); cv.setUint32(20, contentBytes.length, true);
-            cv.setUint32(24, contentBytes.length, true); cv.setUint16(28, nameBytes.length, true);
-            cv.setUint16(30, 0, true); cv.setUint16(32, 0, true); cv.setUint16(34, 0, true);
-            cv.setUint16(36, 0, true); cv.setUint32(38, 0x20, true); cv.setUint32(42, offset, true);
-            central.set(nameBytes, 46); centralHeaders.push(central);
-            offset += local.length;
-        }
-        var centralSize = centralHeaders.reduce(function(s, c) { return s + c.length; }, 0);
-        var eocd = new Uint8Array(22);
-        var ev = new DataView(eocd.buffer);
-        ev.setUint32(0, 0x06054b50, true); ev.setUint16(4, 0, true); ev.setUint16(6, 0, true);
-        ev.setUint16(8, files.length, true); ev.setUint16(10, files.length, true);
-        ev.setUint32(12, centralSize, true); ev.setUint32(16, offset, true); ev.setUint16(20, 0, true);
-        return new Blob(localHeaders.concat(centralHeaders).concat([eocd]), { type: 'application/zip' });
-    }
-
-    function crc32(bytes) {
-        var table = crc32.table;
-        if (!table) {
-            table = crc32.table = new Uint32Array(256);
-            for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) { c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); } table[n] = c; }
-        }
-        var crc = 0xFFFFFFFF;
-        for (var i = 0; i < bytes.length; i++) { crc = table[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8); }
-        return (crc ^ 0xFFFFFFFF) >>> 0;
+    function downloadEnriched() {
+        if (!enrichState.result) return;
+        var blob = InsPipelineBundle.jsonToBlob(enrichState.result.json);
+        var name = (enrichState.lovableJson ? enrichState.lovableJson.name.replace(/\.json$/i, '') : 'enriched') + '_enriched.json';
+        InsPipelineBundle.downloadBlob(blob, name);
     }
 
     // ==================== CONVERT PDF FLOW ====================

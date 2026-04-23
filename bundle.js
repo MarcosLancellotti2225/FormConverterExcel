@@ -88287,11 +88287,778 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     }
   });
 
+  // src/enricher/index-excel.js
+  var require_index_excel = __commonJS({
+    "src/enricher/index-excel.js"(exports, module) {
+      "use strict";
+      var XLSX = require_xlsx();
+      function parseEnrichExcel(buffer) {
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const sheetName = findMatrixSheet(workbook);
+        const sheet = workbook.Sheets[sheetName];
+        const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+        if (rawRows.length < 2) throw new Error(`Sheet "${sheetName}" is empty`);
+        const { headerRow, columnMap } = findHeaderAndColumns(rawRows);
+        const rows = [];
+        for (let i = headerRow + 1; i < rawRows.length; i++) {
+          const r = rawRows[i];
+          if (!r || r.every((c) => c === "" || c == null)) continue;
+          const row = {
+            step: clean(cell(r, columnMap.step)),
+            section: clean(cell(r, columnMap.section)),
+            pdfLabel: clean(cell(r, columnMap.pdfLabel)),
+            fieldLabel: clean(cell(r, columnMap.fieldLabel)),
+            dataType: clean(cell(r, columnMap.dataType)),
+            value: clean(cell(r, columnMap.value)),
+            rule: clean(cell(r, columnMap.rule)),
+            required: clean(cell(r, columnMap.required)),
+            productScope: clean(cell(r, columnMap.productScope)),
+            visualization: clean(cell(r, columnMap.visualization)),
+            obs: clean(cell(r, columnMap.obs)),
+            jsonName: clean(cell(r, columnMap.jsonName)),
+            pdfFieldName: clean(cell(r, columnMap.pdfFieldName)),
+            _rowIndex: i + 1,
+            _consumed: false
+          };
+          if (!row.fieldLabel && !row.value && !row.pdfLabel) continue;
+          rows.push(row);
+        }
+        return rows;
+      }
+      function buildCascadeIndex(rows) {
+        const byPdfFieldName = /* @__PURE__ */ new Map();
+        const byPdfLabel = /* @__PURE__ */ new Map();
+        const byFormLabel = /* @__PURE__ */ new Map();
+        const byJsonLeaf = /* @__PURE__ */ new Map();
+        for (const row of rows) {
+          if (row.pdfFieldName) {
+            setIfAbsent(byPdfFieldName, normalize(row.pdfFieldName), row);
+          }
+          if (row.pdfLabel) {
+            setIfAbsent(byPdfLabel, normalize(row.pdfLabel), row);
+          }
+          if (row.fieldLabel) {
+            setIfAbsent(byFormLabel, normalize(row.fieldLabel), row);
+          }
+          if (row.jsonName) {
+            const leaf = extractJsonLeaf(row.jsonName);
+            if (leaf) setIfAbsent(byJsonLeaf, leaf, row);
+          }
+        }
+        return { byPdfFieldName, byPdfLabel, byFormLabel, byJsonLeaf, rows };
+      }
+      function matchField(field, index) {
+        const sourceName = field.sourceMeta?.sourceName || "";
+        const fieldLabel = field.label || "";
+        const repeatMatch = sourceName.match(/_(\d+)$/) || sourceName.match(/_Row_(\d+)$/i);
+        const rowIndex = repeatMatch ? parseInt(repeatMatch[1], 10) : null;
+        const baseName = sourceName.replace(/_(\d+)$/, "").replace(/_Row_(\d+)$/i, "");
+        const cleanLabel = fieldLabel.replace(/_Row_\d+$/i, "").replace(/:_?$/, "").replace(/_/g, " ").trim();
+        const attempts = [
+          { key: normalize(sourceName), idx: "byPdfFieldName", confidence: 100, source: "pdf-field-name" },
+          { key: normalize(baseName), idx: "byPdfFieldName", confidence: 95, source: "pdf-field-name-base" },
+          { key: normalize(cleanLabel), idx: "byPdfLabel", confidence: 90, source: "pdf-label" },
+          { key: normalize(cleanLabel), idx: "byFormLabel", confidence: 85, source: "form-label" },
+          { key: normalize(snakeToHuman(baseName)), idx: "byFormLabel", confidence: 80, source: "snake-to-form" },
+          { key: normalize(snakeToHuman(baseName)), idx: "byPdfLabel", confidence: 75, source: "snake-to-pdf" },
+          { key: normalize(snakeToHuman(baseName)), idx: "byJsonLeaf", confidence: 70, source: "json-leaf" }
+        ];
+        for (const a of attempts) {
+          if (!a.key) continue;
+          const row = index[a.idx].get(a.key);
+          if (row) return { row, rowIndex, confidence: a.confidence, source: a.source };
+        }
+        const fuzzy = findFuzzyMatch(cleanLabel, baseName, index);
+        if (fuzzy) return { ...fuzzy, rowIndex };
+        return null;
+      }
+      function findFuzzyMatch(cleanLabel, baseName, index) {
+        const candidates = [
+          normalize(cleanLabel),
+          normalize(snakeToHuman(baseName))
+        ].filter(Boolean);
+        let best = null;
+        let bestScore = 0;
+        const threshold = 0.8;
+        const allMaps = [index.byPdfLabel, index.byFormLabel, index.byJsonLeaf];
+        for (const candidate of candidates) {
+          if (!candidate || candidate.length < 3) continue;
+          for (const m of allMaps) {
+            for (const [key, row] of m) {
+              if (!key || key.length < 3) continue;
+              const score = similarity(candidate, key);
+              if (score > threshold && score > bestScore) {
+                bestScore = score;
+                best = { row, confidence: Math.round(score * 65), source: "fuzzy" };
+              }
+            }
+          }
+        }
+        return best;
+      }
+      function collectComboOptions(matchedRow, index) {
+        const label = matchedRow.fieldLabel;
+        if (!label) return [];
+        const options = [];
+        for (const row of index.rows) {
+          if (row.fieldLabel === label && row.value) {
+            const m = row.value.match(/^([A-Z0-9]{1,6})\s*[-|,]\s*(.+)$/);
+            options.push(
+              m ? { code: m[1].trim(), label: m[2].trim() } : { code: row.value, label: row.value }
+            );
+            row._consumed = true;
+          }
+        }
+        return options;
+      }
+      function normalize(s) {
+        return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+      }
+      function snakeToHuman(s) {
+        return String(s || "").replace(/_/g, " ");
+      }
+      function extractJsonLeaf(path) {
+        if (!path) return null;
+        const leaf = String(path).split(",")[0].trim().split(".").pop();
+        return normalize(leaf.replace(/([A-Z])/g, " $1"));
+      }
+      function similarity(a, b) {
+        if (a === b) return 1;
+        if (!a.length || !b.length) return 0;
+        const dist = levenshtein(a, b);
+        return 1 - dist / Math.max(a.length, b.length);
+      }
+      function levenshtein(a, b) {
+        const m = a.length, n = b.length;
+        const dp = Array.from({ length: m + 1 }, () => new Array(n + 1));
+        for (let i = 0; i <= m; i++) dp[i][0] = i;
+        for (let j = 0; j <= n; j++) dp[0][j] = j;
+        for (let i = 1; i <= m; i++) {
+          for (let j = 1; j <= n; j++) {
+            dp[i][j] = Math.min(
+              dp[i - 1][j] + 1,
+              dp[i][j - 1] + 1,
+              dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+            );
+          }
+        }
+        return dp[m][n];
+      }
+      function setIfAbsent(map, key, val) {
+        if (key && !map.has(key)) map.set(key, val);
+      }
+      function clean(v) {
+        return v === null || v === void 0 ? "" : String(v).trim();
+      }
+      function cell(row, idx) {
+        return idx === void 0 || idx === null ? "" : row[idx] !== void 0 ? row[idx] : "";
+      }
+      var COLUMN_MATCHERS = {
+        step: ["pasos formulario", "paso", "pasos"],
+        section: ["secci\xF3n", "seccion"],
+        pdfLabel: ["nombre en pdf"],
+        fieldLabel: ["nombre del campo en formulario", "campo en formulario"],
+        dataType: ["tipo de dato", "tipo dato"],
+        value: ["valor"],
+        rule: ["regla"],
+        required: ["obligatorio"],
+        productScope: ["formulario a visualizar"],
+        visualization: ["visualizaci\xF3n en formularios", "visualizacion en formularios"],
+        obs: ["observaciones"],
+        jsonName: ["nombre del campo en json", "campo en json"],
+        pdfFieldName: ["nombre del campo en pdf", "campo en pdf"]
+      };
+      function findHeaderAndColumns(rawRows) {
+        for (let i = 0; i < Math.min(10, rawRows.length); i++) {
+          const row = rawRows[i];
+          if (!row) continue;
+          const tempMap = {};
+          let matchCount = 0;
+          for (let j = 0; j < row.length; j++) {
+            const c = clean(String(row[j] || "")).toLowerCase();
+            if (!c) continue;
+            for (const [key, matchers] of Object.entries(COLUMN_MATCHERS)) {
+              if (tempMap[key] !== void 0) continue;
+              if (matchers.some((m) => c.includes(m))) {
+                tempMap[key] = j;
+                matchCount++;
+                break;
+              }
+            }
+          }
+          if (matchCount >= 4 && tempMap.fieldLabel !== void 0) {
+            return { headerRow: i, columnMap: tempMap };
+          }
+        }
+        return { headerRow: 0, columnMap: {} };
+      }
+      function findMatrixSheet(workbook) {
+        const names = workbook.SheetNames;
+        const preferred = names.find(
+          (n) => /formulario\s*digital/i.test(n) || /formulario/i.test(n)
+        );
+        if (preferred) return preferred;
+        let biggest = names[0], maxRows = 0;
+        for (const n of names) {
+          const range = XLSX.utils.decode_range(workbook.Sheets[n]["!ref"] || "A1");
+          const rows = range.e.r - range.s.r + 1;
+          if (rows > maxRows) {
+            maxRows = rows;
+            biggest = n;
+          }
+        }
+        return biggest;
+      }
+      module.exports = { parseEnrichExcel, buildCascadeIndex, matchField, collectComboOptions, normalize };
+    }
+  });
+
+  // src/enricher/apply-type.js
+  var require_apply_type = __commonJS({
+    "src/enricher/apply-type.js"(exports, module) {
+      "use strict";
+      var TYPE_MAP = {
+        "texto": "text",
+        "text": "text",
+        "alfanumerico": "text",
+        "alfanum\xE9rico": "text",
+        "numerico": "number",
+        "num\xE9rico": "number",
+        "number": "number",
+        "fecha": "date",
+        "date": "date",
+        "combo": "select",
+        "select": "select",
+        "lista": "select",
+        "radio/combo": "radio",
+        "radio": "radio",
+        "checkbox": "checkbox",
+        "check": "checkbox",
+        "comentario informativo": "readonly",
+        "informativo": "readonly",
+        "titulo": "heading",
+        "heading": "heading"
+      };
+      function applyType(field, excelRow) {
+        const raw = (excelRow.dataType || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+        const mapped = TYPE_MAP[raw];
+        if (mapped) {
+          field.type = mapped;
+        }
+        if (mapped === "readonly") {
+          field.readOnly = true;
+        }
+      }
+      function applyReadOnly(field, excelRow) {
+        const vis = (excelRow.visualization || "").toLowerCase();
+        if (/disabled/.test(vis)) {
+          field.readOnly = true;
+          if (/no\s*visible/.test(vis)) {
+            field.hidden = true;
+          }
+        }
+        if (/no\s*aplica/.test(vis)) {
+          field.hidden = true;
+        }
+        if (/editable/.test(vis) && !/disabled/.test(vis)) {
+          field.readOnly = false;
+        }
+      }
+      function applyRequired(field, excelRow) {
+        const r = (excelRow.required || "").trim().toLowerCase();
+        field.required = r === "si" || r === "s\xED" || r === "yes" || r === "true" || r === "obligatorio";
+      }
+      module.exports = { applyType, applyReadOnly, applyRequired };
+    }
+  });
+
+  // src/enricher/apply-validations.js
+  var require_apply_validations = __commonJS({
+    "src/enricher/apply-validations.js"(exports, module) {
+      "use strict";
+      function applyValidations(field, excelRow) {
+        const rule = (excelRow.rule || "").trim();
+        if (!rule) return;
+        const r = norm(rule);
+        const lenMatch = r.match(/(\d+)\s*caract/) || r.match(/max(?:imo)?\s*[:=]?\s*(\d+)/) || r.match(/hasta\s+(\d+)/);
+        if (lenMatch) {
+          field.maxLength = parseInt(lenMatch[1], 10);
+        }
+        if (/formato\s+dd\/?mm\/?(aaaa|yyyy)/.test(r) || /dd\/mm\/aaaa/.test(r)) {
+          field.validationPattern = "^\\d{2}/\\d{2}/\\d{4}$";
+        } else if (/formato\s+dd-mm-(aaaa|yyyy)/.test(r)) {
+          field.validationPattern = "^\\d{2}-\\d{2}-\\d{4}$";
+        }
+        if (!field.validationPattern) {
+          const digitsMatch = r.match(/numerico\s+y\s+(\d+)\s*digitos/) || r.match(/(\d+)\s*digitos?\s*numerico/);
+          if (digitsMatch) {
+            field.validationPattern = "^\\d{" + digitsMatch[1] + "}$";
+          } else if (/s[oó]lo\s*n[uú]meros/.test(r) || /solo\s*numeros/.test(r)) {
+            field.validationPattern = "^\\d+$";
+          }
+        }
+        if (!field.validationPattern && /email|correo/.test(r)) {
+          field.validationPattern = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$";
+        }
+        if (!field.validationPattern && /alfanum/.test(r)) {
+          field.validationPattern = "^[A-Za-z0-9 ]+$";
+        }
+        if (!field.validationPattern) {
+          const decMatch = r.match(/(\d+)\s*caract.*?(\d+)\s*decimal/);
+          if (decMatch) {
+            const intLen = parseInt(decMatch[1], 10);
+            const decLen = parseInt(decMatch[2], 10);
+            field.validationPattern = "^\\d{1," + intLen + "}(\\.\\d{1," + decLen + "})?$";
+          }
+        }
+      }
+      function norm(s) {
+        return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+      }
+      module.exports = { applyValidations };
+    }
+  });
+
+  // src/enricher/apply-options.js
+  var require_apply_options = __commonJS({
+    "src/enricher/apply-options.js"(exports, module) {
+      "use strict";
+      var { normalizeKey } = require_catalogs_parser();
+      function applyOptions(field, excelRow, comboOptions, catalogs) {
+        if (field.type !== "select" && field.type !== "radio") return;
+        if (comboOptions && comboOptions.length > 0) {
+          field.options = comboOptions.map((o) => ({
+            value: o.code || o.label,
+            label: o.label || o.code
+          }));
+          return;
+        }
+        const rule = (excelRow.rule || "").toLowerCase();
+        if (/cat[aá]logo/.test(rule) || /ver\s+cat/.test(rule)) {
+          const resolved = resolveCatalog(field, excelRow, catalogs);
+          if (resolved) {
+            field.options = resolved;
+            return;
+          }
+        }
+        const auto = autoResolveCatalog(field, excelRow, catalogs);
+        if (auto) {
+          field.options = auto;
+        }
+      }
+      function resolveCatalog(field, excelRow, catalogs) {
+        if (!catalogs) return null;
+        const candidates = [
+          excelRow.fieldLabel,
+          excelRow.pdfLabel,
+          field.label
+        ];
+        for (const c of candidates) {
+          if (!c) continue;
+          const key = normalizeKey(c);
+          const opts = catalogs[key];
+          if (opts) return formatCatalogOptions(opts);
+          const cleaned = c.replace(/^tipo\s+de\s+/i, "tipo ");
+          const key2 = normalizeKey(cleaned);
+          const opts2 = catalogs[key2];
+          if (opts2) return formatCatalogOptions(opts2);
+        }
+        return null;
+      }
+      function autoResolveCatalog(field, excelRow, catalogs) {
+        if (!catalogs) return null;
+        const label = (excelRow.fieldLabel || field.label || "").toLowerCase();
+        const KNOWN_MAPPINGS = [
+          { pattern: /moneda/, catalog: "Moneda" },
+          { pattern: /estado\s*civil/, catalog: "Estado Civil" },
+          { pattern: /parentesco/, catalog: "Parentesco" },
+          { pattern: /tipo\s*formulario/, catalog: "Tipo Formulario" },
+          { pattern: /tipo\s*persona/, catalog: "Tipo Persona" },
+          { pattern: /tipo\s*tr[aá]mite/, catalog: "TipoTramite" },
+          { pattern: /tipo\s*identificaci[oó]n/, catalog: "Tipo Identificaci\xF3n" }
+        ];
+        for (const m of KNOWN_MAPPINGS) {
+          if (m.pattern.test(label)) {
+            const opts = catalogs[m.catalog] || catalogs[normalizeKey(m.catalog)];
+            if (opts) return formatCatalogOptions(opts);
+          }
+        }
+        return null;
+      }
+      function formatCatalogOptions(opts) {
+        return opts.map((o) => ({
+          value: o.code || o.label,
+          label: o.label || o.code
+        }));
+      }
+      module.exports = { applyOptions };
+    }
+  });
+
+  // src/enricher/apply-prefill.js
+  var require_apply_prefill = __commonJS({
+    "src/enricher/apply-prefill.js"(exports, module) {
+      "use strict";
+      function applyPrefill(field, excelRow) {
+        const raw = (excelRow.jsonName || "").trim();
+        if (!raw) return;
+        const parts = raw.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+        if (parts.length >= 1) {
+          field.prefillKey = parts[0];
+          field.prefillMode = field.required ? "required" : "optional";
+        }
+        if (parts.length >= 2) {
+          field.mappedPaths = parts.slice(1);
+        }
+      }
+      module.exports = { applyPrefill };
+    }
+  });
+
+  // src/enricher/apply-conditionals.js
+  var require_apply_conditionals = __commonJS({
+    "src/enricher/apply-conditionals.js"(exports, module) {
+      "use strict";
+      function applyConditionals(field, excelRow, fieldLookup) {
+        const text = joinTexts(excelRow.rule, excelRow.obs);
+        if (!text) return null;
+        const n = norm(text);
+        const triggerRe = /si\s+(?:se\s+)?(?:selecciona|elige|marca)n?\s+(.+?)\s+se\s+(?:debe(?:\s+de)?\s+)?(?:habilitar?|desplegar?|mostrar?|visualizar?)\s+(?:el\s+campo\s+)?(.+)/;
+        const mA = n.match(triggerRe);
+        if (mA) {
+          const triggerValue = cleanVal(mA[1]);
+          const targetLabel = cleanVal(mA[2]);
+          return {
+            kind: "trigger",
+            triggerFieldId: field.id,
+            triggerValue,
+            targetLabel
+          };
+        }
+        const despRe = /si\s+(?:se\s+)?(?:selecciona|elige|marca)n?\s+(.+?)\s+se\s+despliega/;
+        const mD = n.match(despRe);
+        if (mD) {
+          return {
+            kind: "trigger",
+            triggerFieldId: field.id,
+            triggerValue: cleanVal(mD[1]),
+            targetLabel: null
+          };
+        }
+        const depRe = /si\s+(?:el\s+campo\s+|el\s+|la\s+)?(.+?)\s+(?:es|=|==|igual\s+a)\s+(.+)/;
+        const mB = n.match(depRe);
+        if (mB) {
+          const depLabel = cleanVal(mB[1]);
+          const depValue = cleanVal(mB[2]);
+          const depField = fieldLookup(depLabel);
+          if (depField) {
+            field.conditionalVisibility = JSON.stringify({
+              logic: "AND",
+              conditions: [{
+                fieldId: depField.id,
+                operator: "equals",
+                value: depValue
+              }]
+            });
+            return null;
+          }
+        }
+        const depSimple = n.match(/depende\s+de\s+(.+)/);
+        if (depSimple) {
+          const depLabel = cleanVal(depSimple[1]);
+          const depField = fieldLookup(depLabel);
+          if (depField) {
+            field.conditionalVisibility = JSON.stringify({
+              logic: "AND",
+              conditions: [{
+                fieldId: depField.id,
+                operator: "not_empty"
+              }]
+            });
+            return null;
+          }
+        }
+        return null;
+      }
+      function resolveTriggers(triggers, allFields, warnings) {
+        const byLabel = /* @__PURE__ */ new Map();
+        const byId = /* @__PURE__ */ new Map();
+        for (const f of allFields) {
+          byId.set(f.id, f);
+          const nl = norm(f.label || "");
+          if (nl) byLabel.set(nl, f);
+          const sn = (f.sourceMeta?.sourceName || "").replace(/_/g, " ").toLowerCase();
+          if (sn) byLabel.set(sn, f);
+        }
+        for (const t of triggers) {
+          if (!t.targetLabel) {
+            warnings.push({
+              stage: "enrich",
+              type: "rule-not-parsed",
+              field: t.triggerFieldId,
+              reason: `Trigger rule found but target field unclear`
+            });
+            continue;
+          }
+          const target = byLabel.get(norm(t.targetLabel));
+          if (!target) {
+            warnings.push({
+              stage: "enrich",
+              type: "rule-not-parsed",
+              field: t.triggerFieldId,
+              reason: `Could not resolve target "${t.targetLabel}" for trigger`
+            });
+            continue;
+          }
+          target.conditionalVisibility = JSON.stringify({
+            logic: "AND",
+            conditions: [{
+              fieldId: t.triggerFieldId,
+              operator: "equals",
+              value: t.triggerValue
+            }]
+          });
+        }
+      }
+      function joinTexts(...parts) {
+        return parts.filter(Boolean).join(" \xB7 ");
+      }
+      function cleanVal(s) {
+        return String(s || "").replace(/[.,:;]+$/, "").replace(/^['"]+|['"]+$/g, "").trim();
+      }
+      function norm(s) {
+        return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+      }
+      module.exports = { applyConditionals, resolveTriggers };
+    }
+  });
+
+  // src/enricher/regroup-sections.js
+  var require_regroup_sections = __commonJS({
+    "src/enricher/regroup-sections.js"(exports, module) {
+      "use strict";
+      function regroupSections(fields, matchMap) {
+        const sectionOrder = [];
+        const sectionMap = /* @__PURE__ */ new Map();
+        const unmatched = [];
+        for (const f of fields) {
+          const match = matchMap.get(f.id);
+          if (!match || !match.row) {
+            unmatched.push(f);
+            continue;
+          }
+          const step = match.row.step || "General";
+          const section = match.row.section || step || "Datos";
+          const key = slug(step) + "__" + slug(section);
+          if (!sectionMap.has(key)) {
+            const sec = {
+              id: "section_" + slug(step) + "_" + slug(section),
+              title: section,
+              description: step !== section ? step : null,
+              instructions: null,
+              conditionalVisibility: null,
+              order: sectionOrder.length + 1,
+              fields: []
+            };
+            sectionMap.set(key, sec);
+            sectionOrder.push(key);
+          }
+          sectionMap.get(key).fields.push(f);
+        }
+        const sections = sectionOrder.map((k) => sectionMap.get(k));
+        if (unmatched.length > 0) {
+          sections.push({
+            id: "section_sin_clasificar",
+            title: "Sin clasificar",
+            description: "Campos sin match en el Excel",
+            instructions: null,
+            conditionalVisibility: null,
+            order: sections.length + 1,
+            fields: unmatched
+          });
+        }
+        return sections;
+      }
+      function slug(str) {
+        return String(str || "x").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40) || "x";
+      }
+      module.exports = { regroupSections };
+    }
+  });
+
+  // src/enricher/pipeline-enrich.js
+  var require_pipeline_enrich = __commonJS({
+    "src/enricher/pipeline-enrich.js"(exports, module) {
+      "use strict";
+      var { parseEnrichExcel, buildCascadeIndex, matchField, collectComboOptions } = require_index_excel();
+      var { parseCatalogsFromBuffer } = require_catalogs_parser();
+      var { loadClientPathsFromText, validateLovableJson } = require_prefillkey_validator();
+      var { applyType, applyReadOnly, applyRequired } = require_apply_type();
+      var { applyValidations } = require_apply_validations();
+      var { applyOptions } = require_apply_options();
+      var { applyPrefill } = require_apply_prefill();
+      var { applyConditionals, resolveTriggers } = require_apply_conditionals();
+      var { regroupSections } = require_regroup_sections();
+      async function runEnrichPipeline(inputs) {
+        const {
+          lovableJsonText,
+          matrixBuffer,
+          catalogsBuffer,
+          clientJsonText
+        } = inputs;
+        if (!lovableJsonText) throw new Error("Lovable JSON is required");
+        if (!matrixBuffer) throw new Error("Excel matrix is required");
+        const lovableJson = JSON.parse(lovableJsonText);
+        const warnings = [];
+        const excelRows = parseEnrichExcel(matrixBuffer);
+        const index = buildCascadeIndex(excelRows);
+        const catalogs = catalogsBuffer ? parseCatalogsFromBuffer(catalogsBuffer) : {};
+        const sections = extractSections(lovableJson);
+        const allFields = sections.flatMap((s) => s.fields);
+        const matchMap = /* @__PURE__ */ new Map();
+        const triggers = [];
+        let matchCount = 0;
+        let missCount = 0;
+        const fieldLookup = buildFieldLookup(allFields);
+        for (const field of allFields) {
+          const match = matchField(field, index);
+          if (!match) {
+            missCount++;
+            warnings.push({
+              stage: "enrich",
+              type: "no-match",
+              field: field.label || field.id,
+              reason: `sourceName "${field.sourceMeta?.sourceName || "?"}" not found in Excel`
+            });
+            cleanLabel(field);
+            continue;
+          }
+          matchMap.set(field.id, match);
+          if (match.confidence < 70) {
+            warnings.push({
+              stage: "enrich",
+              type: "low-confidence",
+              field: field.label || field.id,
+              reason: `Match via ${match.source} (confidence ${match.confidence}%) to Excel row ${match.row._rowIndex}`
+            });
+          }
+          const excelRow = match.row;
+          matchCount++;
+          applyType(field, excelRow);
+          applyRequired(field, excelRow);
+          applyReadOnly(field, excelRow);
+          applyValidations(field, excelRow);
+          const comboOptions = collectComboOptions(excelRow, index);
+          applyOptions(field, excelRow, comboOptions, catalogs);
+          applyPrefill(field, excelRow);
+          const trigger = applyConditionals(field, excelRow, fieldLookup);
+          if (trigger) triggers.push(trigger);
+          applyLabel(field, excelRow);
+          if (excelRow.obs && /concatenar?\s*auto/i.test(excelRow.obs)) {
+            field.readOnly = true;
+            field.computed = { type: "concat", note: excelRow.obs };
+          }
+        }
+        resolveTriggers(triggers, allFields, warnings);
+        const newSections = regroupSections(allFields, matchMap);
+        const enriched = JSON.parse(JSON.stringify(lovableJson));
+        writeSections(enriched, newSections);
+        let issues = [];
+        if (clientJsonText) {
+          const clientPaths = loadClientPathsFromText(clientJsonText);
+          issues = validatePrefillKeys(enriched, clientPaths, warnings);
+        }
+        return {
+          json: enriched,
+          warnings,
+          issues,
+          stats: {
+            matchCount,
+            missCount,
+            totalLovable: allFields.length,
+            totalExcel: excelRows.length,
+            sectionsCreated: newSections.length
+          }
+        };
+      }
+      function extractSections(json) {
+        if (json?.data?.jsonDefinition?.sections) return json.data.jsonDefinition.sections;
+        if (json?.sections) return json.sections;
+        if (json?.jsonDefinition?.sections) return json.jsonDefinition.sections;
+        throw new Error("Could not find sections[] in Lovable JSON");
+      }
+      function writeSections(json, sections) {
+        if (json?.data?.jsonDefinition?.sections) {
+          json.data.jsonDefinition.sections = sections;
+          return;
+        }
+        if (json?.sections) {
+          json.sections = sections;
+          return;
+        }
+        if (json?.jsonDefinition?.sections) {
+          json.jsonDefinition.sections = sections;
+          return;
+        }
+      }
+      function buildFieldLookup(allFields) {
+        const byLabel = /* @__PURE__ */ new Map();
+        for (const f of allFields) {
+          const nl = (f.label || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+          if (nl) byLabel.set(nl, f);
+          const sn = (f.sourceMeta?.sourceName || "").replace(/_/g, " ").toLowerCase();
+          if (sn) byLabel.set(sn, f);
+        }
+        return function lookup(label) {
+          const nl = (label || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+          return byLabel.get(nl) || null;
+        };
+      }
+      function cleanLabel(field) {
+        let label = field.label || "";
+        label = label.replace(/_Row_\d+$/i, "");
+        label = label.replace(/:_?$/, "");
+        label = label.replace(/_/g, " ");
+        field.label = capitalize(label.trim());
+      }
+      function applyLabel(field, excelRow) {
+        if (excelRow.fieldLabel) {
+          field.label = excelRow.fieldLabel;
+        } else if (excelRow.pdfLabel) {
+          field.label = excelRow.pdfLabel;
+        } else {
+          cleanLabel(field);
+        }
+      }
+      function capitalize(s) {
+        if (!s) return s;
+        if (s === s.toUpperCase() || s === s.toLowerCase()) {
+          return s.replace(/\b\w/g, (c) => c.toUpperCase());
+        }
+        return s;
+      }
+      function validatePrefillKeys(json, clientPaths, warnings) {
+        const issues = validateLovableJson(json, clientPaths);
+        for (const issue of issues) {
+          warnings.push({
+            stage: "enrich",
+            type: "prefillkey-invalid",
+            field: issue.field,
+            reason: `prefillKey "${issue.prefillKey}" not found in client JSON`
+          });
+        }
+        return issues;
+      }
+      module.exports = { runEnrichPipeline };
+    }
+  });
+
   // src/browser.js
   var require_browser = __commonJS({
     "src/browser.js"(exports, module) {
       var { runPipelineAll, runEnrichAll } = require_pipeline();
       var { analyzePdf, generatePdf } = require_pipeline_convert_pdf();
+      var { runEnrichPipeline } = require_pipeline_enrich();
       async function fileToUint8Array(file) {
         const ab = await file.arrayBuffer();
         return new Uint8Array(ab);
@@ -88568,10 +89335,25 @@ ${pagesHtml}</body>
       function r(n) {
         return Math.round(n * 10) / 10;
       }
-      if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml };
+      async function runEnrichJson(inputs) {
+        const { lovableJsonFile, matrixFile, catalogsFile, clientJsonFile } = inputs;
+        if (!lovableJsonFile) throw new Error("Lovable JSON file is required");
+        if (!matrixFile) throw new Error("Excel matrix is required");
+        const lovableJsonText = await fileToText(lovableJsonFile);
+        const matrixBuffer = await fileToUint8Array(matrixFile);
+        const catalogsBuffer = catalogsFile ? await fileToUint8Array(catalogsFile) : null;
+        const clientJsonText = clientJsonFile ? await fileToText(clientJsonFile) : null;
+        return runEnrichPipeline({
+          lovableJsonText,
+          matrixBuffer,
+          catalogsBuffer,
+          clientJsonText
+        });
       }
-      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml };
+      if (typeof window !== "undefined") {
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson };
+      }
+      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson };
     }
   });
   return require_browser();

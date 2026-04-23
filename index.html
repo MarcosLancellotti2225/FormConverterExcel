@@ -30,10 +30,10 @@
                 <p>Renombra los campos AcroForm de un PDF usando el Excel como diccionario y descarga el PDF con nombres semanticos.</p>
                 <button class="primary">Empezar</button>
             </div>
-            <div class="mode-card" data-mode="generate-json">
+            <div class="mode-card" data-mode="enrich-json">
                 <div class="mode-icon">JSON</div>
-                <h2>Generar JSON Lovable</h2>
-                <p>Genera JSONs en formato Lovable a partir de la Matriz Excel + PDFs. Opcionalmente enriquece un JSON Lovable existente.</p>
+                <h2>Enriquecer JSON</h2>
+                <p>Toma un JSON exportado de Lovable y lo enriquece con tipos, reglas, secciones, opciones y prefillKeys desde el Excel y catalogos.</p>
                 <button class="primary">Empezar</button>
             </div>
             <div class="mode-card" data-mode="pdf-to-html">
@@ -166,112 +166,75 @@
             </section>
         </div>
 
-        <!-- ============ GENERATE JSON FLOW ============ -->
-        <div id="generateJsonFlow" hidden>
+        <!-- ============ ENRICH JSON FLOW ============ -->
+        <div id="enrichJsonFlow" hidden>
             <section class="panel instructivo">
                 <details>
                     <summary><strong>Instructivo rapido</strong> (click para expandir)</summary>
                     <ol>
-                        <li><strong>Preparar la Matriz Excel:</strong> Agregar una columna <code>Codigo Formulario</code> que identifique a que formulario pertenece cada fila.</li>
-                        <li><strong>Subir la Matriz:</strong> Hacer click o arrastrar el archivo <code>.xlsx</code>.</li>
-                        <li><strong>(Opcional) JSON Lovable:</strong> Si ya tenes un JSON de Lovable, subilo para modo enriquecimiento.</li>
-                        <li><strong>Subir los PDFs:</strong> Arrastrar uno o mas archivos <code>.pdf</code>.</li>
-                        <li><strong>(Opcional) Catalogos:</strong> Subilo para enriquecer options de selects.</li>
-                        <li><strong>(Opcional) JSON cliente:</strong> Subilo para validar prefillKey.</li>
-                        <li><strong>Generar:</strong> Click en "Generar JSON".</li>
+                        <li><strong>Convertir PDF (Etapa 1):</strong> Usa el modo "Convertir PDF" para renombrar los campos AcroForm.</li>
+                        <li><strong>Cargar en Lovable:</strong> Subi el PDF renombrado a Lovable y exporta el JSON de plantilla.</li>
+                        <li><strong>Subir aqui:</strong> Carga el JSON de Lovable + la Matriz Excel + Catalogos + JSON cliente.</li>
+                        <li><strong>Procesar:</strong> Click en "Procesar" para enriquecer el JSON.</li>
+                        <li><strong>Descargar:</strong> Descarga el JSON enriquecido y re-importalo en Lovable.</li>
                     </ol>
                 </details>
             </section>
 
             <section class="panel">
-                <h2>1. Insumos</h2>
-                <p class="hint">Solo la matriz es obligatoria. Catalogos, PDFs y JSON cliente son opcionales.</p>
+                <h2>1. Archivos</h2>
+                <p class="hint">Todos los archivos son necesarios para el mejor resultado.</p>
 
                 <div class="inputs-grid">
-                    <label class="file-slot required" data-slot="matrix">
+                    <label class="file-slot required" data-slot="enrich-lovable">
+                        <span class="label">JSON de Lovable</span>
+                        <span class="desc">Exportado desde Lovable (plantilla cruda)</span>
+                        <input type="file" accept=".json" id="enrichLovableInput">
+                        <span class="file-status" id="enrichLovableStatus"></span>
+                    </label>
+
+                    <label class="file-slot required" data-slot="enrich-matrix">
                         <span class="label">Matriz Excel</span>
-                        <span class="desc">Con columna "Codigo Formulario"</span>
-                        <input type="file" accept=".xlsx,.xls" data-input="matrix">
-                        <span class="file-status"></span>
+                        <span class="desc">Con campos, tipos, reglas y secciones</span>
+                        <input type="file" accept=".xlsx,.xls" id="enrichMatrixInput">
+                        <span class="file-status" id="enrichMatrixStatus"></span>
                     </label>
 
-                    <label class="file-slot" data-slot="catalogs">
-                        <span class="label">Catalogos Excel (opcional)</span>
-                        <span class="desc">Enriquece opciones de selects</span>
-                        <input type="file" accept=".xlsx,.xls" data-input="catalogs">
-                        <span class="file-status"></span>
+                    <label class="file-slot" data-slot="enrich-catalogs">
+                        <span class="label">Catalogos Excel</span>
+                        <span class="desc">Opciones de selects (pais, moneda, etc.)</span>
+                        <input type="file" accept=".xlsx,.xls" id="enrichCatalogsInput">
+                        <span class="file-status" id="enrichCatalogsStatus"></span>
                     </label>
 
-                    <label class="file-slot" data-slot="client">
-                        <span class="label">JSON cliente (opcional)</span>
-                        <span class="desc">Valida prefillKey</span>
-                        <input type="file" accept=".txt,.json" data-input="client">
-                        <span class="file-status"></span>
-                    </label>
-                </div>
-
-                <h3 class="subhead">JSON Lovable (opcional)</h3>
-                <p class="hint">Si cargas JSONs de Lovable, se usa el modo "enriquecimiento".</p>
-                <div id="lovableDropZone" class="pdf-drop-zone">
-                    <input type="file" id="lovableFileInput" accept=".json" multiple hidden>
-                    <div class="drop-label">
-                        <span class="drop-icon">+</span>
-                        <span>Arrastra JSONs Lovable aqui o <button type="button" id="lovableBrowseBtn" class="link-btn">busca archivos</button></span>
-                    </div>
-                    <div id="lovableList" class="pdf-list"></div>
-                </div>
-
-                <h3 class="subhead">PDFs (opcional)</h3>
-                <div id="pdfDropZone" class="pdf-drop-zone">
-                    <input type="file" id="pdfFileInput" accept=".pdf" multiple hidden>
-                    <div class="drop-label">
-                        <span class="drop-icon">+</span>
-                        <span>Arrastra PDFs aqui o <button type="button" id="pdfBrowseBtn" class="link-btn">busca archivos</button></span>
-                    </div>
-                    <div id="pdfList" class="pdf-list"></div>
-                </div>
-            </section>
-
-            <section class="panel">
-                <h2>2. Opciones</h2>
-                <div class="options">
-                    <label class="toggle">
-                        <input type="checkbox" id="optEmbedPdf" checked>
-                        <span>Incrustar PDF en <code>_sourcePdf.b64</code></span>
-                    </label>
-                    <label class="toggle">
-                        <input type="checkbox" id="optVerbose">
-                        <span>Mostrar todos los warnings</span>
-                    </label>
-                    <label class="select-row">
-                        <span>Estrategia de secciones</span>
-                        <select id="optStrategy">
-                            <option value="pdf_page" selected>Por pagina del PDF (sec_page_N)</option>
-                            <option value="logical">Logicas (Paso + Seccion)</option>
-                        </select>
+                    <label class="file-slot" data-slot="enrich-client">
+                        <span class="label">JSON ejemplo cliente</span>
+                        <span class="desc">Para validar prefillKey (.txt o .json)</span>
+                        <input type="file" accept=".txt,.json" id="enrichClientInput">
+                        <span class="file-status" id="enrichClientStatus"></span>
                     </label>
                 </div>
             </section>
 
             <section class="panel">
-                <h2>3. Generar</h2>
+                <h2>2. Procesar</h2>
                 <div class="actions">
-                    <button id="btnRun" class="primary" disabled>Generar JSON</button>
-                    <button id="btnDownloadAll" class="secondary" hidden>Descargar todos (.zip)</button>
+                    <button id="btnEnrich" class="primary" disabled>Procesar</button>
+                    <button id="btnDownloadEnriched" class="primary" hidden>Descargar JSON enriquecido</button>
                 </div>
-                <div id="status" class="status"></div>
+                <div id="enrichStatus" class="status"></div>
             </section>
 
-            <section class="panel" id="resultsPanel" hidden>
-                <h2>4. Resultados</h2>
-                <div id="results"></div>
+            <section class="panel" id="enrichStatsPanel" hidden>
+                <h2>3. Resultado</h2>
+                <div id="enrichStats" class="enrich-stats"></div>
             </section>
 
-            <section class="panel" id="warningsPanel" hidden>
+            <section class="panel" id="enrichWarningsPanel" hidden>
                 <h2>Warnings</h2>
                 <details open>
-                    <summary id="warningsSummary"></summary>
-                    <pre id="warningsLog"></pre>
+                    <summary id="enrichWarningsSummary"></summary>
+                    <pre id="enrichWarningsLog"></pre>
                 </details>
             </section>
         </div>
