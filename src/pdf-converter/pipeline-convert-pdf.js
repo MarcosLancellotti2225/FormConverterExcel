@@ -18,7 +18,7 @@ async function analyzePdf(inputs) {
     const textItems = await extractText(pdfBytes);
     const labeledFields = detectLabels(fields, textItems);
     const collapsed = collapseWidgets(labeledFields);
-    const { matches, warnings } = resolveNames(collapsed, excelBuffer, referenceJson);
+    const { matches, warnings } = resolveNames(collapsed, excelBuffer, referenceJson, textItems);
 
     const totalUnique = collapsed.length;
     const noLabel = matches.filter(m => !m.detectedLabel).length;
@@ -57,10 +57,10 @@ async function generatePdf(pdfBytes, finalMatches) {
         renameMap.push({ oldName: m.originalName, newName: finalNewName });
     }
 
-    const deduped = deduplicateNames(renameMap);
+    const { deduped, collisionWarnings } = deduplicateNames(renameMap);
     const { pdfBytes: newPdfBytes, warnings } = await rewritePdf(pdfBytes, deduped);
 
-    return { pdfBytes: newPdfBytes, warnings, renamedCount: deduped.length };
+    return { pdfBytes: newPdfBytes, warnings: [...collisionWarnings, ...warnings], renamedCount: deduped.length };
 }
 
 function collapseWidgets(labeledFields) {
@@ -83,19 +83,24 @@ function collapseWidgets(labeledFields) {
 function deduplicateNames(renameMap) {
     const seen = new Set();
     const result = [];
+    const warnings = [];
 
     for (const entry of renameMap) {
         let name = entry.newName;
         if (seen.has(name)) {
-            let suffix = 2;
-            while (seen.has(name + '_' + suffix)) suffix++;
-            name = name + '_' + suffix;
+            const fallback = entry.oldName.replace(/\./g, '_').toLowerCase();
+            warnings.push({
+                type: 'collision-unresolved',
+                field: entry.oldName,
+                reason: `"${name}" already used — reverting to "${fallback}"`,
+            });
+            name = fallback;
         }
         seen.add(name);
         result.push({ oldName: entry.oldName, newName: name });
     }
 
-    return result;
+    return { deduped: result, collisionWarnings: warnings };
 }
 
 module.exports = { analyzePdf, generatePdf };

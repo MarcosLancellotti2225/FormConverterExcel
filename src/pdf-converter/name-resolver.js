@@ -2,10 +2,18 @@
 
 const XLSX = require('xlsx');
 
-function resolveNames(labeledFields, excelBuffer, referenceJson) {
+const AMBIGUOUS_LABELS = new Set([
+    'dia', 'mes', 'ano', 'otro', 'si', 'no', 'desde', 'hasta',
+]);
+
+const MERGE_Y_TOLERANCE = 3;
+const MERGE_X_GAP = 12;
+
+function resolveNames(labeledFields, excelBuffer, referenceJson, textItems) {
     const excelRows = parseExcelMatrix(excelBuffer);
     const excelIndex = buildExcelIndex(excelRows);
     const refIndex = referenceJson ? buildRefIndex(referenceJson) : null;
+    const mergedByPage = buildMergedTextByPage(textItems || []);
 
     const warnings = [];
     const matches = [];
@@ -15,15 +23,22 @@ function resolveNames(labeledFields, excelBuffer, referenceJson) {
         const result = resolveOne(field, excelIndex, refIndex, warnings);
         let finalName = result.newName;
 
+        const baseName = finalName.replace(/_\d+$/, '');
+        if (AMBIGUOUS_LABELS.has(baseName)) {
+            const ctx = detectContextPrefix(field, mergedByPage);
+            const prefix = buildContextPrefix(ctx);
+            if (prefix) {
+                finalName = prefix + '_' + finalName;
+            }
+        }
+
         if (usedNames.has(finalName) && finalName !== field.name) {
-            let suffix = 2;
-            while (usedNames.has(finalName + '_' + suffix)) suffix++;
             warnings.push({
-                type: 'collision',
+                type: 'collision-unresolved',
                 field: field.name,
-                reason: `"${finalName}" already used, suffixed to "${finalName}_${suffix}"`
+                reason: `"${finalName}" already used — keeping original name for manual resolution`,
             });
-            finalName = finalName + '_' + suffix;
+            finalName = sanitizeName(field.name.replace(/\./g, '_'));
         }
 
         usedNames.add(finalName);
@@ -76,6 +91,151 @@ function resolveOne(field, excelIndex, refIndex, warnings) {
 
     return { newName: field.name, source: 'unchanged', confidence: 0 };
 }
+
+function isPlaceholder(s) {
+    const n = (s || '').toLowerCase().trim();
+    return !n || n === 'no se llena en pdf' || n === 'no aplica' || n === 'n/a' || n === '-';
+}
+
+function deriveNameFromExcelRow(row, field) {
+    if (row.pdfFieldName && !isPlaceholder(row.pdfFieldName)) {
+        let name = row.pdfFieldName;
+        const rowNum = extractRowNumber(field.name);
+        if (rowNum && !/_\d+_/.test(name) && !/\d$/.test(name)) {
+            name = applyRowNumber(name, rowNum);
+        }
+        return sanitizeName(name);
+    }
+
+    if (row.jsonName) {
+        const leaf = row.jsonName.split(',')[0].trim().split('.').pop();
+        if (leaf) {
+            let snake = camelToSnake(leaf);
+            const rowNum = extractRowNumber(field.name);
+            if (rowNum) {
+                snake = applyRowNumber(snake, rowNum);
+            }
+            return sanitizeName(snake);
+        }
+    }
+
+    if (field.detectedLabel) {
+        return sanitizeName(toSnakeCase(field.detectedLabel));
+    }
+
+    return null;
+}
+
+// --- Context prefix detection for ambiguous names ---
+
+function buildMergedTextByPage(textItems) {
+    const byPage = new Map();
+    for (const item of textItems) {
+        if (!byPage.has(item.page)) byPage.set(item.page, []);
+        byPage.get(item.page).push(item);
+    }
+    const mergedByPage = new Map();
+    for (const [page, items] of byPage) {
+        mergedByPage.set(page, mergeAdjacentText(items));
+    }
+    return mergedByPage;
+}
+
+function mergeAdjacentText(items) {
+    const sorted = [...items].sort((a, b) => {
+        if (Math.abs(a.y - b.y) > MERGE_Y_TOLERANCE) return b.y - a.y;
+        return a.x - b.x;
+    });
+    const merged = [];
+    let cur = null;
+    for (const item of sorted) {
+        if (cur &&
+            Math.abs(item.y - cur.y) <= MERGE_Y_TOLERANCE &&
+            (item.x - (cur.x + cur.width)) <= MERGE_X_GAP &&
+            (item.x - (cur.x + cur.width)) >= -2) {
+            cur.str = (cur.str + ' ' + item.str).trim();
+            cur.width = (item.x + item.width) - cur.x;
+            cur.height = Math.max(cur.height, item.height);
+        } else {
+            if (cur) merged.push(cur);
+            cur = { ...item };
+        }
+    }
+    if (cur) merged.push(cur);
+    return merged;
+}
+
+function detectContextPrefix(field, mergedByPage) {
+    const pageTexts = mergedByPage.get(field.page) || [];
+    const fy = field.rect.y;
+    const fh = field.rect.height;
+    const fx = field.rect.x;
+    const fieldTop = fy + fh;
+
+    let nearestHeading = null;
+    let headingDist = Infinity;
+
+    for (const t of pageTexts) {
+        const distAbove = t.y - fieldTop;
+        if (distAbove <= 0 || distAbove > 200) continue;
+        if (!isHeadingText(t.str)) continue;
+        if (distAbove < headingDist) {
+            headingDist = distAbove;
+            nearestHeading = t.str.trim();
+        }
+    }
+
+    let nearestSubLabel = null;
+    let subLabelDist = Infinity;
+
+    for (const t of pageTexts) {
+        const yDiff = Math.abs(t.y - fy);
+        if (yDiff > 30) continue;
+        const textRight = t.x + t.width;
+        if (textRight > fx) continue;
+        const dist = fx - textRight;
+        if (dist > 300) continue;
+        const str = t.str.trim().toLowerCase().replace(/:$/, '');
+        if (/^(desde|hasta)$/.test(str)) {
+            if (dist < subLabelDist) {
+                subLabelDist = dist;
+                nearestSubLabel = str;
+            }
+        }
+    }
+
+    return { heading: nearestHeading, subLabel: nearestSubLabel };
+}
+
+function isHeadingText(str) {
+    const text = str.trim();
+    if (text.length < 5) return false;
+    const letters = text.replace(/[^A-ZÁÉÍÓÚÑÜ]/gi, '');
+    if (letters.length < 5) return false;
+    return letters === letters.toUpperCase() && letters.length > text.length * 0.5;
+}
+
+function buildContextPrefix(ctx) {
+    if (!ctx.heading && !ctx.subLabel) return null;
+
+    const parts = [];
+    if (ctx.heading) {
+        const h = ctx.heading.toLowerCase()
+            .normalize('NFD').replace(/[̀-ͯ]/g, '');
+        if (h.includes('vigencia')) parts.push('vigencia');
+        else if (h.includes('nacimiento')) parts.push('fecha_nacimiento');
+        else if (h.includes('fecha')) parts.push('fecha');
+        else if (h.includes('beneficiario')) parts.push('beneficiario');
+    }
+    if (ctx.subLabel) {
+        parts.push(ctx.subLabel);
+    }
+
+    if (parts.length === 0) return null;
+    return sanitizeName(parts.join('_'));
+}
+
+// --- Excel parsing ---
 
 function parseExcelMatrix(buffer) {
     const workbook = XLSX.read(buffer, { type: 'array' });
@@ -193,33 +353,7 @@ function findExcelMatch(label, index, mode) {
     return bestRow;
 }
 
-function deriveNameFromExcelRow(row, field) {
-    if (row.pdfFieldName) {
-        let name = row.pdfFieldName;
-        const rowNum = extractRowNumber(field.name);
-        if (rowNum && !/_\d+_/.test(name) && !/\d$/.test(name)) {
-            name = applyRowNumber(name, rowNum);
-        }
-        return sanitizeName(name);
-    }
-
-    if (row.jsonName) {
-        const parts = row.jsonName.split('.');
-        const last = parts[parts.length - 1];
-        let snake = camelToSnake(last);
-        const rowNum = extractRowNumber(field.name);
-        if (rowNum) {
-            snake = applyRowNumber(snake, rowNum);
-        }
-        return sanitizeName(snake);
-    }
-
-    if (row.pdfLabel) {
-        return sanitizeName(toSnakeCase(row.pdfLabel));
-    }
-
-    return null;
-}
+// --- Reference JSON index ---
 
 function buildRefIndex(json) {
     const positions = [];
@@ -274,6 +408,8 @@ function findRefMatch(field, refPositions) {
     return null;
 }
 
+// --- Utilities ---
+
 function extractRowNumber(name) {
     const m = name.match(/Row\s*(\d+)/i) || name.match(/\.(\d+)\.\d+$/);
     return m ? parseInt(m[1], 10) : null;
@@ -307,7 +443,7 @@ function camelToSnake(str) {
 function sanitizeName(name) {
     return String(name || '')
         .toLowerCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
         .replace(/[^a-z0-9_]/g, '_')
         .replace(/_+/g, '_')
         .replace(/^_|_$/g, '')
@@ -317,7 +453,7 @@ function sanitizeName(name) {
 function normalize(str) {
     return String(str || '')
         .toLowerCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
         .replace(/[^a-z0-9\s]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
@@ -326,7 +462,6 @@ function normalize(str) {
 function similarity(a, b) {
     if (a === b) return 1;
     if (!a.length || !b.length) return 0;
-
     const len = Math.max(a.length, b.length);
     const dist = levenshtein(a, b);
     return 1 - dist / len;

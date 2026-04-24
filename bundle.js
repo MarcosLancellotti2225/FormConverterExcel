@@ -87782,25 +87782,44 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     "src/pdf-converter/name-resolver.js"(exports, module) {
       "use strict";
       var XLSX = require_xlsx();
-      function resolveNames(labeledFields, excelBuffer, referenceJson) {
+      var AMBIGUOUS_LABELS = /* @__PURE__ */ new Set([
+        "dia",
+        "mes",
+        "ano",
+        "otro",
+        "si",
+        "no",
+        "desde",
+        "hasta"
+      ]);
+      var MERGE_Y_TOLERANCE = 3;
+      var MERGE_X_GAP = 12;
+      function resolveNames(labeledFields, excelBuffer, referenceJson, textItems) {
         const excelRows = parseExcelMatrix(excelBuffer);
         const excelIndex = buildExcelIndex(excelRows);
         const refIndex = referenceJson ? buildRefIndex(referenceJson) : null;
+        const mergedByPage = buildMergedTextByPage(textItems || []);
         const warnings = [];
         const matches = [];
         const usedNames = /* @__PURE__ */ new Set();
         for (const field of labeledFields) {
           const result = resolveOne(field, excelIndex, refIndex, warnings);
           let finalName = result.newName;
+          const baseName = finalName.replace(/_\d+$/, "");
+          if (AMBIGUOUS_LABELS.has(baseName)) {
+            const ctx = detectContextPrefix(field, mergedByPage);
+            const prefix = buildContextPrefix(ctx);
+            if (prefix) {
+              finalName = prefix + "_" + finalName;
+            }
+          }
           if (usedNames.has(finalName) && finalName !== field.name) {
-            let suffix = 2;
-            while (usedNames.has(finalName + "_" + suffix)) suffix++;
             warnings.push({
-              type: "collision",
+              type: "collision-unresolved",
               field: field.name,
-              reason: `"${finalName}" already used, suffixed to "${finalName}_${suffix}"`
+              reason: `"${finalName}" already used \u2014 keeping original name for manual resolution`
             });
-            finalName = finalName + "_" + suffix;
+            finalName = sanitizeName(field.name.replace(/\./g, "_"));
           }
           usedNames.add(finalName);
           matches.push({
@@ -87843,6 +87862,126 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           }
         }
         return { newName: field.name, source: "unchanged", confidence: 0 };
+      }
+      function isPlaceholder(s) {
+        const n = (s || "").toLowerCase().trim();
+        return !n || n === "no se llena en pdf" || n === "no aplica" || n === "n/a" || n === "-";
+      }
+      function deriveNameFromExcelRow(row, field) {
+        if (row.pdfFieldName && !isPlaceholder(row.pdfFieldName)) {
+          let name = row.pdfFieldName;
+          const rowNum = extractRowNumber(field.name);
+          if (rowNum && !/_\d+_/.test(name) && !/\d$/.test(name)) {
+            name = applyRowNumber(name, rowNum);
+          }
+          return sanitizeName(name);
+        }
+        if (row.jsonName) {
+          const leaf = row.jsonName.split(",")[0].trim().split(".").pop();
+          if (leaf) {
+            let snake = camelToSnake(leaf);
+            const rowNum = extractRowNumber(field.name);
+            if (rowNum) {
+              snake = applyRowNumber(snake, rowNum);
+            }
+            return sanitizeName(snake);
+          }
+        }
+        if (field.detectedLabel) {
+          return sanitizeName(toSnakeCase(field.detectedLabel));
+        }
+        return null;
+      }
+      function buildMergedTextByPage(textItems) {
+        const byPage = /* @__PURE__ */ new Map();
+        for (const item of textItems) {
+          if (!byPage.has(item.page)) byPage.set(item.page, []);
+          byPage.get(item.page).push(item);
+        }
+        const mergedByPage = /* @__PURE__ */ new Map();
+        for (const [page, items] of byPage) {
+          mergedByPage.set(page, mergeAdjacentText(items));
+        }
+        return mergedByPage;
+      }
+      function mergeAdjacentText(items) {
+        const sorted = [...items].sort((a, b) => {
+          if (Math.abs(a.y - b.y) > MERGE_Y_TOLERANCE) return b.y - a.y;
+          return a.x - b.x;
+        });
+        const merged = [];
+        let cur = null;
+        for (const item of sorted) {
+          if (cur && Math.abs(item.y - cur.y) <= MERGE_Y_TOLERANCE && item.x - (cur.x + cur.width) <= MERGE_X_GAP && item.x - (cur.x + cur.width) >= -2) {
+            cur.str = (cur.str + " " + item.str).trim();
+            cur.width = item.x + item.width - cur.x;
+            cur.height = Math.max(cur.height, item.height);
+          } else {
+            if (cur) merged.push(cur);
+            cur = { ...item };
+          }
+        }
+        if (cur) merged.push(cur);
+        return merged;
+      }
+      function detectContextPrefix(field, mergedByPage) {
+        const pageTexts = mergedByPage.get(field.page) || [];
+        const fy = field.rect.y;
+        const fh = field.rect.height;
+        const fx = field.rect.x;
+        const fieldTop = fy + fh;
+        let nearestHeading = null;
+        let headingDist = Infinity;
+        for (const t of pageTexts) {
+          const distAbove = t.y - fieldTop;
+          if (distAbove <= 0 || distAbove > 200) continue;
+          if (!isHeadingText(t.str)) continue;
+          if (distAbove < headingDist) {
+            headingDist = distAbove;
+            nearestHeading = t.str.trim();
+          }
+        }
+        let nearestSubLabel = null;
+        let subLabelDist = Infinity;
+        for (const t of pageTexts) {
+          const yDiff = Math.abs(t.y - fy);
+          if (yDiff > 30) continue;
+          const textRight = t.x + t.width;
+          if (textRight > fx) continue;
+          const dist = fx - textRight;
+          if (dist > 300) continue;
+          const str = t.str.trim().toLowerCase().replace(/:$/, "");
+          if (/^(desde|hasta)$/.test(str)) {
+            if (dist < subLabelDist) {
+              subLabelDist = dist;
+              nearestSubLabel = str;
+            }
+          }
+        }
+        return { heading: nearestHeading, subLabel: nearestSubLabel };
+      }
+      function isHeadingText(str) {
+        const text = str.trim();
+        if (text.length < 5) return false;
+        const letters = text.replace(/[^A-ZÁÉÍÓÚÑÜ]/gi, "");
+        if (letters.length < 5) return false;
+        return letters === letters.toUpperCase() && letters.length > text.length * 0.5;
+      }
+      function buildContextPrefix(ctx) {
+        if (!ctx.heading && !ctx.subLabel) return null;
+        const parts = [];
+        if (ctx.heading) {
+          const h = ctx.heading.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+          if (h.includes("vigencia")) parts.push("vigencia");
+          else if (h.includes("nacimiento")) parts.push("fecha_nacimiento");
+          else if (h.includes("fecha")) parts.push("fecha");
+          else if (h.includes("beneficiario")) parts.push("beneficiario");
+        }
+        if (ctx.subLabel) {
+          parts.push(ctx.subLabel);
+        }
+        if (parts.length === 0) return null;
+        return sanitizeName(parts.join("_"));
       }
       function parseExcelMatrix(buffer) {
         const workbook = XLSX.read(buffer, { type: "array" });
@@ -87940,30 +88079,6 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         }
         return bestRow;
       }
-      function deriveNameFromExcelRow(row, field) {
-        if (row.pdfFieldName) {
-          let name = row.pdfFieldName;
-          const rowNum = extractRowNumber(field.name);
-          if (rowNum && !/_\d+_/.test(name) && !/\d$/.test(name)) {
-            name = applyRowNumber(name, rowNum);
-          }
-          return sanitizeName(name);
-        }
-        if (row.jsonName) {
-          const parts = row.jsonName.split(".");
-          const last = parts[parts.length - 1];
-          let snake = camelToSnake(last);
-          const rowNum = extractRowNumber(field.name);
-          if (rowNum) {
-            snake = applyRowNumber(snake, rowNum);
-          }
-          return sanitizeName(snake);
-        }
-        if (row.pdfLabel) {
-          return sanitizeName(toSnakeCase(row.pdfLabel));
-        }
-        return null;
-      }
       function buildRefIndex(json) {
         const positions = [];
         const fp = json?._sourcePdf?.fieldPositions || json?.data?.jsonDefinition?._sourcePdf?.fieldPositions || json?.jsonDefinition?._sourcePdf?.fieldPositions || [];
@@ -88023,10 +88138,10 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         return str.replace(/([a-z])([A-Z])/g, "$1_$2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2").toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
       }
       function sanitizeName(name) {
-        return String(name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 80) || "unnamed";
+        return String(name || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 80) || "unnamed";
       }
       function normalize(str) {
-        return String(str || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+        return String(str || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
       }
       function similarity(a, b) {
         if (a === b) return 1;
@@ -88213,7 +88328,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const textItems = await extractText(pdfBytes);
         const labeledFields = detectLabels(fields, textItems);
         const collapsed = collapseWidgets(labeledFields);
-        const { matches, warnings } = resolveNames(collapsed, excelBuffer, referenceJson);
+        const { matches, warnings } = resolveNames(collapsed, excelBuffer, referenceJson, textItems);
         const totalUnique = collapsed.length;
         const noLabel = matches.filter((m) => !m.detectedLabel).length;
         const noLabelPct = totalUnique > 0 ? Math.round(noLabel / totalUnique * 100) : 0;
@@ -88248,9 +88363,9 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           }
           renameMap.push({ oldName: m.originalName, newName: finalNewName });
         }
-        const deduped = deduplicateNames(renameMap);
+        const { deduped, collisionWarnings } = deduplicateNames(renameMap);
         const { pdfBytes: newPdfBytes, warnings } = await rewritePdf(pdfBytes, deduped);
-        return { pdfBytes: newPdfBytes, warnings, renamedCount: deduped.length };
+        return { pdfBytes: newPdfBytes, warnings: [...collisionWarnings, ...warnings], renamedCount: deduped.length };
       }
       function collapseWidgets(labeledFields) {
         const byName = /* @__PURE__ */ new Map();
@@ -88271,17 +88386,22 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       function deduplicateNames(renameMap) {
         const seen = /* @__PURE__ */ new Set();
         const result = [];
+        const warnings = [];
         for (const entry of renameMap) {
           let name = entry.newName;
           if (seen.has(name)) {
-            let suffix = 2;
-            while (seen.has(name + "_" + suffix)) suffix++;
-            name = name + "_" + suffix;
+            const fallback = entry.oldName.replace(/\./g, "_").toLowerCase();
+            warnings.push({
+              type: "collision-unresolved",
+              field: entry.oldName,
+              reason: `"${name}" already used \u2014 reverting to "${fallback}"`
+            });
+            name = fallback;
           }
           seen.add(name);
           result.push({ oldName: entry.oldName, newName: name });
         }
-        return result;
+        return { deduped: result, collisionWarnings: warnings };
       }
       module.exports = { analyzePdf, generatePdf };
     }
