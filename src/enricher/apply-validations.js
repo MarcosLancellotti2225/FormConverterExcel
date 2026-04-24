@@ -4,6 +4,9 @@ function applyValidations(field, excelRow) {
     const rule = (excelRow.rule || '').trim();
     if (!rule) return;
 
+    const skip = new Set(['select', 'radio', 'checkbox', 'heading', 'readonly']);
+    if (skip.has(field.type)) return;
+
     const r = norm(rule);
 
     const lenMatch = r.match(/(\d+)\s*caract/)

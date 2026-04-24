@@ -131,14 +131,17 @@ function collectComboOptions(matchedRow, index) {
     const label = matchedRow.fieldLabel;
     if (!label) return [];
 
+    const seen = new Set();
     const options = [];
     for (const row of index.rows) {
         if (row.fieldLabel === label && row.value) {
             const m = row.value.match(/^([A-Z0-9]{1,6})\s*[-|,]\s*(.+)$/);
-            options.push(m
-                ? { code: m[1].trim(), label: m[2].trim() }
-                : { code: row.value, label: row.value }
-            );
+            const code = m ? m[1].trim() : row.value;
+            const optLabel = m ? m[2].trim() : row.value;
+            const dedup = `${code}|${optLabel}`.toLowerCase();
+            if (seen.has(dedup)) continue;
+            seen.add(dedup);
+            options.push({ code, label: optLabel });
             row._consumed = true;
         }
     }
