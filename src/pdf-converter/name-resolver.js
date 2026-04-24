@@ -75,6 +75,12 @@ function resolveOne(field, excelIndex, refIndex, warnings) {
         }
     }
 
+    const fieldNameMatch = findFieldNameMatch(field.name, excelIndex);
+    if (fieldNameMatch) {
+        const newName = deriveNameFromExcelRow(fieldNameMatch, field);
+        if (newName) return { newName, source: 'excel-field-name', confidence: 90 };
+    }
+
     if (refIndex) {
         const refMatch = findRefMatch(field, refIndex);
         if (refMatch) {
@@ -318,6 +324,7 @@ function findColumns(rawRows) {
 
 function buildExcelIndex(rows) {
     const byNorm = new Map();
+    const byPdfFieldName = new Map();
 
     for (const row of rows) {
         if (row.pdfLabel) {
@@ -326,9 +333,12 @@ function buildExcelIndex(rows) {
         if (row.fieldLabel && row.fieldLabel !== row.pdfLabel) {
             byNorm.set(normalize(row.fieldLabel), row);
         }
+        if (row.pdfFieldName && !isPlaceholder(row.pdfFieldName)) {
+            byPdfFieldName.set(normalize(row.pdfFieldName), row);
+        }
     }
 
-    return { rows, byNorm };
+    return { rows, byNorm, byPdfFieldName };
 }
 
 function findExcelMatch(label, index, mode) {
@@ -351,6 +361,16 @@ function findExcelMatch(label, index, mode) {
     }
 
     return bestRow;
+}
+
+function findFieldNameMatch(fieldName, index) {
+    if (!fieldName || fieldName.startsWith('_unnamed_')) return null;
+    const baseName = fieldName.replace(/\.\d+(\.\d+)*$/, '');
+    const normName = normalize(baseName);
+    if (!normName) return null;
+    return index.byPdfFieldName.get(normName)
+        || index.byNorm.get(normName)
+        || null;
 }
 
 // --- Reference JSON index ---

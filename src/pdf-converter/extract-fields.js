@@ -10,8 +10,10 @@ async function extractFields(pdfBytes) {
 
     const results = [];
 
+    let unnamedCounter = 0;
     for (const field of form.getFields()) {
-        const name = field.getName();
+        const rawName = field.getName();
+        const name = rawName || `_unnamed_${++unnamedCounter}`;
         const typeName = field.constructor.name;
         const widgets = field.acroField.getWidgets();
 

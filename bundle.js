@@ -56743,8 +56743,10 @@ var InsPipelineBundle = (() => {
         const pages = pdfDoc.getPages();
         const pageRefs = pages.map((p) => p.ref);
         const results = [];
+        let unnamedCounter = 0;
         for (const field of form.getFields()) {
-          const name = field.getName();
+          const rawName = field.getName();
+          const name = rawName || `_unnamed_${++unnamedCounter}`;
           const typeName = field.constructor.name;
           const widgets = field.acroField.getWidgets();
           for (let wi = 0; wi < widgets.length; wi++) {
@@ -87849,6 +87851,11 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             if (newName) return { newName, source: "excel-fuzzy", confidence: 75 };
           }
         }
+        const fieldNameMatch = findFieldNameMatch(field.name, excelIndex);
+        if (fieldNameMatch) {
+          const newName = deriveNameFromExcelRow(fieldNameMatch, field);
+          if (newName) return { newName, source: "excel-field-name", confidence: 90 };
+        }
         if (refIndex) {
           const refMatch = findRefMatch(field, refIndex);
           if (refMatch) {
@@ -88052,6 +88059,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       }
       function buildExcelIndex(rows) {
         const byNorm = /* @__PURE__ */ new Map();
+        const byPdfFieldName = /* @__PURE__ */ new Map();
         for (const row of rows) {
           if (row.pdfLabel) {
             byNorm.set(normalize(row.pdfLabel), row);
@@ -88059,8 +88067,11 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           if (row.fieldLabel && row.fieldLabel !== row.pdfLabel) {
             byNorm.set(normalize(row.fieldLabel), row);
           }
+          if (row.pdfFieldName && !isPlaceholder(row.pdfFieldName)) {
+            byPdfFieldName.set(normalize(row.pdfFieldName), row);
+          }
         }
-        return { rows, byNorm };
+        return { rows, byNorm, byPdfFieldName };
       }
       function findExcelMatch(label, index, mode) {
         const normLabel = normalize(label);
@@ -88078,6 +88089,13 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           }
         }
         return bestRow;
+      }
+      function findFieldNameMatch(fieldName, index) {
+        if (!fieldName || fieldName.startsWith("_unnamed_")) return null;
+        const baseName = fieldName.replace(/\.\d+(\.\d+)*$/, "");
+        const normName = normalize(baseName);
+        if (!normName) return null;
+        return index.byPdfFieldName.get(normName) || index.byNorm.get(normName) || null;
       }
       function buildRefIndex(json) {
         const positions = [];
