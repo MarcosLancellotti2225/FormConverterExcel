@@ -74,7 +74,14 @@ function matchField(field, index) {
     const repeatMatch = sourceName.match(/_(\d+)$/) || sourceName.match(/_Row_(\d+)$/i);
     const rowIndex = repeatMatch ? parseInt(repeatMatch[1], 10) : null;
     const baseName = sourceName.replace(/_(\d+)$/, '').replace(/_Row_(\d+)$/i, '');
-    const cleanLabel = fieldLabel.replace(/_Row_\d+$/i, '').replace(/:_?$/, '').replace(/_/g, ' ').trim();
+    const cleanLabel = fieldLabel
+        .replace(/_Row_\d+$/i, '')
+        .replace(/_\d+$/, '')
+        .replace(/:_?$/, '')
+        .replace(/_/g, ' ').trim();
+
+    const segments = baseName.split('_').filter(Boolean);
+    const lastSegment = segments.length > 1 ? segments[segments.length - 1] : '';
 
     const attempts = [
         { key: normalize(sourceName), idx: 'byPdfFieldName', confidence: 100, source: 'pdf-field-name' },
@@ -84,16 +91,21 @@ function matchField(field, index) {
         { key: normalize(snakeToHuman(baseName)), idx: 'byFormLabel', confidence: 80, source: 'snake-to-form' },
         { key: normalize(snakeToHuman(baseName)), idx: 'byPdfLabel',  confidence: 75, source: 'snake-to-pdf' },
         { key: normalize(snakeToHuman(baseName)), idx: 'byJsonLeaf',  confidence: 70, source: 'json-leaf' },
+        { key: normalize(lastSegment), idx: 'byPdfLabel',  confidence: 65, source: 'last-segment-pdf' },
+        { key: normalize(lastSegment), idx: 'byFormLabel', confidence: 60, source: 'last-segment-form' },
     ];
 
     for (const a of attempts) {
-        if (!a.key) continue;
+        if (!a.key || a.key.length < 2) continue;
         const row = index[a.idx].get(a.key);
         if (row) return { row, rowIndex, confidence: a.confidence, source: a.source };
     }
 
     const fuzzy = findFuzzyMatch(cleanLabel, baseName, index);
     if (fuzzy) return { ...fuzzy, rowIndex };
+
+    const wordMatch = findWordMatch(baseName, cleanLabel, index);
+    if (wordMatch) return { ...wordMatch, rowIndex };
 
     return null;
 }
@@ -106,7 +118,7 @@ function findFuzzyMatch(cleanLabel, baseName, index) {
 
     let best = null;
     let bestScore = 0;
-    const threshold = 0.80;
+    const threshold = 0.72;
 
     const allMaps = [index.byPdfLabel, index.byFormLabel, index.byJsonLeaf];
 
@@ -125,6 +137,28 @@ function findFuzzyMatch(cleanLabel, baseName, index) {
     }
 
     return best;
+}
+
+function findWordMatch(baseName, cleanLabel, index) {
+    const terms = [
+        normalize(snakeToHuman(baseName)),
+        normalize(cleanLabel),
+    ].filter(t => t && t.length >= 3);
+
+    const allMaps = [index.byPdfLabel, index.byFormLabel];
+    for (const term of terms) {
+        for (const m of allMaps) {
+            for (const [key, row] of m) {
+                if (!key || key.length < 3) continue;
+                const keyWords = key.split(' ');
+                const termWords = term.split(' ');
+                if (termWords.every(tw => keyWords.some(kw => kw === tw))) {
+                    return { row, confidence: 55, source: 'word-match' };
+                }
+            }
+        }
+    }
+    return null;
 }
 
 function collectComboOptions(matchedRow, index) {
