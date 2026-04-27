@@ -218,6 +218,7 @@ function findHeaderRow(rawRows) {
 }
 
 const { exportPerFormulario } = require('./export-by-formulario');
+const { parseCatalogos } = require('./parse-catalogos');
 
 function clean(v) {
     return v === null || v === undefined ? '' : String(v).trim();
@@ -232,6 +233,7 @@ module.exports = {
     applyDeriveFormulario,
     exportToXlsx,
     exportPerFormulario,
+    parseCatalogos,
     crossMatrixWithPdfs,
     extractPdfFields,
     COLUMNS,

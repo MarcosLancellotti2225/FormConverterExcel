@@ -669,6 +669,8 @@
     var mtxState = {
         file: null,
         pdfFiles: [],
+        catalogosFile: null,
+        catalogos: null,
         originalRows: null,
         rows: null,
         analyzed: null,
@@ -723,6 +725,19 @@
                 slot.classList.add('loaded');
                 var names = mtxState.pdfFiles.map(function(f) { return f.name; });
                 el.textContent = '✓ ' + mtxState.pdfFiles.length + ' PDF' + (mtxState.pdfFiles.length > 1 ? 's' : '') + ': ' + names.join(', ');
+            } else {
+                slot.classList.remove('loaded');
+                el.textContent = '';
+            }
+        });
+        $('#mtxCatalogosInput').addEventListener('change', function(e) {
+            mtxState.catalogosFile = e.target.files[0] || null;
+            mtxState.catalogos = null;
+            var el = $('#mtxCatalogosStatus');
+            var slot = el.closest('.file-slot');
+            if (mtxState.catalogosFile) {
+                slot.classList.add('loaded');
+                el.textContent = '✓ ' + mtxState.catalogosFile.name;
             } else {
                 slot.classList.remove('loaded');
                 el.textContent = '';
@@ -1037,14 +1052,30 @@
         $('#mtxExportStatus').textContent = '✓ Descargando ' + name;
     }
 
-    function mtxExportByForm() {
-        InsPipelineBundle.matrixDeriveFormulario(mtxState.rows);
-        var xlsxBuffer = InsPipelineBundle.matrixExportPerFormulario(mtxState.rows);
-        var blob = new Blob([xlsxBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        var name = (mtxState.file ? mtxState.file.name.replace(/\.xlsx?$/i, '') : 'matriz') + '_por_formulario.xlsx';
-        InsPipelineBundle.downloadBlob(blob, name);
-        $('#mtxExportStatus').className = 'status active success';
-        $('#mtxExportStatus').textContent = '✓ Descargando ' + name + ' (4 hojas: Resumen + 3 formularios)';
+    async function mtxExportByForm() {
+        var statusEl = $('#mtxExportStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Generando catálogo por formulario...';
+
+        try {
+            InsPipelineBundle.matrixDeriveFormulario(mtxState.rows);
+
+            if (mtxState.catalogosFile && !mtxState.catalogos) {
+                mtxState.catalogos = await InsPipelineBundle.matrixParseCatalogos(mtxState.catalogosFile);
+            }
+
+            var xlsxBuffer = InsPipelineBundle.matrixExportPerFormulario(mtxState.rows, mtxState.catalogos);
+            var blob = new Blob([xlsxBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            var name = (mtxState.file ? mtxState.file.name.replace(/\.xlsx?$/i, '') : 'matriz') + '_por_formulario.xlsx';
+            InsPipelineBundle.downloadBlob(blob, name);
+            var sheetCount = mtxState.catalogos ? 5 : 4;
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ Descargando ' + name + ' (' + sheetCount + ' hojas: Resumen + 3 formularios' + (mtxState.catalogos ? ' + Catálogos' : '') + ')';
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
     }
 
     function reanalyze(rows) {
