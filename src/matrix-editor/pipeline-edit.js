@@ -6,7 +6,7 @@ const { parseAmbiguous } = require('./parse-ambiguous');
 const { deriveFromJsonPath } = require('./derive-pdf-name');
 const { normalizeObligatorio, mapFormulario } = require('./normalize-values');
 const { exportToXlsx } = require('./export-matrix');
-const { crossWithPdf, applyMatchToRow } = require('./cross-with-pdf');
+const { crossWithPdf, crossWithMultiplePdfs, applyMatchToRow } = require('./cross-with-pdf');
 const { detectOrphans, computeCrossStats } = require('./detect-orphans');
 const { extractFields } = require('../pdf-converter/extract-fields');
 const { extractText } = require('../pdf-converter/extract-text');
@@ -19,14 +19,27 @@ async function extractPdfFields(pdfBytes) {
     return labeled;
 }
 
-async function crossMatrixWithPdf(rows, pdfBytes) {
-    const acroFields = await extractPdfFields(pdfBytes);
-    const matchResults = crossWithPdf(rows, acroFields);
+async function crossMatrixWithPdfs(rows, pdfEntries) {
+    const pdfFieldSets = [];
+    const allFields = [];
+
+    for (const { name, bytes } of pdfEntries) {
+        const fields = await extractPdfFields(bytes);
+        pdfFieldSets.push({ pdfName: name, fields });
+        for (const f of fields) {
+            allFields.push({ ...f, _pdfSource: name });
+        }
+    }
+
+    const matchResults = pdfEntries.length === 1
+        ? crossWithPdf(rows, pdfFieldSets[0].fields)
+        : crossWithMultiplePdfs(rows, pdfFieldSets);
 
     for (let i = 0; i < rows.length; i++) {
         const mr = matchResults[i];
         if (mr.match && mr.match.field && mr.match.confidence >= 75) {
             applyMatchToRow(rows[i], mr.match);
+            if (mr.pdfName) rows[i]['_pdfSource'] = mr.pdfName;
         } else {
             rows[i]['PDF AcroForm Name'] = '';
             rows[i]['PDF Tipo Nativo'] = '';
@@ -37,10 +50,10 @@ async function crossMatrixWithPdf(rows, pdfBytes) {
         }
     }
 
-    const crossStats = computeCrossStats(rows, acroFields, matchResults);
-    const { orphanRows, orphanFields } = detectOrphans(rows, acroFields, matchResults);
+    const crossStats = computeCrossStats(rows, allFields, matchResults);
+    const { orphanRows, orphanFields } = detectOrphans(rows, allFields, matchResults);
 
-    return { matchResults, crossStats, orphanRows, orphanFields, acroFields };
+    return { matchResults, crossStats, orphanRows, orphanFields, acroFields: allFields, pdfFieldSets };
 }
 
 function loadMatrix(buffer) {
@@ -216,7 +229,7 @@ module.exports = {
     applyNormalizeObligatorio,
     applyDeriveFormulario,
     exportToXlsx,
-    crossMatrixWithPdf,
+    crossMatrixWithPdfs,
     extractPdfFields,
     COLUMNS,
 };

@@ -383,18 +383,16 @@ function matrixNormalizeObligatorio(rows) { return matrixEditor.applyNormalizeOb
 function matrixDeriveFormulario(rows) { matrixEditor.applyDeriveFormulario(rows); }
 function matrixExport(rows) { return matrixEditor.exportToXlsx(rows); }
 
-async function matrixCrossWithPdf(rows, pdfFile) {
-    const pdfBytes = await fileToUint8Array(pdfFile);
-    return matrixEditor.crossMatrixWithPdf(rows, pdfBytes);
-}
-
-async function matrixExtractPdfFields(pdfFile) {
-    const pdfBytes = await fileToUint8Array(pdfFile);
-    return matrixEditor.extractPdfFields(pdfBytes);
+async function matrixCrossWithPdfs(rows, pdfFiles) {
+    const pdfEntries = [];
+    for (const f of pdfFiles) {
+        pdfEntries.push({ name: f.name.replace(/\.pdf$/i, ''), bytes: await fileToUint8Array(f) });
+    }
+    return matrixEditor.crossMatrixWithPdfs(rows, pdfEntries);
 }
 
 if (typeof window !== 'undefined') {
-    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixCrossWithPdf, matrixExtractPdfFields };
+    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixCrossWithPdfs };
 }
 
-module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixCrossWithPdf, matrixExtractPdfFields };
+module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixCrossWithPdfs };

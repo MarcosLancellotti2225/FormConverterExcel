@@ -89417,6 +89417,38 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         }
         return results;
       }
+      function crossWithMultiplePdfs(excelRows, pdfFieldSets) {
+        const perPdfResults = [];
+        for (const { pdfName, fields } of pdfFieldSets) {
+          const matchedFieldNames = /* @__PURE__ */ new Set();
+          const results = [];
+          for (let i = 0; i < excelRows.length; i++) {
+            const match = matchExcelRowToAcroForm(excelRows[i], fields, matchedFieldNames);
+            if (match && match.field && match.confidence >= 75) {
+              matchedFieldNames.add(match.field.name);
+            }
+            results.push({ rowIndex: i, match, pdfName });
+          }
+          perPdfResults.push(results);
+        }
+        const merged = [];
+        for (let i = 0; i < excelRows.length; i++) {
+          let best = null;
+          let bestPdf = "";
+          for (const pdfResults of perPdfResults) {
+            const mr = pdfResults[i];
+            if (!mr.match) continue;
+            const conf = mr.match.confidence || 0;
+            const bestConf = best ? best.confidence || 0 : -1;
+            if (conf > bestConf) {
+              best = mr.match;
+              bestPdf = mr.pdfName;
+            }
+          }
+          merged.push({ rowIndex: i, match: best, pdfName: bestPdf });
+        }
+        return merged;
+      }
       function matchExcelRowToAcroForm(row, acroFields, alreadyMatched) {
         const targetName = (row["Nombre del Campo en PDF"] || "").trim();
         if (targetName) {
@@ -89518,7 +89550,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         }
         return matrix[b.length][a.length];
       }
-      module.exports = { crossWithPdf, matchExcelRowToAcroForm, applyMatchToRow, normalize };
+      module.exports = { crossWithPdf, crossWithMultiplePdfs, matchExcelRowToAcroForm, applyMatchToRow, normalize };
     }
   });
 
@@ -89590,7 +89622,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       var { deriveFromJsonPath } = require_derive_pdf_name();
       var { normalizeObligatorio, mapFormulario } = require_normalize_values();
       var { exportToXlsx } = require_export_matrix();
-      var { crossWithPdf, applyMatchToRow } = require_cross_with_pdf();
+      var { crossWithPdf, crossWithMultiplePdfs, applyMatchToRow } = require_cross_with_pdf();
       var { detectOrphans, computeCrossStats } = require_detect_orphans();
       var { extractFields } = require_extract_fields();
       var { extractText } = require_extract_text();
@@ -89601,13 +89633,22 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const labeled = detectLabels(fields, textItems);
         return labeled;
       }
-      async function crossMatrixWithPdf(rows, pdfBytes) {
-        const acroFields = await extractPdfFields(pdfBytes);
-        const matchResults = crossWithPdf(rows, acroFields);
+      async function crossMatrixWithPdfs(rows, pdfEntries) {
+        const pdfFieldSets = [];
+        const allFields = [];
+        for (const { name, bytes } of pdfEntries) {
+          const fields = await extractPdfFields(bytes);
+          pdfFieldSets.push({ pdfName: name, fields });
+          for (const f of fields) {
+            allFields.push({ ...f, _pdfSource: name });
+          }
+        }
+        const matchResults = pdfEntries.length === 1 ? crossWithPdf(rows, pdfFieldSets[0].fields) : crossWithMultiplePdfs(rows, pdfFieldSets);
         for (let i = 0; i < rows.length; i++) {
           const mr = matchResults[i];
           if (mr.match && mr.match.field && mr.match.confidence >= 75) {
             applyMatchToRow(rows[i], mr.match);
+            if (mr.pdfName) rows[i]["_pdfSource"] = mr.pdfName;
           } else {
             rows[i]["PDF AcroForm Name"] = "";
             rows[i]["PDF Tipo Nativo"] = "";
@@ -89617,9 +89658,9 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             rows[i]["_matchSource"] = mr.match ? mr.match.source : "";
           }
         }
-        const crossStats = computeCrossStats(rows, acroFields, matchResults);
-        const { orphanRows, orphanFields } = detectOrphans(rows, acroFields, matchResults);
-        return { matchResults, crossStats, orphanRows, orphanFields, acroFields };
+        const crossStats = computeCrossStats(rows, allFields, matchResults);
+        const { orphanRows, orphanFields } = detectOrphans(rows, allFields, matchResults);
+        return { matchResults, crossStats, orphanRows, orphanFields, acroFields: allFields, pdfFieldSets };
       }
       function loadMatrix(buffer) {
         const workbook = XLSX.read(buffer, { type: "array" });
@@ -89778,7 +89819,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         applyNormalizeObligatorio,
         applyDeriveFormulario,
         exportToXlsx,
-        crossMatrixWithPdf,
+        crossMatrixWithPdfs,
         extractPdfFields,
         COLUMNS
       };
@@ -90117,18 +90158,17 @@ ${pagesHtml}</body>
       function matrixExport(rows) {
         return matrixEditor.exportToXlsx(rows);
       }
-      async function matrixCrossWithPdf(rows, pdfFile) {
-        const pdfBytes = await fileToUint8Array(pdfFile);
-        return matrixEditor.crossMatrixWithPdf(rows, pdfBytes);
-      }
-      async function matrixExtractPdfFields(pdfFile) {
-        const pdfBytes = await fileToUint8Array(pdfFile);
-        return matrixEditor.extractPdfFields(pdfBytes);
+      async function matrixCrossWithPdfs(rows, pdfFiles) {
+        const pdfEntries = [];
+        for (const f of pdfFiles) {
+          pdfEntries.push({ name: f.name.replace(/\.pdf$/i, ""), bytes: await fileToUint8Array(f) });
+        }
+        return matrixEditor.crossMatrixWithPdfs(rows, pdfEntries);
       }
       if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixCrossWithPdf, matrixExtractPdfFields };
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixCrossWithPdfs };
       }
-      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixCrossWithPdf, matrixExtractPdfFields };
+      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixCrossWithPdfs };
     }
   });
   return require_browser();

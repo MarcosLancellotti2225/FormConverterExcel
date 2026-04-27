@@ -668,7 +668,7 @@
 
     var mtxState = {
         file: null,
-        pdfFile: null,
+        pdfFiles: [],
         originalRows: null,
         rows: null,
         analyzed: null,
@@ -716,12 +716,13 @@
             $('#btnMtxAnalyze').disabled = !mtxState.file;
         });
         $('#mtxPdfInput').addEventListener('change', function(e) {
-            mtxState.pdfFile = e.target.files[0] || null;
+            mtxState.pdfFiles = Array.from(e.target.files || []);
             var el = $('#mtxPdfStatus');
             var slot = el.closest('.file-slot');
-            if (mtxState.pdfFile) {
+            if (mtxState.pdfFiles.length > 0) {
                 slot.classList.add('loaded');
-                el.textContent = '✓ ' + mtxState.pdfFile.name + ' (' + formatSize(mtxState.pdfFile.size) + ')';
+                var names = mtxState.pdfFiles.map(function(f) { return f.name; });
+                el.textContent = '✓ ' + mtxState.pdfFiles.length + ' PDF' + (mtxState.pdfFiles.length > 1 ? 's' : '') + ': ' + names.join(', ');
             } else {
                 slot.classList.remove('loaded');
                 el.textContent = '';
@@ -749,13 +750,13 @@
             mtxState.rows = result.rows;
             mtxState.analyzed = result.analyzed;
             mtxState.stats = result.stats;
-            mtxState.hasPdf = !!mtxState.pdfFile;
+            mtxState.hasPdf = mtxState.pdfFiles.length > 0;
 
             if (mtxState.hasPdf) {
                 MTX_COLUMNS = MTX_COLUMNS_BASE.concat(MTX_PDF_COLUMNS);
                 MTX_SHORT = MTX_SHORT_BASE.concat(MTX_SHORT_PDF);
-                statusEl.textContent = '⟳ Cruzando con PDF...';
-                var crossResult = await InsPipelineBundle.matrixCrossWithPdf(mtxState.rows, mtxState.pdfFile);
+                statusEl.textContent = '⟳ Cruzando con ' + mtxState.pdfFiles.length + ' PDF' + (mtxState.pdfFiles.length > 1 ? 's' : '') + '...';
+                var crossResult = await InsPipelineBundle.matrixCrossWithPdfs(mtxState.rows, mtxState.pdfFiles);
                 mtxState.matchResults = crossResult.matchResults;
                 mtxState.crossStats = crossResult.crossStats;
                 mtxState.acroFields = crossResult.acroFields;

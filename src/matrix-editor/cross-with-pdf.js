@@ -19,6 +19,41 @@ function crossWithPdf(excelRows, acroFields) {
     return results;
 }
 
+function crossWithMultiplePdfs(excelRows, pdfFieldSets) {
+    const perPdfResults = [];
+    for (const { pdfName, fields } of pdfFieldSets) {
+        const matchedFieldNames = new Set();
+        const results = [];
+        for (let i = 0; i < excelRows.length; i++) {
+            const match = matchExcelRowToAcroForm(excelRows[i], fields, matchedFieldNames);
+            if (match && match.field && match.confidence >= 75) {
+                matchedFieldNames.add(match.field.name);
+            }
+            results.push({ rowIndex: i, match, pdfName });
+        }
+        perPdfResults.push(results);
+    }
+
+    const merged = [];
+    for (let i = 0; i < excelRows.length; i++) {
+        let best = null;
+        let bestPdf = '';
+        for (const pdfResults of perPdfResults) {
+            const mr = pdfResults[i];
+            if (!mr.match) continue;
+            const conf = mr.match.confidence || 0;
+            const bestConf = best ? (best.confidence || 0) : -1;
+            if (conf > bestConf) {
+                best = mr.match;
+                bestPdf = mr.pdfName;
+            }
+        }
+        merged.push({ rowIndex: i, match: best, pdfName: bestPdf });
+    }
+
+    return merged;
+}
+
 function matchExcelRowToAcroForm(row, acroFields, alreadyMatched) {
     const targetName = (row['Nombre del Campo en PDF'] || '').trim();
     if (targetName) {
@@ -141,4 +176,4 @@ function editDistance(a, b) {
     return matrix[b.length][a.length];
 }
 
-module.exports = { crossWithPdf, matchExcelRowToAcroForm, applyMatchToRow, normalize };
+module.exports = { crossWithPdf, crossWithMultiplePdfs, matchExcelRowToAcroForm, applyMatchToRow, normalize };
