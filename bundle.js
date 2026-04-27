@@ -89401,6 +89401,17 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           clearHighlights() {
             container.querySelectorAll(".preview-field.highlighted").forEach((el) => el.classList.remove("highlighted"));
           },
+          markMatched(originalName) {
+            const sel = '.preview-field[data-field-name="' + CSS.escape(originalName) + '"]';
+            container.querySelectorAll(sel).forEach((el) => el.classList.remove("unmatched"));
+          },
+          updateTooltip(originalName, newText) {
+            const sel = '.preview-field[data-field-name="' + CSS.escape(originalName) + '"]';
+            container.querySelectorAll(sel).forEach((el) => {
+              const tip = el.querySelector(".preview-tooltip");
+              if (tip) tip.textContent = newText;
+            });
+          },
           onFieldClick(callback) {
             container.addEventListener("click", (e) => {
               const fd = e.target.closest(".preview-field");

@@ -568,6 +568,36 @@ details summary:hover { color: var(--text); }
     background: rgba(248, 81, 73, 0.03);
 }
 
+.field-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.5rem;
+}
+
+.field-nav-counter {
+    font-size: 0.8rem;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-muted);
+    min-width: 60px;
+    text-align: center;
+}
+
+.field-nav .match-stats {
+    margin-left: auto;
+}
+
+.match-table tr.row-active td {
+    background: rgba(255, 215, 0, 0.10);
+    border-top: 1px solid rgba(255, 215, 0, 0.3);
+    border-bottom: 1px solid rgba(255, 215, 0, 0.3);
+}
+
+.match-table tr.row-manual td {
+    background: rgba(88, 166, 255, 0.06);
+}
+
 .match-filters {
     display: flex;
     align-items: center;

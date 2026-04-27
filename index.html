@@ -86,7 +86,10 @@
                 <section class="panel split-left" id="matchTablePanel">
                     <h2>3. Tabla de Match</h2>
                     <p class="hint">Revisa y edita. Click en una fila para verla en el PDF.</p>
-                    <div class="match-filters">
+                    <div class="field-nav">
+                        <button id="btnPrevField" class="secondary btn-sm" disabled>&larr; Prev</button>
+                        <span id="fieldNavCounter" class="field-nav-counter">0 / 0</span>
+                        <button id="btnNextField" class="secondary btn-sm" disabled>Next &rarr;</button>
                         <span id="matchStats" class="match-stats"></span>
                         <label class="toggle toggle-sm">
                             <input type="checkbox" id="filterUnmatched">
