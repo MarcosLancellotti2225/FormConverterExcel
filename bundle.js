@@ -88557,11 +88557,41 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         }
         return { byPdfFieldName, byPdfLabel, byFormLabel, byJsonLeaf, rows };
       }
+      function generateSourceNameVariants(sourceName) {
+        const variants = [];
+        variants.push(sourceName);
+        let current = sourceName;
+        for (let i = 0; i < 3; i++) {
+          const stripped = current.replace(/_\d+$/, "");
+          if (stripped === current) break;
+          variants.push(stripped);
+          current = stripped;
+        }
+        return variants;
+      }
       function matchField(field, index) {
         const sourceName = field.sourceMeta?.sourceName || "";
         const fieldLabel = field.label || "";
+        const variants = generateSourceNameVariants(sourceName);
         const repeatMatch = sourceName.match(/_(\d+)$/) || sourceName.match(/_Row_(\d+)$/i);
         const rowIndex = repeatMatch ? parseInt(repeatMatch[1], 10) : null;
+        for (const variant of variants) {
+          const result = runCascadeStrategies(variant, fieldLabel, index);
+          if (result && result.confidence >= 70) {
+            return { ...result, rowIndex };
+          }
+        }
+        const baseName = variants[variants.length - 1];
+        const cleanLabel = fieldLabel.replace(/_Row_\d+$/i, "").replace(/_\d+$/, "").replace(/:_?$/, "").replace(/_/g, " ").trim();
+        const catalogMatch = findCatalogValueMatch(sourceName, index.rows);
+        if (catalogMatch) return { ...catalogMatch, rowIndex };
+        const fuzzy = findFuzzyMatch(cleanLabel, baseName, index);
+        if (fuzzy) return { ...fuzzy, rowIndex };
+        const wordMatch = findWordMatch(baseName, cleanLabel, index);
+        if (wordMatch) return { ...wordMatch, rowIndex };
+        return null;
+      }
+      function runCascadeStrategies(sourceName, fieldLabel, index) {
         const baseName = sourceName.replace(/_(\d+)$/, "").replace(/_Row_(\d+)$/i, "");
         const cleanLabel = fieldLabel.replace(/_Row_\d+$/i, "").replace(/_\d+$/, "").replace(/:_?$/, "").replace(/_/g, " ").trim();
         const segments = baseName.split("_").filter(Boolean);
@@ -88580,13 +88610,43 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         for (const a of attempts) {
           if (!a.key || a.key.length < 2) continue;
           const row = index[a.idx].get(a.key);
-          if (row) return { row, rowIndex, confidence: a.confidence, source: a.source };
+          if (row) return { row, confidence: a.confidence, source: a.source };
         }
-        const fuzzy = findFuzzyMatch(cleanLabel, baseName, index);
-        if (fuzzy) return { ...fuzzy, rowIndex };
-        const wordMatch = findWordMatch(baseName, cleanLabel, index);
-        if (wordMatch) return { ...wordMatch, rowIndex };
         return null;
+      }
+      function findCatalogValueMatch(sourceName, rows) {
+        const target = normalize(sourceName);
+        if (!target || target.length < 2) return null;
+        for (const row of rows) {
+          const cat = row._catalogoDirect || "";
+          if (!cat || !cat.includes(":")) continue;
+          const colonIdx = cat.indexOf(":");
+          const optsRaw = cat.substring(colonIdx + 1);
+          const options = optsRaw.split("|").map((s) => normalize(s.trim())).filter(Boolean);
+          if (options.includes(target)) {
+            return { row, confidence: 75, source: "catalog-value-match", _matchedOption: sourceName };
+          }
+        }
+        return null;
+      }
+      var NOISE_PHRASES = [
+        "exprese_claramente",
+        "al_momento",
+        "en_caso_de",
+        "declaro_que",
+        "firma_del",
+        "nombre_completo_y_el_cargo",
+        "el_cargo",
+        "autorizo_a",
+        "acepto_las",
+        "por_este_medio"
+      ];
+      function isPdfLabelNoise(sourceName) {
+        if (!sourceName) return false;
+        const sn = sourceName.toLowerCase();
+        if (sn.length > 50) return true;
+        if (NOISE_PHRASES.some((p) => sn.includes(p))) return true;
+        return false;
       }
       function findFuzzyMatch(cleanLabel, baseName, index) {
         const candidates = [
@@ -88760,7 +88820,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         }
         return biggest;
       }
-      module.exports = { parseEnrichExcel, buildCascadeIndex, matchField, collectComboOptions, normalize };
+      module.exports = { parseEnrichExcel, buildCascadeIndex, matchField, collectComboOptions, normalize, isPdfLabelNoise };
     }
   });
 
@@ -89197,7 +89257,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
   var require_pipeline_enrich = __commonJS({
     "src/enricher/pipeline-enrich.js"(exports, module) {
       "use strict";
-      var { parseEnrichExcel, buildCascadeIndex, matchField, collectComboOptions } = require_index_excel();
+      var { parseEnrichExcel, buildCascadeIndex, matchField, collectComboOptions, isPdfLabelNoise } = require_index_excel();
       var { parseCatalogsFromBuffer } = require_catalogs_parser();
       var { loadClientPathsFromText, validateLovableJson } = require_prefillkey_validator();
       var { applyType, applyReadOnly, applyRequired } = require_apply_type();
@@ -89233,8 +89293,23 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const triggers = [];
         let matchCount = 0;
         let missCount = 0;
+        let noiseCount = 0;
+        const matchSources = {};
         const fieldLookup = buildFieldLookup(allFields);
         for (const field of allFields) {
+          const sn = field.sourceMeta?.sourceName || "";
+          if (isPdfLabelNoise(sn)) {
+            noiseCount++;
+            warnings.push({
+              stage: "enrich",
+              type: "pdf-label-noise",
+              field: field.label || field.id,
+              reason: `sourceName "${sn}" parece ser un label/header del PDF, no un campo de datos`
+            });
+            field._isPdfNoise = true;
+            cleanLabel(field);
+            continue;
+          }
           const match = matchField(field, index);
           if (!match) {
             missCount++;
@@ -89242,12 +89317,13 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
               stage: "enrich",
               type: "no-match",
               field: field.label || field.id,
-              reason: `sourceName "${field.sourceMeta?.sourceName || "?"}" not found in Excel`
+              reason: `sourceName "${sn || "?"}" not found in Excel`
             });
             cleanLabel(field);
             continue;
           }
           matchMap.set(field.id, match);
+          matchSources[match.source] = (matchSources[match.source] || 0) + 1;
           if (match.confidence < 70) {
             warnings.push({
               stage: "enrich",
@@ -89258,6 +89334,10 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           }
           const excelRow = match.row;
           matchCount++;
+          if (match.source === "catalog-value-match") {
+            field._isOptionOf = excelRow.fieldLabel || excelRow.pdfLabel || "";
+            field._optionValue = match._matchedOption || sn;
+          }
           applyType(field, excelRow);
           applyRequired(field, excelRow);
           applyReadOnly(field, excelRow);
@@ -89289,6 +89369,8 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           stats: {
             matchCount,
             missCount,
+            noiseCount,
+            matchSources,
             totalLovable: allFields.length,
             totalExcel: excelRows.length,
             sectionsCreated: newSections.length

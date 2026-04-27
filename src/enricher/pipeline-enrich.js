@@ -1,6 +1,6 @@
 'use strict';
 
-const { parseEnrichExcel, buildCascadeIndex, matchField, collectComboOptions } = require('./index-excel');
+const { parseEnrichExcel, buildCascadeIndex, matchField, collectComboOptions, isPdfLabelNoise } = require('./index-excel');
 const { parseCatalogsFromBuffer } = require('../parsers/catalogs-parser');
 const { loadClientPathsFromText, validateLovableJson } = require('../validators/prefillkey-validator');
 const { applyType, applyReadOnly, applyRequired } = require('./apply-type');
@@ -44,10 +44,26 @@ async function runEnrichPipeline(inputs) {
     const triggers = [];
     let matchCount = 0;
     let missCount = 0;
+    let noiseCount = 0;
+    const matchSources = {};
 
     const fieldLookup = buildFieldLookup(allFields);
 
     for (const field of allFields) {
+        const sn = field.sourceMeta?.sourceName || '';
+
+        if (isPdfLabelNoise(sn)) {
+            noiseCount++;
+            warnings.push({
+                stage: 'enrich', type: 'pdf-label-noise',
+                field: field.label || field.id,
+                reason: `sourceName "${sn}" parece ser un label/header del PDF, no un campo de datos`,
+            });
+            field._isPdfNoise = true;
+            cleanLabel(field);
+            continue;
+        }
+
         const match = matchField(field, index);
 
         if (!match) {
@@ -55,13 +71,14 @@ async function runEnrichPipeline(inputs) {
             warnings.push({
                 stage: 'enrich', type: 'no-match',
                 field: field.label || field.id,
-                reason: `sourceName "${field.sourceMeta?.sourceName || '?'}" not found in Excel`,
+                reason: `sourceName "${sn || '?'}" not found in Excel`,
             });
             cleanLabel(field);
             continue;
         }
 
         matchMap.set(field.id, match);
+        matchSources[match.source] = (matchSources[match.source] || 0) + 1;
 
         if (match.confidence < 70) {
             warnings.push({
@@ -73,6 +90,11 @@ async function runEnrichPipeline(inputs) {
 
         const excelRow = match.row;
         matchCount++;
+
+        if (match.source === 'catalog-value-match') {
+            field._isOptionOf = excelRow.fieldLabel || excelRow.pdfLabel || '';
+            field._optionValue = match._matchedOption || sn;
+        }
 
         applyType(field, excelRow);
         applyRequired(field, excelRow);
@@ -115,6 +137,8 @@ async function runEnrichPipeline(inputs) {
         stats: {
             matchCount,
             missCount,
+            noiseCount,
+            matchSources,
             totalLovable: allFields.length,
             totalExcel: excelRows.length,
             sectionsCreated: newSections.length,

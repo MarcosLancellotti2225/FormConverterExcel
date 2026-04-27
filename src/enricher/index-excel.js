@@ -121,12 +121,54 @@ function buildCascadeIndex(rows) {
     return { byPdfFieldName, byPdfLabel, byFormLabel, byJsonLeaf, rows };
 }
 
+function generateSourceNameVariants(sourceName) {
+    const variants = [];
+    variants.push(sourceName);
+    let current = sourceName;
+    for (let i = 0; i < 3; i++) {
+        const stripped = current.replace(/_\d+$/, '');
+        if (stripped === current) break;
+        variants.push(stripped);
+        current = stripped;
+    }
+    return variants;
+}
+
 function matchField(field, index) {
     const sourceName = field.sourceMeta?.sourceName || '';
     const fieldLabel = field.label || '';
+    const variants = generateSourceNameVariants(sourceName);
 
     const repeatMatch = sourceName.match(/_(\d+)$/) || sourceName.match(/_Row_(\d+)$/i);
     const rowIndex = repeatMatch ? parseInt(repeatMatch[1], 10) : null;
+
+    for (const variant of variants) {
+        const result = runCascadeStrategies(variant, fieldLabel, index);
+        if (result && result.confidence >= 70) {
+            return { ...result, rowIndex };
+        }
+    }
+
+    const baseName = variants[variants.length - 1];
+    const cleanLabel = fieldLabel
+        .replace(/_Row_\d+$/i, '')
+        .replace(/_\d+$/, '')
+        .replace(/:_?$/, '')
+        .replace(/_/g, ' ').trim();
+
+    const catalogMatch = findCatalogValueMatch(sourceName, index.rows);
+    if (catalogMatch) return { ...catalogMatch, rowIndex };
+
+    const fuzzy = findFuzzyMatch(cleanLabel, baseName, index);
+    if (fuzzy) return { ...fuzzy, rowIndex };
+
+    const wordMatch = findWordMatch(baseName, cleanLabel, index);
+    if (wordMatch) return { ...wordMatch, rowIndex };
+
+    return null;
+}
+
+function runCascadeStrategies(sourceName, fieldLabel, index) {
     const baseName = sourceName.replace(/_(\d+)$/, '').replace(/_Row_(\d+)$/i, '');
     const cleanLabel = fieldLabel
         .replace(/_Row_\d+$/i, '')
@@ -152,16 +194,48 @@ function matchField(field, index) {
     for (const a of attempts) {
         if (!a.key || a.key.length < 2) continue;
         const row = index[a.idx].get(a.key);
-        if (row) return { row, rowIndex, confidence: a.confidence, source: a.source };
+        if (row) return { row, confidence: a.confidence, source: a.source };
     }
 
-    const fuzzy = findFuzzyMatch(cleanLabel, baseName, index);
-    if (fuzzy) return { ...fuzzy, rowIndex };
-
-    const wordMatch = findWordMatch(baseName, cleanLabel, index);
-    if (wordMatch) return { ...wordMatch, rowIndex };
-
     return null;
+}
+
+function findCatalogValueMatch(sourceName, rows) {
+    const target = normalize(sourceName);
+    if (!target || target.length < 2) return null;
+
+    for (const row of rows) {
+        const cat = row._catalogoDirect || '';
+        if (!cat || !cat.includes(':')) continue;
+        const colonIdx = cat.indexOf(':');
+        const optsRaw = cat.substring(colonIdx + 1);
+        const options = optsRaw.split('|').map(s => normalize(s.trim())).filter(Boolean);
+        if (options.includes(target)) {
+            return { row, confidence: 75, source: 'catalog-value-match', _matchedOption: sourceName };
+        }
+    }
+    return null;
+}
+
+const NOISE_PHRASES = [
+    'exprese_claramente',
+    'al_momento',
+    'en_caso_de',
+    'declaro_que',
+    'firma_del',
+    'nombre_completo_y_el_cargo',
+    'el_cargo',
+    'autorizo_a',
+    'acepto_las',
+    'por_este_medio',
+];
+
+function isPdfLabelNoise(sourceName) {
+    if (!sourceName) return false;
+    const sn = sourceName.toLowerCase();
+    if (sn.length > 50) return true;
+    if (NOISE_PHRASES.some(p => sn.includes(p))) return true;
+    return false;
 }
 
 function findFuzzyMatch(cleanLabel, baseName, index) {
@@ -361,4 +435,4 @@ function findMatrixSheet(workbook) {
     return biggest;
 }
 
-module.exports = { parseEnrichExcel, buildCascadeIndex, matchField, collectComboOptions, normalize };
+module.exports = { parseEnrichExcel, buildCascadeIndex, matchField, collectComboOptions, normalize, isPdfLabelNoise };
