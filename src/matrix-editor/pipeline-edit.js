@@ -6,6 +6,42 @@ const { parseAmbiguous } = require('./parse-ambiguous');
 const { deriveFromJsonPath } = require('./derive-pdf-name');
 const { normalizeObligatorio, mapFormulario } = require('./normalize-values');
 const { exportToXlsx } = require('./export-matrix');
+const { crossWithPdf, applyMatchToRow } = require('./cross-with-pdf');
+const { detectOrphans, computeCrossStats } = require('./detect-orphans');
+const { extractFields } = require('../pdf-converter/extract-fields');
+const { extractText } = require('../pdf-converter/extract-text');
+const { detectLabels } = require('../pdf-converter/label-detector');
+
+async function extractPdfFields(pdfBytes) {
+    const { fields } = await extractFields(pdfBytes);
+    const textItems = await extractText(pdfBytes);
+    const labeled = detectLabels(fields, textItems);
+    return labeled;
+}
+
+async function crossMatrixWithPdf(rows, pdfBytes) {
+    const acroFields = await extractPdfFields(pdfBytes);
+    const matchResults = crossWithPdf(rows, acroFields);
+
+    for (let i = 0; i < rows.length; i++) {
+        const mr = matchResults[i];
+        if (mr.match && mr.match.field && mr.match.confidence >= 75) {
+            applyMatchToRow(rows[i], mr.match);
+        } else {
+            rows[i]['PDF AcroForm Name'] = '';
+            rows[i]['PDF Tipo Nativo'] = '';
+            rows[i]['PDF Página'] = '';
+            rows[i]['PDF Rect'] = '';
+            rows[i]['_matchConfidence'] = mr.match ? mr.match.confidence : 0;
+            rows[i]['_matchSource'] = mr.match ? mr.match.source : '';
+        }
+    }
+
+    const crossStats = computeCrossStats(rows, acroFields, matchResults);
+    const { orphanRows, orphanFields } = detectOrphans(rows, acroFields, matchResults);
+
+    return { matchResults, crossStats, orphanRows, orphanFields, acroFields };
+}
 
 function loadMatrix(buffer) {
     const workbook = XLSX.read(buffer, { type: 'array' });
@@ -180,5 +216,7 @@ module.exports = {
     applyNormalizeObligatorio,
     applyDeriveFormulario,
     exportToXlsx,
+    crossMatrixWithPdf,
+    extractPdfFields,
     COLUMNS,
 };

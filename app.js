@@ -668,13 +668,18 @@
 
     var mtxState = {
         file: null,
+        pdfFile: null,
         originalRows: null,
         rows: null,
         analyzed: null,
-        stats: null
+        stats: null,
+        matchResults: null,
+        crossStats: null,
+        acroFields: null,
+        hasPdf: false
     };
 
-    var MTX_COLUMNS = [
+    var MTX_COLUMNS_BASE = [
         'Pasos Formulario', 'Sección', 'Nombre en PDF',
         'Nombre del campo en formulario', 'Tipo de dato', 'Valor',
         'Regla', 'Obligatorio', 'Formulario a visualizar',
@@ -682,11 +687,19 @@
         'Nombre del Campo en Json', 'Nombre del Campo en PDF', 'Formulario'
     ];
 
-    var MTX_SHORT = [
+    var MTX_PDF_COLUMNS = ['PDF AcroForm Name', 'PDF Tipo Nativo', 'PDF Página', 'PDF Rect'];
+
+    var MTX_COLUMNS = MTX_COLUMNS_BASE;
+
+    var MTX_SHORT_BASE = [
         'Paso', 'Sección', 'Nombre PDF', 'Campo Form', 'Tipo', 'Valor',
         'Regla', 'Oblig', 'Form Vis', 'Visualiz', 'Obs',
         'Campo Json', 'Campo PDF', 'Form'
     ];
+
+    var MTX_SHORT_PDF = ['AcroForm', 'Tipo Nat', 'Pag', 'Rect'];
+
+    var MTX_SHORT = MTX_SHORT_BASE;
 
     function initMatrixEditorFlow() {
         $('#mtxExcelInput').addEventListener('change', function(e) {
@@ -702,10 +715,23 @@
             }
             $('#btnMtxAnalyze').disabled = !mtxState.file;
         });
+        $('#mtxPdfInput').addEventListener('change', function(e) {
+            mtxState.pdfFile = e.target.files[0] || null;
+            var el = $('#mtxPdfStatus');
+            var slot = el.closest('.file-slot');
+            if (mtxState.pdfFile) {
+                slot.classList.add('loaded');
+                el.textContent = '✓ ' + mtxState.pdfFile.name + ' (' + formatSize(mtxState.pdfFile.size) + ')';
+            } else {
+                slot.classList.remove('loaded');
+                el.textContent = '';
+            }
+        });
         $('#btnMtxAnalyze').addEventListener('click', runMtxAnalyze);
         $('#btnMtxSplitAll').addEventListener('click', mtxSplitAll);
         $('#btnMtxDerivePdf').addEventListener('click', mtxDerivePdf);
         $('#btnMtxNormOblig').addEventListener('click', mtxNormOblig);
+        $('#btnMtxAcceptAll').addEventListener('click', mtxAcceptAll);
         $('#btnMtxReset').addEventListener('click', mtxReset);
         $('#btnMtxExport').addEventListener('click', mtxExport);
     }
@@ -718,18 +744,47 @@
         try {
             var t0 = performance.now();
             var result = await InsPipelineBundle.runMatrixAnalysis({ matrixFile: mtxState.file });
-            var t1 = performance.now();
 
             mtxState.originalRows = JSON.parse(JSON.stringify(result.rows));
             mtxState.rows = result.rows;
             mtxState.analyzed = result.analyzed;
             mtxState.stats = result.stats;
+            mtxState.hasPdf = !!mtxState.pdfFile;
+
+            if (mtxState.hasPdf) {
+                MTX_COLUMNS = MTX_COLUMNS_BASE.concat(MTX_PDF_COLUMNS);
+                MTX_SHORT = MTX_SHORT_BASE.concat(MTX_SHORT_PDF);
+                statusEl.textContent = '⟳ Cruzando con PDF...';
+                var crossResult = await InsPipelineBundle.matrixCrossWithPdf(mtxState.rows, mtxState.pdfFile);
+                mtxState.matchResults = crossResult.matchResults;
+                mtxState.crossStats = crossResult.crossStats;
+                mtxState.acroFields = crossResult.acroFields;
+            } else {
+                MTX_COLUMNS = MTX_COLUMNS_BASE;
+                MTX_SHORT = MTX_SHORT_BASE;
+                mtxState.matchResults = null;
+                mtxState.crossStats = null;
+                mtxState.acroFields = null;
+            }
+
+            var t1 = performance.now();
 
             statusEl.className = 'status active success';
-            statusEl.textContent = '✓ Analisis en ' + Math.round(t1 - t0) + 'ms — ' +
-                result.stats.total + ' filas cargadas.';
+            var msg = '✓ Analisis en ' + Math.round(t1 - t0) + 'ms — ' + result.stats.total + ' filas cargadas.';
+            if (mtxState.hasPdf && mtxState.crossStats) {
+                msg += ' Cruce PDF: ' + mtxState.crossStats.matchHigh + ' alto, ' +
+                    mtxState.crossStats.matchMed + ' medio, ' +
+                    mtxState.crossStats.matchLow + ' bajo, ' +
+                    mtxState.crossStats.noMatch + ' sin match.';
+            }
+            statusEl.textContent = msg;
 
             renderMtxStats(result.stats);
+            if (mtxState.hasPdf && mtxState.crossStats) {
+                renderCrossStats(mtxState.crossStats);
+            } else {
+                $('#mtxCrossStats').hidden = true;
+            }
             renderMtxTable(mtxState.rows, result.analyzed);
             enableMtxActions(result.stats);
             $('#mtxResultPanel').hidden = false;
@@ -750,10 +805,33 @@
             '<div class="stat' + (stats.obligatorioToFix ? ' stat-warn' : '') + '"><span class="stat-n">' + stats.obligatorioToFix + '</span><span class="stat-l">Obligatorio a fix</span></div>';
     }
 
+    function renderCrossStats(cs) {
+        var el = $('#mtxCrossStats');
+        el.hidden = false;
+        el.innerHTML =
+            '<div class="stat"><span class="stat-n">' + cs.totalExcel + '</span><span class="stat-l">Filas Excel</span></div>' +
+            '<div class="stat"><span class="stat-n">' + cs.totalAcro + '</span><span class="stat-l">AcroForm PDF</span></div>' +
+            '<div class="stat stat-match-high"><span class="stat-n">' + cs.matchHigh + '</span><span class="stat-l">Match alto (&ge;85)</span></div>' +
+            '<div class="stat stat-match-med"><span class="stat-n">' + cs.matchMed + '</span><span class="stat-l">Match medio (70-84)</span></div>' +
+            '<div class="stat stat-match-low"><span class="stat-n">' + cs.matchLow + '</span><span class="stat-l">Bajo / ambiguo</span></div>' +
+            '<div class="stat' + (cs.noMatch ? ' stat-warn' : '') + '"><span class="stat-n">' + cs.noMatch + '</span><span class="stat-l">Sin match PDF</span></div>' +
+            '<div class="stat' + (cs.orphanFields ? ' stat-warn' : '') + '"><span class="stat-n">' + cs.orphanFields + '</span><span class="stat-l">PDF huerfano</span></div>';
+    }
+
+    function getMatchClass(row) {
+        var conf = row['_matchConfidence'] || 0;
+        if (!mtxState.hasPdf) return '';
+        if (conf >= 85) return 'mtx-match-high';
+        if (conf >= 70) return 'mtx-match-med';
+        if (conf > 0) return 'mtx-match-low';
+        return 'mtx-match-none';
+    }
+
     function renderMtxTable(rows, analyzed) {
         var thead = $('#mtxTableHead');
         var tbody = $('#mtxTableBody');
-        thead.innerHTML = '<tr><th>#</th>' + MTX_SHORT.map(function(h) {
+        var matchCol = mtxState.hasPdf ? '<th>Match</th>' : '';
+        thead.innerHTML = '<tr><th>#</th>' + matchCol + MTX_SHORT.map(function(h) {
             return '<th>' + escapeHtml(h) + '</th>';
         }).join('') + '</tr>';
         tbody.innerHTML = '';
@@ -764,14 +842,48 @@
             var hasAmbig = a.issues.some(function(is) { return is.type === 'ambiguous_pdf_name'; });
             var hasMissing = a.issues.some(function(is) { return is.type === 'missing_pdf_field'; });
             var hasOblig = a.issues.some(function(is) { return is.type === 'obligatorio_case'; });
-            var cls = hasAmbig ? 'mtx-row-warn' : (hasMissing || hasOblig ? 'mtx-row-info' : '');
+            var matchCls = getMatchClass(row);
+            var issueCls = hasAmbig ? 'mtx-row-warn' : (hasMissing || hasOblig ? 'mtx-row-info' : '');
+            var cls = [issueCls, matchCls].filter(Boolean).join(' ');
 
             var tr = document.createElement('tr');
             if (cls) tr.className = cls;
+
             var cells = '<td class="mtx-rownum">' + (i + 1) + '</td>';
+
+            if (mtxState.hasPdf) {
+                var conf = row['_matchConfidence'] || 0;
+                var src = row['_matchSource'] || '';
+                var mr = mtxState.matchResults && mtxState.matchResults[i] ? mtxState.matchResults[i] : null;
+                var isAmbiguous = mr && mr.match && mr.match.candidates && !mr.match.field;
+                var dot = '';
+                if (conf >= 85) dot = '<span class="mtx-dot mtx-dot-high" title="' + conf + '% ' + src + '"></span>';
+                else if (conf >= 70) dot = '<span class="mtx-dot mtx-dot-med" title="' + conf + '% ' + src + '"></span>';
+                else if (isAmbiguous) dot = '<span class="mtx-dot mtx-dot-ambig" title="Ambiguo — elegir"></span>';
+                else if (conf > 0) dot = '<span class="mtx-dot mtx-dot-low" title="' + conf + '% ' + src + '"></span>';
+                else dot = '<span class="mtx-dot mtx-dot-none" title="Sin match"></span>';
+                cells += '<td class="mtx-match-cell">' + dot + '</td>';
+            }
+
             for (var ci = 0; ci < MTX_COLUMNS.length; ci++) {
                 var col = MTX_COLUMNS[ci];
                 var val = row[col] || '';
+
+                if (col === 'PDF AcroForm Name' && mtxState.hasPdf) {
+                    var mr2 = mtxState.matchResults && mtxState.matchResults[i] ? mtxState.matchResults[i] : null;
+                    var isAmb = mr2 && mr2.match && mr2.match.candidates && !mr2.match.field;
+                    if (isAmb) {
+                        var opts = '<option value="">— elegir —</option>';
+                        for (var ci2 = 0; ci2 < mr2.match.candidates.length; ci2++) {
+                            var c = mr2.match.candidates[ci2];
+                            var lbl = c.name + (c.detectedLabel ? ' (' + c.detectedLabel + ')' : '');
+                            opts += '<option value="' + escapeHtml(c.name) + '">' + escapeHtml(lbl) + '</option>';
+                        }
+                        cells += '<td><select class="mtx-cell mtx-cell-select" data-row="' + i + '" data-col="' + escapeHtml(col) + '">' + opts + '</select></td>';
+                        continue;
+                    }
+                }
+
                 cells += '<td><input type="text" class="mtx-cell" data-row="' + i + '" data-col="' + escapeHtml(col) + '" value="' + escapeHtml(val) + '"></td>';
             }
             tr.innerHTML = cells;
@@ -784,16 +896,79 @@
                 var col = e.target.dataset.col;
                 if (mtxState.rows[ri]) {
                     mtxState.rows[ri][col] = e.target.value;
+                    if (col === 'PDF AcroForm Name' && e.target.tagName === 'SELECT' && e.target.value) {
+                        resolveAmbiguousMatch(ri, e.target.value);
+                    }
                 }
             }
         });
+    }
+
+    function resolveAmbiguousMatch(rowIdx, selectedFieldName) {
+        var mr = mtxState.matchResults && mtxState.matchResults[rowIdx] ? mtxState.matchResults[rowIdx] : null;
+        if (!mr || !mr.match || !mr.match.candidates) return;
+        var field = mr.match.candidates.find(function(c) { return c.name === selectedFieldName; });
+        if (!field) return;
+        var row = mtxState.rows[rowIdx];
+        var rectStr = field.rect
+            ? field.rect.x + ',' + field.rect.y + ',' + (field.rect.width || 0) + ',' + (field.rect.height || 0)
+            : '';
+        row['Nombre del Campo en PDF'] = field.name;
+        row['PDF AcroForm Name'] = field.name;
+        row['PDF Tipo Nativo'] = mapNativeTypeUI(field.type || '');
+        row['PDF Página'] = field.page != null ? field.page + 1 : '';
+        row['PDF Rect'] = rectStr;
+        row['_matchConfidence'] = 90;
+        row['_matchSource'] = 'manual-select';
+        mr.match = { field: field, confidence: 90, source: 'manual-select' };
+    }
+
+    function mapNativeTypeUI(t) {
+        var low = String(t || '').toLowerCase();
+        if (low === 'text' || /text/i.test(low)) return 'Tx';
+        if (low === 'checkbox' || /check/i.test(low)) return 'Ch';
+        if (low === 'radio' || /radio/i.test(low)) return 'Btn';
+        if (low === 'button' || /button/i.test(low)) return 'Btn';
+        if (low === 'select' || /drop|option/i.test(low)) return 'Ch';
+        return low.substring(0, 3);
     }
 
     function enableMtxActions(stats) {
         $('#btnMtxSplitAll').disabled = stats.ambiguous === 0;
         $('#btnMtxDerivePdf').disabled = stats.missingPdfField === 0;
         $('#btnMtxNormOblig').disabled = stats.obligatorioToFix === 0;
+        $('#btnMtxAcceptAll').disabled = !mtxState.hasPdf;
         $('#btnMtxReset').disabled = false;
+    }
+
+    function mtxAcceptAll() {
+        if (!mtxState.matchResults) return;
+        var count = 0;
+        for (var i = 0; i < mtxState.matchResults.length; i++) {
+            var mr = mtxState.matchResults[i];
+            if (mr.match && mr.match.confidence >= 70 && mr.match.confidence < 75 && mr.match.field) {
+                var f = mr.match.field;
+                var row = mtxState.rows[i];
+                var rectStr = f.rect
+                    ? f.rect.x + ',' + f.rect.y + ',' + (f.rect.width || 0) + ',' + (f.rect.height || 0)
+                    : '';
+                row['Nombre del Campo en PDF'] = f.name;
+                row['PDF AcroForm Name'] = f.name;
+                row['PDF Tipo Nativo'] = mapNativeTypeUI(f.type || '');
+                row['PDF Página'] = f.page != null ? f.page + 1 : '';
+                row['PDF Rect'] = rectStr;
+                row['_matchConfidence'] = mr.match.confidence;
+                row['_matchSource'] = mr.match.source;
+                count++;
+            }
+        }
+        var result = reanalyze(mtxState.rows);
+        mtxState.analyzed = result.analyzed;
+        mtxState.stats = result.stats;
+        renderMtxStats(result.stats);
+        renderMtxTable(mtxState.rows, result.analyzed);
+        enableMtxActions(result.stats);
+        $('#mtxStatus').textContent = '✓ ' + count + ' matches medios aceptados.';
     }
 
     function mtxSplitAll() {
@@ -834,10 +1009,17 @@
 
     function mtxReset() {
         mtxState.rows = JSON.parse(JSON.stringify(mtxState.originalRows));
+        mtxState.matchResults = null;
+        mtxState.crossStats = null;
+        mtxState.acroFields = null;
+        mtxState.hasPdf = false;
+        MTX_COLUMNS = MTX_COLUMNS_BASE;
+        MTX_SHORT = MTX_SHORT_BASE;
         var result = reanalyze(mtxState.rows);
         mtxState.analyzed = result.analyzed;
         mtxState.stats = result.stats;
         renderMtxStats(result.stats);
+        $('#mtxCrossStats').hidden = true;
         renderMtxTable(mtxState.rows, result.analyzed);
         enableMtxActions(result.stats);
         $('#mtxStatus').textContent = '✓ Reset a estado original.';

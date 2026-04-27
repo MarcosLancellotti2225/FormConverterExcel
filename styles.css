@@ -897,3 +897,71 @@ footer {
     transform: translateY(-50%);
     font-size: 0.7rem;
 }
+
+/* Match indicator dots */
+.mtx-match-cell {
+    text-align: center;
+    width: 36px;
+    min-width: 36px;
+}
+.mtx-dot {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    vertical-align: middle;
+}
+.mtx-dot-high {
+    background: var(--accent-green);
+    box-shadow: 0 0 4px rgba(63,185,80,0.4);
+}
+.mtx-dot-med {
+    background: var(--accent-amber);
+    box-shadow: 0 0 4px rgba(210,153,34,0.4);
+}
+.mtx-dot-ambig {
+    background: #e8832a;
+    box-shadow: 0 0 4px rgba(232,131,42,0.4);
+}
+.mtx-dot-low {
+    background: var(--accent-red);
+    box-shadow: 0 0 4px rgba(248,81,73,0.3);
+}
+.mtx-dot-none {
+    background: var(--text-dim);
+}
+
+/* Row match coloring */
+.mtx-match-high td { background: rgba(63,185,80,0.05); }
+.mtx-match-med td { background: rgba(210,153,34,0.06); }
+.mtx-match-low td { background: rgba(248,81,73,0.05); }
+.mtx-match-none td { background: rgba(110,118,129,0.04); }
+
+/* Cross-stats colors */
+.stat-match-high .stat-n { color: var(--accent-green); }
+.stat-match-med .stat-n { color: var(--accent-amber); }
+.stat-match-low .stat-n { color: var(--accent-red); }
+
+/* Ambiguous dropdown */
+.mtx-cell-select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--accent-amber);
+    color: var(--text);
+    padding: 0.3rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-family: 'JetBrains Mono', monospace;
+    cursor: pointer;
+}
+.mtx-cell-select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.mtx-rownum {
+    color: var(--text-dim);
+    font-size: 0.75rem;
+    text-align: center;
+    min-width: 32px;
+}
