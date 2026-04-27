@@ -87803,7 +87803,6 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const mergedByPage = buildMergedTextByPage(textItems || []);
         const warnings = [];
         const matches = [];
-        const usedNames = /* @__PURE__ */ new Set();
         for (const field of labeledFields) {
           const result = resolveOne(field, excelIndex, refIndex, warnings);
           let finalName = result.newName;
@@ -87815,15 +87814,6 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
               finalName = prefix + "_" + finalName;
             }
           }
-          if (usedNames.has(finalName) && finalName !== field.name) {
-            warnings.push({
-              type: "collision-unresolved",
-              field: field.name,
-              reason: `"${finalName}" already used \u2014 keeping original name for manual resolution`
-            });
-            finalName = sanitizeName(field.name.replace(/\./g, "_"));
-          }
-          usedNames.add(finalName);
           matches.push({
             originalName: field.name,
             detectedLabel: field.detectedLabel || "",
@@ -87835,7 +87825,41 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             rect: field.rect
           });
         }
+        disambiguateCollisions(matches, warnings);
         return { matches, warnings };
+      }
+      function disambiguateCollisions(matches, warnings) {
+        const groups = /* @__PURE__ */ new Map();
+        for (let i = 0; i < matches.length; i++) {
+          const name = matches[i].newName;
+          if (!groups.has(name)) groups.set(name, []);
+          groups.get(name).push(i);
+        }
+        for (const [name, indices] of groups) {
+          if (indices.length <= 1) continue;
+          indices.sort((a, b) => {
+            const ma = matches[a], mb = matches[b];
+            if (ma.page !== mb.page) return ma.page - mb.page;
+            return mb.rect.y - ma.rect.y;
+          });
+          let rowNum = 1;
+          let prevY = matches[indices[0]].rect.y;
+          let prevPage = matches[indices[0]].page;
+          for (let i = 0; i < indices.length; i++) {
+            const m = matches[indices[i]];
+            if (i > 0 && (m.page !== prevPage || Math.abs(m.rect.y - prevY) > 15)) {
+              rowNum++;
+            }
+            prevY = m.rect.y;
+            prevPage = m.page;
+            m.newName = `${name}_${rowNum}`;
+          }
+          warnings.push({
+            type: "collision-resolved",
+            field: name,
+            reason: `${indices.length} fields \u2192 disambiguated by row position (${rowNum} rows)`
+          });
+        }
       }
       function resolveOne(field, excelIndex, refIndex, warnings) {
         const label = field.detectedLabel;
@@ -88402,24 +88426,25 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         return Array.from(byName.values());
       }
       function deduplicateNames(renameMap) {
-        const seen = /* @__PURE__ */ new Set();
-        const result = [];
-        const warnings = [];
-        for (const entry of renameMap) {
-          let name = entry.newName;
-          if (seen.has(name)) {
-            const fallback = entry.oldName.replace(/\./g, "_").toLowerCase();
-            warnings.push({
-              type: "collision-unresolved",
-              field: entry.oldName,
-              reason: `"${name}" already used \u2014 reverting to "${fallback}"`
-            });
-            name = fallback;
-          }
-          seen.add(name);
-          result.push({ oldName: entry.oldName, newName: name });
+        const groups = /* @__PURE__ */ new Map();
+        for (let i = 0; i < renameMap.length; i++) {
+          const name = renameMap[i].newName;
+          if (!groups.has(name)) groups.set(name, []);
+          groups.get(name).push(i);
         }
-        return { deduped: result, collisionWarnings: warnings };
+        const warnings = [];
+        for (const [name, indices] of groups) {
+          if (indices.length <= 1) continue;
+          for (let i = 0; i < indices.length; i++) {
+            renameMap[indices[i]].newName = `${name}_${i + 1}`;
+          }
+          warnings.push({
+            type: "collision-resolved",
+            field: name,
+            reason: `${indices.length} fields shared "${name}" \u2014 suffixed _1.._${indices.length}`
+          });
+        }
+        return { deduped: renameMap, collisionWarnings: warnings };
       }
       module.exports = { analyzePdf, generatePdf };
     }

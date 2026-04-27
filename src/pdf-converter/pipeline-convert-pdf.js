@@ -81,26 +81,27 @@ function collapseWidgets(labeledFields) {
 }
 
 function deduplicateNames(renameMap) {
-    const seen = new Set();
-    const result = [];
-    const warnings = [];
-
-    for (const entry of renameMap) {
-        let name = entry.newName;
-        if (seen.has(name)) {
-            const fallback = entry.oldName.replace(/\./g, '_').toLowerCase();
-            warnings.push({
-                type: 'collision-unresolved',
-                field: entry.oldName,
-                reason: `"${name}" already used — reverting to "${fallback}"`,
-            });
-            name = fallback;
-        }
-        seen.add(name);
-        result.push({ oldName: entry.oldName, newName: name });
+    const groups = new Map();
+    for (let i = 0; i < renameMap.length; i++) {
+        const name = renameMap[i].newName;
+        if (!groups.has(name)) groups.set(name, []);
+        groups.get(name).push(i);
     }
 
-    return { deduped: result, collisionWarnings: warnings };
+    const warnings = [];
+    for (const [name, indices] of groups) {
+        if (indices.length <= 1) continue;
+        for (let i = 0; i < indices.length; i++) {
+            renameMap[indices[i]].newName = `${name}_${i + 1}`;
+        }
+        warnings.push({
+            type: 'collision-resolved',
+            field: name,
+            reason: `${indices.length} fields shared "${name}" — suffixed _1.._${indices.length}`,
+        });
+    }
+
+    return { deduped: renameMap, collisionWarnings: warnings };
 }
 
 module.exports = { analyzePdf, generatePdf };

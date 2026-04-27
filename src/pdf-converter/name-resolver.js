@@ -17,7 +17,6 @@ function resolveNames(labeledFields, excelBuffer, referenceJson, textItems) {
 
     const warnings = [];
     const matches = [];
-    const usedNames = new Set();
 
     for (const field of labeledFields) {
         const result = resolveOne(field, excelIndex, refIndex, warnings);
@@ -32,17 +31,6 @@ function resolveNames(labeledFields, excelBuffer, referenceJson, textItems) {
             }
         }
 
-        if (usedNames.has(finalName) && finalName !== field.name) {
-            warnings.push({
-                type: 'collision-unresolved',
-                field: field.name,
-                reason: `"${finalName}" already used — keeping original name for manual resolution`,
-            });
-            finalName = sanitizeName(field.name.replace(/\./g, '_'));
-        }
-
-        usedNames.add(finalName);
-
         matches.push({
             originalName: field.name,
             detectedLabel: field.detectedLabel || '',
@@ -55,7 +43,48 @@ function resolveNames(labeledFields, excelBuffer, referenceJson, textItems) {
         });
     }
 
+    disambiguateCollisions(matches, warnings);
+
     return { matches, warnings };
+}
+
+function disambiguateCollisions(matches, warnings) {
+    const groups = new Map();
+    for (let i = 0; i < matches.length; i++) {
+        const name = matches[i].newName;
+        if (!groups.has(name)) groups.set(name, []);
+        groups.get(name).push(i);
+    }
+
+    for (const [name, indices] of groups) {
+        if (indices.length <= 1) continue;
+
+        indices.sort((a, b) => {
+            const ma = matches[a], mb = matches[b];
+            if (ma.page !== mb.page) return ma.page - mb.page;
+            return mb.rect.y - ma.rect.y;
+        });
+
+        let rowNum = 1;
+        let prevY = matches[indices[0]].rect.y;
+        let prevPage = matches[indices[0]].page;
+
+        for (let i = 0; i < indices.length; i++) {
+            const m = matches[indices[i]];
+            if (i > 0 && (m.page !== prevPage || Math.abs(m.rect.y - prevY) > 15)) {
+                rowNum++;
+            }
+            prevY = m.rect.y;
+            prevPage = m.page;
+            m.newName = `${name}_${rowNum}`;
+        }
+
+        warnings.push({
+            type: 'collision-resolved',
+            field: name,
+            reason: `${indices.length} fields → disambiguated by row position (${rowNum} rows)`,
+        });
+    }
 }
 
 function resolveOne(field, excelIndex, refIndex, warnings) {

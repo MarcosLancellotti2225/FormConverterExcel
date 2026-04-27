@@ -84,6 +84,7 @@
 
         $('#btnEnrich').addEventListener('click', runEnrich);
         $('#btnDownloadEnriched').addEventListener('click', downloadEnriched);
+        $('#btnEnrichDebug').addEventListener('click', exportEnrichDebug);
     }
 
     function updateEnrichFileStatus(id, file) {
@@ -129,6 +130,7 @@
             renderEnrichWarnings(result.warnings, result.issues);
 
             $('#btnDownloadEnriched').hidden = false;
+            $('#btnEnrichDebug').hidden = false;
         } catch (err) {
             console.error(err);
             statusEl.className = 'status active error';
@@ -232,6 +234,48 @@
         InsPipelineBundle.downloadBlob(blob, name);
     }
 
+    function exportEnrichDebug() {
+        if (!enrichState.result) return;
+        var r = enrichState.result;
+        var sections = extractSections(r.json);
+        var fields = [];
+        for (var si = 0; si < sections.length; si++) {
+            var sec = sections[si];
+            for (var fi = 0; fi < sec.fields.length; fi++) {
+                var f = sec.fields[fi];
+                fields.push({
+                    id: f.id,
+                    label: f.label,
+                    sourceName: f.sourceMeta ? f.sourceMeta.sourceName : null,
+                    section: sec.title,
+                    type: f.type,
+                    required: !!f.required,
+                    readOnly: !!f.readOnly,
+                    hasOptions: !!(f.options && f.options.length),
+                    optionCount: f.options ? f.options.length : 0,
+                    hasValidation: !!(f.validationPattern || f.maxLength),
+                    validationPattern: f.validationPattern || null,
+                    maxLength: f.maxLength || null,
+                    prefillKey: f.prefillKey || null,
+                    hasConditional: !!f.conditionalVisibility
+                });
+            }
+        }
+
+        var debug = {
+            mode: 'enrich-json',
+            timestamp: new Date().toISOString(),
+            stats: r.stats,
+            warnings: r.warnings,
+            issues: r.issues || [],
+            fields: fields
+        };
+
+        var blob = new Blob([JSON.stringify(debug, null, 2)], { type: 'application/json' });
+        var name = (enrichState.lovableJson ? enrichState.lovableJson.name.replace(/\.json$/i, '') : 'enrich') + '_debug.json';
+        InsPipelineBundle.downloadBlob(blob, name);
+    }
+
     // ==================== CONVERT PDF FLOW ====================
 
     var convState = {
@@ -261,6 +305,7 @@
 
         $('#btnAnalyze').addEventListener('click', runAnalysis);
         $('#btnGeneratePdf').addEventListener('click', runExport);
+        $('#btnConvDebug').addEventListener('click', exportConvDebug);
         $('#filterUnmatched').addEventListener('change', function() {
             renderMatchTable(convState.matches, this.checked);
         });
@@ -430,6 +475,40 @@
             statusEl.className = 'status active error';
             statusEl.textContent = '✗ ' + err.message;
         }
+    }
+
+    function exportConvDebug() {
+        if (!convState.matches) return;
+        var matched = convState.matches.filter(function(m) { return m.source !== 'unchanged'; });
+        var unchanged = convState.matches.filter(function(m) { return m.source === 'unchanged'; });
+        var bySrc = {};
+        convState.matches.forEach(function(m) { bySrc[m.source] = (bySrc[m.source] || 0) + 1; });
+
+        var debug = {
+            mode: 'convert-pdf',
+            timestamp: new Date().toISOString(),
+            stats: {
+                total: convState.matches.length,
+                matched: matched.length,
+                unchanged: unchanged.length,
+                bySource: bySrc
+            },
+            matches: convState.matches.map(function(m) {
+                return {
+                    originalName: m.originalName,
+                    detectedLabel: m.detectedLabel || null,
+                    newName: m.newName,
+                    source: m.source,
+                    confidence: m.confidence,
+                    page: m.page + 1,
+                    type: m.type
+                };
+            })
+        };
+
+        var blob = new Blob([JSON.stringify(debug, null, 2)], { type: 'application/json' });
+        var name = (convState.pdf ? convState.pdf.name.replace(/\.pdf$/i, '') : 'convert') + '_debug.json';
+        InsPipelineBundle.downloadBlob(blob, name);
     }
 
     // ==================== PDF TO HTML FLOW ====================
