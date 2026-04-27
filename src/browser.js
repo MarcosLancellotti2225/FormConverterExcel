@@ -382,6 +382,7 @@ function matrixDerivePdfNames(rows) { return matrixEditor.applyDerivePdfNames(ro
 function matrixNormalizeObligatorio(rows) { return matrixEditor.applyNormalizeObligatorio(rows); }
 function matrixDeriveFormulario(rows) { matrixEditor.applyDeriveFormulario(rows); }
 function matrixExport(rows) { return matrixEditor.exportToXlsx(rows); }
+function matrixExportPerFormulario(rows) { return matrixEditor.exportPerFormulario(rows); }
 
 async function matrixCrossWithPdfs(rows, pdfFiles) {
     const pdfEntries = [];
@@ -392,7 +393,7 @@ async function matrixCrossWithPdfs(rows, pdfFiles) {
 }
 
 if (typeof window !== 'undefined') {
-    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixCrossWithPdfs };
+    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormulario, matrixCrossWithPdfs };
 }
 
-module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixCrossWithPdfs };
+module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormulario, matrixCrossWithPdfs };

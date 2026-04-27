@@ -735,6 +735,7 @@
         $('#btnMtxAcceptAll').addEventListener('click', mtxAcceptAll);
         $('#btnMtxReset').addEventListener('click', mtxReset);
         $('#btnMtxExport').addEventListener('click', mtxExport);
+        $('#btnMtxExportByForm').addEventListener('click', mtxExportByForm);
     }
 
     async function runMtxAnalyze() {
@@ -1034,6 +1035,16 @@
         InsPipelineBundle.downloadBlob(blob, name);
         $('#mtxExportStatus').className = 'status active success';
         $('#mtxExportStatus').textContent = '✓ Descargando ' + name;
+    }
+
+    function mtxExportByForm() {
+        InsPipelineBundle.matrixDeriveFormulario(mtxState.rows);
+        var xlsxBuffer = InsPipelineBundle.matrixExportPerFormulario(mtxState.rows);
+        var blob = new Blob([xlsxBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        var name = (mtxState.file ? mtxState.file.name.replace(/\.xlsx?$/i, '') : 'matriz') + '_por_formulario.xlsx';
+        InsPipelineBundle.downloadBlob(blob, name);
+        $('#mtxExportStatus').className = 'status active success';
+        $('#mtxExportStatus').textContent = '✓ Descargando ' + name + ' (4 hojas: Resumen + 3 formularios)';
     }
 
     function reanalyze(rows) {

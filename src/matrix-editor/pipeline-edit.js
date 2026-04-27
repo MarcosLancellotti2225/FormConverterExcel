@@ -217,6 +217,8 @@ function findHeaderRow(rawRows) {
     return { headerRow: 0, columnMap: {} };
 }
 
+const { exportPerFormulario } = require('./export-by-formulario');
+
 function clean(v) {
     return v === null || v === undefined ? '' : String(v).trim();
 }
@@ -229,6 +231,7 @@ module.exports = {
     applyNormalizeObligatorio,
     applyDeriveFormulario,
     exportToXlsx,
+    exportPerFormulario,
     crossMatrixWithPdfs,
     extractPdfFields,
     COLUMNS,
