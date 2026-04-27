@@ -92880,6 +92880,9 @@ ${pagesHtml}</body>
       function matrixExport(rows) {
         return matrixEditor.exportToXlsx(rows);
       }
+      async function matrixExportPerFormularioZip(rows, pdfFileNames, catalogos) {
+        return matrixEditor.exportPerFormularioZip(rows, pdfFileNames, catalogos);
+      }
       async function matrixParseCatalogos(file) {
         const buffer = await fileToUint8Array(file);
         return matrixEditor.parseCatalogos(buffer);
