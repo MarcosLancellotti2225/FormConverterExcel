@@ -12,7 +12,7 @@ function regroupSections(fields, matchMap) {
             continue;
         }
 
-        const step = match.row.step || 'General';
+        const step = match.row.step || match.row.section || 'General';
         const section = match.row.section || step || 'Datos';
         const key = slug(step) + '__' + slug(section);
 

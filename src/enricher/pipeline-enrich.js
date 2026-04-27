@@ -28,6 +28,15 @@ async function runEnrichPipeline(inputs) {
     const index = buildCascadeIndex(excelRows);
     const catalogs = catalogsBuffer ? parseCatalogsFromBuffer(catalogsBuffer) : {};
 
+    const isNewFormat = excelRows.length > 0 && excelRows[0]._isNewFormat;
+    warnings.push({
+        stage: 'enrich', type: 'format-info',
+        field: null,
+        reason: isNewFormat
+            ? `Formato: Excel ajustado (19 columnas). Filas: ${excelRows.length}. Indices: byPdfFieldName=${index.byPdfFieldName.size}, byPdfLabel=${index.byPdfLabel.size}, byFormLabel=${index.byFormLabel.size}, byJsonLeaf=${index.byJsonLeaf.size}`
+            : `Formato: Excel original (cliente). Filas: ${excelRows.length}. Indices: byPdfFieldName=${index.byPdfFieldName.size}, byPdfLabel=${index.byPdfLabel.size}, byFormLabel=${index.byFormLabel.size}, byJsonLeaf=${index.byJsonLeaf.size}`,
+    });
+
     const sections = extractSections(lovableJson);
     const allFields = sections.flatMap(s => s.fields);
 

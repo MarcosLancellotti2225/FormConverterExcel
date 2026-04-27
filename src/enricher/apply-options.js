@@ -13,6 +13,14 @@ function applyOptions(field, excelRow, comboOptions, catalogs) {
         return;
     }
 
+    if (excelRow._isNewFormat && excelRow._catalogoDirect) {
+        const parsed = parseCatalogoDirect(excelRow._catalogoDirect, catalogs);
+        if (parsed && parsed.length > 0) {
+            field.options = parsed;
+            return;
+        }
+    }
+
     const rule = (excelRow.rule || '').toLowerCase();
     if (/cat[aá]logo/.test(rule) || /ver\s+cat/.test(rule)) {
         const resolved = resolveCatalog(field, excelRow, catalogs);
@@ -26,6 +34,24 @@ function applyOptions(field, excelRow, comboOptions, catalogs) {
     if (auto) {
         field.options = auto;
     }
+}
+
+function parseCatalogoDirect(catalogoStr, catalogs) {
+    if (!catalogoStr) return null;
+    const colonIdx = catalogoStr.indexOf(':');
+    if (colonIdx < 0) return null;
+    const catName = catalogoStr.substring(0, colonIdx).trim();
+    const optsRaw = catalogoStr.substring(colonIdx + 1).trim();
+
+    if (optsRaw.startsWith('(') && catalogs) {
+        const key = normalizeKey(catName);
+        const catOpts = catalogs[key] || catalogs[catName];
+        if (catOpts) return formatCatalogOptions(catOpts);
+    }
+
+    if (!optsRaw) return null;
+    return optsRaw.split('|').map(s => s.trim()).filter(Boolean)
+        .map(label => ({ value: label, label }));
 }
 
 function resolveCatalog(field, excelRow, catalogs) {

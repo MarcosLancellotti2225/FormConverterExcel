@@ -4,11 +4,64 @@ const XLSX = require('xlsx');
 
 function parseEnrichExcel(buffer) {
     const workbook = XLSX.read(buffer, { type: 'array' });
-    const sheetName = findMatrixSheet(workbook);
-    const sheet = workbook.Sheets[sheetName];
-    const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
 
-    if (rawRows.length < 2) throw new Error(`Sheet "${sheetName}" is empty`);
+    const isNewFormat = !!workbook.Sheets['Campos del formulario'];
+    const sheetName = isNewFormat ? 'Campos del formulario' : findMatrixSheet(workbook);
+    const sheet = workbook.Sheets[sheetName];
+
+    if (isNewFormat) {
+        return parseNewFormat(sheet);
+    }
+    return parseOldFormat(sheet);
+}
+
+function parseNewFormat(sheet) {
+    const jsonRows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    if (jsonRows.length === 0) throw new Error('Sheet "Campos del formulario" is empty');
+
+    const rows = [];
+    for (let i = 0; i < jsonRows.length; i++) {
+        const r = jsonRows[i];
+        const pdfFieldName = clean(r['Nombre del Campo en PDF']);
+        const etiqueta = clean(r['Etiqueta']);
+        if (!pdfFieldName && !etiqueta) continue;
+
+        const soloLectura = clean(r['Solo lectura']).toLowerCase().trim();
+
+        rows.push({
+            step:          '',
+            section:       clean(r['Sección JSON']),
+            pdfLabel:      etiqueta,
+            fieldLabel:    etiqueta,
+            dataType:      clean(r['Tipo de campo']),
+            value:         '',
+            rule:          clean(r['Regla original']),
+            required:      clean(r['Obligatorio']),
+            productScope:  '',
+            visualization: soloLectura === 'si' || soloLectura === 'sí' ? 'disabled' : '',
+            obs:           clean(r['Texto de ayuda']),
+            jsonName:      clean(r['Salida JSON (principal)']),
+            pdfFieldName:  pdfFieldName,
+            _isNewFormat:       true,
+            _soloLectura:       clean(r['Solo lectura']),
+            _maxLengthDirect:   clean(r['MaxLength']),
+            _patternDirect:     clean(r['Patrón regex']),
+            _conditionalDirect: clean(r['Visibilidad condicional']),
+            _prefillModeDirect: clean(r['Modo pre-llenado']),
+            _prefillKeyDirect:  clean(r['Clave externa (prefill)']),
+            _catalogoDirect:    clean(r['Catálogo / Opciones']),
+            _pathsSecundarios:  clean(r['Paths secundarios']),
+            _rowIndex:     i + 2,
+            _consumed:     false,
+        });
+    }
+
+    return rows;
+}
+
+function parseOldFormat(sheet) {
+    const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    if (rawRows.length < 2) throw new Error('Sheet is empty');
 
     const { headerRow, columnMap } = findHeaderAndColumns(rawRows);
 
@@ -31,6 +84,7 @@ function parseEnrichExcel(buffer) {
             obs:           clean(cell(r, columnMap.obs)),
             jsonName:      clean(cell(r, columnMap.jsonName)),
             pdfFieldName:  clean(cell(r, columnMap.pdfFieldName)),
+            _isNewFormat:  false,
             _rowIndex:     i + 1,
             _consumed:     false,
         };
@@ -162,6 +216,10 @@ function findWordMatch(baseName, cleanLabel, index) {
 }
 
 function collectComboOptions(matchedRow, index) {
+    if (matchedRow._isNewFormat && matchedRow._catalogoDirect) {
+        return parseCatalogoDirect(matchedRow._catalogoDirect);
+    }
+
     const label = matchedRow.fieldLabel;
     if (!label) return [];
 
@@ -180,6 +238,16 @@ function collectComboOptions(matchedRow, index) {
         }
     }
     return options;
+}
+
+function parseCatalogoDirect(catalogoStr) {
+    if (!catalogoStr) return [];
+    const colonIdx = catalogoStr.indexOf(':');
+    if (colonIdx < 0) return [];
+    const optsRaw = catalogoStr.substring(colonIdx + 1).trim();
+    if (!optsRaw) return [];
+    return optsRaw.split('|').map(s => s.trim()).filter(Boolean)
+        .map(label => ({ code: label, label }));
 }
 
 function normalize(s) {

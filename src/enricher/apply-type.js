@@ -33,6 +33,10 @@ function applyType(field, excelRow) {
     if (mapped === 'readonly') {
         field.readOnly = true;
     }
+    if (excelRow._isNewFormat && excelRow._soloLectura) {
+        const ro = excelRow._soloLectura.toLowerCase().trim();
+        if (ro === 'si' || ro === 'sí') field.readOnly = true;
+    }
 }
 
 function applyReadOnly(field, excelRow) {

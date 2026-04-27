@@ -1,6 +1,17 @@
 'use strict';
 
 function applyValidations(field, excelRow) {
+    if (excelRow._isNewFormat) {
+        if (excelRow._maxLengthDirect) {
+            const ml = parseInt(excelRow._maxLengthDirect, 10);
+            if (!isNaN(ml) && ml > 0) field.maxLength = ml;
+        }
+        if (excelRow._patternDirect) {
+            field.validationPattern = excelRow._patternDirect;
+        }
+        return;
+    }
+
     const rule = (excelRow.rule || '').trim();
     if (!rule) return;
 

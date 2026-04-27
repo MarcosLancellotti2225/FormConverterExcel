@@ -88457,10 +88457,56 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       var XLSX = require_xlsx();
       function parseEnrichExcel(buffer) {
         const workbook = XLSX.read(buffer, { type: "array" });
-        const sheetName = findMatrixSheet(workbook);
+        const isNewFormat = !!workbook.Sheets["Campos del formulario"];
+        const sheetName = isNewFormat ? "Campos del formulario" : findMatrixSheet(workbook);
         const sheet = workbook.Sheets[sheetName];
+        if (isNewFormat) {
+          return parseNewFormat(sheet);
+        }
+        return parseOldFormat(sheet);
+      }
+      function parseNewFormat(sheet) {
+        const jsonRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+        if (jsonRows.length === 0) throw new Error('Sheet "Campos del formulario" is empty');
+        const rows = [];
+        for (let i = 0; i < jsonRows.length; i++) {
+          const r = jsonRows[i];
+          const pdfFieldName = clean(r["Nombre del Campo en PDF"]);
+          const etiqueta = clean(r["Etiqueta"]);
+          if (!pdfFieldName && !etiqueta) continue;
+          const soloLectura = clean(r["Solo lectura"]).toLowerCase().trim();
+          rows.push({
+            step: "",
+            section: clean(r["Secci\xF3n JSON"]),
+            pdfLabel: etiqueta,
+            fieldLabel: etiqueta,
+            dataType: clean(r["Tipo de campo"]),
+            value: "",
+            rule: clean(r["Regla original"]),
+            required: clean(r["Obligatorio"]),
+            productScope: "",
+            visualization: soloLectura === "si" || soloLectura === "s\xED" ? "disabled" : "",
+            obs: clean(r["Texto de ayuda"]),
+            jsonName: clean(r["Salida JSON (principal)"]),
+            pdfFieldName,
+            _isNewFormat: true,
+            _soloLectura: clean(r["Solo lectura"]),
+            _maxLengthDirect: clean(r["MaxLength"]),
+            _patternDirect: clean(r["Patr\xF3n regex"]),
+            _conditionalDirect: clean(r["Visibilidad condicional"]),
+            _prefillModeDirect: clean(r["Modo pre-llenado"]),
+            _prefillKeyDirect: clean(r["Clave externa (prefill)"]),
+            _catalogoDirect: clean(r["Cat\xE1logo / Opciones"]),
+            _pathsSecundarios: clean(r["Paths secundarios"]),
+            _rowIndex: i + 2,
+            _consumed: false
+          });
+        }
+        return rows;
+      }
+      function parseOldFormat(sheet) {
         const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-        if (rawRows.length < 2) throw new Error(`Sheet "${sheetName}" is empty`);
+        if (rawRows.length < 2) throw new Error("Sheet is empty");
         const { headerRow, columnMap } = findHeaderAndColumns(rawRows);
         const rows = [];
         for (let i = headerRow + 1; i < rawRows.length; i++) {
@@ -88480,6 +88526,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             obs: clean(cell(r, columnMap.obs)),
             jsonName: clean(cell(r, columnMap.jsonName)),
             pdfFieldName: clean(cell(r, columnMap.pdfFieldName)),
+            _isNewFormat: false,
             _rowIndex: i + 1,
             _consumed: false
           };
@@ -88586,6 +88633,9 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         return null;
       }
       function collectComboOptions(matchedRow, index) {
+        if (matchedRow._isNewFormat && matchedRow._catalogoDirect) {
+          return parseCatalogoDirect(matchedRow._catalogoDirect);
+        }
         const label = matchedRow.fieldLabel;
         if (!label) return [];
         const seen = /* @__PURE__ */ new Set();
@@ -88603,6 +88653,14 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           }
         }
         return options;
+      }
+      function parseCatalogoDirect(catalogoStr) {
+        if (!catalogoStr) return [];
+        const colonIdx = catalogoStr.indexOf(":");
+        if (colonIdx < 0) return [];
+        const optsRaw = catalogoStr.substring(colonIdx + 1).trim();
+        if (!optsRaw) return [];
+        return optsRaw.split("|").map((s) => s.trim()).filter(Boolean).map((label) => ({ code: label, label }));
       }
       function normalize(s) {
         return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
@@ -88741,6 +88799,10 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         if (mapped === "readonly") {
           field.readOnly = true;
         }
+        if (excelRow._isNewFormat && excelRow._soloLectura) {
+          const ro = excelRow._soloLectura.toLowerCase().trim();
+          if (ro === "si" || ro === "s\xED") field.readOnly = true;
+        }
       }
       function applyReadOnly(field, excelRow) {
         const vis = (excelRow.visualization || "").toLowerCase();
@@ -88770,6 +88832,16 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     "src/enricher/apply-validations.js"(exports, module) {
       "use strict";
       function applyValidations(field, excelRow) {
+        if (excelRow._isNewFormat) {
+          if (excelRow._maxLengthDirect) {
+            const ml = parseInt(excelRow._maxLengthDirect, 10);
+            if (!isNaN(ml) && ml > 0) field.maxLength = ml;
+          }
+          if (excelRow._patternDirect) {
+            field.validationPattern = excelRow._patternDirect;
+          }
+          return;
+        }
         const rule = (excelRow.rule || "").trim();
         if (!rule) return;
         const skip = /* @__PURE__ */ new Set(["select", "radio", "checkbox", "heading", "readonly"]);
@@ -88828,6 +88900,13 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           }));
           return;
         }
+        if (excelRow._isNewFormat && excelRow._catalogoDirect) {
+          const parsed = parseCatalogoDirect(excelRow._catalogoDirect, catalogs);
+          if (parsed && parsed.length > 0) {
+            field.options = parsed;
+            return;
+          }
+        }
         const rule = (excelRow.rule || "").toLowerCase();
         if (/cat[aá]logo/.test(rule) || /ver\s+cat/.test(rule)) {
           const resolved = resolveCatalog(field, excelRow, catalogs);
@@ -88840,6 +88919,20 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         if (auto) {
           field.options = auto;
         }
+      }
+      function parseCatalogoDirect(catalogoStr, catalogs) {
+        if (!catalogoStr) return null;
+        const colonIdx = catalogoStr.indexOf(":");
+        if (colonIdx < 0) return null;
+        const catName = catalogoStr.substring(0, colonIdx).trim();
+        const optsRaw = catalogoStr.substring(colonIdx + 1).trim();
+        if (optsRaw.startsWith("(") && catalogs) {
+          const key = normalizeKey(catName);
+          const catOpts = catalogs[key] || catalogs[catName];
+          if (catOpts) return formatCatalogOptions(catOpts);
+        }
+        if (!optsRaw) return null;
+        return optsRaw.split("|").map((s) => s.trim()).filter(Boolean).map((label) => ({ value: label, label }));
       }
       function resolveCatalog(field, excelRow, catalogs) {
         if (!catalogs) return null;
@@ -88895,6 +88988,22 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     "src/enricher/apply-prefill.js"(exports, module) {
       "use strict";
       function applyPrefill(field, excelRow) {
+        if (excelRow._isNewFormat) {
+          const key = (excelRow._prefillKeyDirect || "").trim();
+          if (key) {
+            field.prefillKey = key;
+            const modo = (excelRow._prefillModeDirect || "").toLowerCase();
+            if (modo.includes("obligatorio")) field.prefillMode = "required";
+            else if (modo.includes("opcional")) field.prefillMode = "optional";
+            else if (modo.includes("no pre")) field.prefillMode = "none";
+            else field.prefillMode = field.required ? "required" : "optional";
+          }
+          if (excelRow._pathsSecundarios) {
+            const secondary = excelRow._pathsSecundarios.split("|").map((s) => s.trim()).filter(Boolean);
+            if (secondary.length > 0) field.mappedPaths = secondary;
+          }
+          return;
+        }
         const raw = (excelRow.jsonName || "").trim();
         if (!raw) return;
         const parts = raw.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
@@ -88915,7 +89024,10 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     "src/enricher/apply-conditionals.js"(exports, module) {
       "use strict";
       function applyConditionals(field, excelRow, fieldLookup) {
-        const text = joinTexts(excelRow.rule, excelRow.obs);
+        if (excelRow._isNewFormat && excelRow._conditionalDirect) {
+          field._conditionalText = excelRow._conditionalDirect;
+        }
+        const text = excelRow._isNewFormat ? joinTexts(excelRow._conditionalDirect, excelRow.rule) : joinTexts(excelRow.rule, excelRow.obs);
         if (!text) return null;
         const n = norm(text);
         const triggerRe = /si\s+(?:se\s+)?(?:selecciona|elige|marca)n?\s+(.+?)\s+se\s+(?:debe(?:\s+de)?\s+)?(?:habilitar?|desplegar?|mostrar?|visualizar?)\s+(?:el\s+campo\s+)?(.+)/;
@@ -89042,7 +89154,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             unmatched.push(f);
             continue;
           }
-          const step = match.row.step || "General";
+          const step = match.row.step || match.row.section || "General";
           const section = match.row.section || step || "Datos";
           const key = slug(step) + "__" + slug(section);
           if (!sectionMap.has(key)) {
@@ -89108,6 +89220,13 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const excelRows = parseEnrichExcel(matrixBuffer);
         const index = buildCascadeIndex(excelRows);
         const catalogs = catalogsBuffer ? parseCatalogsFromBuffer(catalogsBuffer) : {};
+        const isNewFormat = excelRows.length > 0 && excelRows[0]._isNewFormat;
+        warnings.push({
+          stage: "enrich",
+          type: "format-info",
+          field: null,
+          reason: isNewFormat ? `Formato: Excel ajustado (19 columnas). Filas: ${excelRows.length}. Indices: byPdfFieldName=${index.byPdfFieldName.size}, byPdfLabel=${index.byPdfLabel.size}, byFormLabel=${index.byFormLabel.size}, byJsonLeaf=${index.byJsonLeaf.size}` : `Formato: Excel original (cliente). Filas: ${excelRows.length}. Indices: byPdfFieldName=${index.byPdfFieldName.size}, byPdfLabel=${index.byPdfLabel.size}, byFormLabel=${index.byFormLabel.size}, byJsonLeaf=${index.byJsonLeaf.size}`
+        });
         const sections = extractSections(lovableJson);
         const allFields = sections.flatMap((s) => s.fields);
         const matchMap = /* @__PURE__ */ new Map();

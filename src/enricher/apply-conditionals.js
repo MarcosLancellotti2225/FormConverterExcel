@@ -1,7 +1,13 @@
 'use strict';
 
 function applyConditionals(field, excelRow, fieldLookup) {
-    const text = joinTexts(excelRow.rule, excelRow.obs);
+    if (excelRow._isNewFormat && excelRow._conditionalDirect) {
+        field._conditionalText = excelRow._conditionalDirect;
+    }
+
+    const text = excelRow._isNewFormat
+        ? joinTexts(excelRow._conditionalDirect, excelRow.rule)
+        : joinTexts(excelRow.rule, excelRow.obs);
     if (!text) return null;
 
     const n = norm(text);
