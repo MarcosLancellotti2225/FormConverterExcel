@@ -15,6 +15,7 @@
         initEnrichJsonFlow();
         initConvertPdfFlow();
         initPdfToHtmlFlow();
+        initMatrixEditorFlow();
     }
 
     function wireModeSelector() {
@@ -37,6 +38,7 @@
         $('#convertPdfFlow').hidden = mode !== 'convert-pdf';
         $('#pdfToHtmlFlow').hidden = mode !== 'pdf-to-html';
         $('#enrichJsonFlow').hidden = mode !== 'enrich-json';
+        $('#matrixEditorFlow').hidden = mode !== 'matrix-editor';
         $('#btnBackToHome').hidden = !mode;
     }
 
@@ -660,6 +662,221 @@
             statusEl.className = 'status active error';
             statusEl.textContent = '✗ ' + err.message;
         }
+    }
+
+    // ==================== MATRIX EDITOR FLOW ====================
+
+    var mtxState = {
+        file: null,
+        originalRows: null,
+        rows: null,
+        analyzed: null,
+        stats: null
+    };
+
+    var MTX_COLUMNS = [
+        'Pasos Formulario', 'Sección', 'Nombre en PDF',
+        'Nombre del campo en formulario', 'Tipo de dato', 'Valor',
+        'Regla', 'Obligatorio', 'Formulario a visualizar',
+        'Visualización en Formularios', 'Observaciones',
+        'Nombre del Campo en Json', 'Nombre del Campo en PDF', 'Formulario'
+    ];
+
+    var MTX_SHORT = [
+        'Paso', 'Sección', 'Nombre PDF', 'Campo Form', 'Tipo', 'Valor',
+        'Regla', 'Oblig', 'Form Vis', 'Visualiz', 'Obs',
+        'Campo Json', 'Campo PDF', 'Form'
+    ];
+
+    function initMatrixEditorFlow() {
+        $('#mtxExcelInput').addEventListener('change', function(e) {
+            mtxState.file = e.target.files[0] || null;
+            var el = $('#mtxExcelStatus');
+            var slot = el.closest('.file-slot');
+            if (mtxState.file) {
+                slot.classList.add('loaded');
+                el.textContent = '✓ ' + mtxState.file.name + ' (' + formatSize(mtxState.file.size) + ')';
+            } else {
+                slot.classList.remove('loaded');
+                el.textContent = '';
+            }
+            $('#btnMtxAnalyze').disabled = !mtxState.file;
+        });
+        $('#btnMtxAnalyze').addEventListener('click', runMtxAnalyze);
+        $('#btnMtxSplitAll').addEventListener('click', mtxSplitAll);
+        $('#btnMtxDerivePdf').addEventListener('click', mtxDerivePdf);
+        $('#btnMtxNormOblig').addEventListener('click', mtxNormOblig);
+        $('#btnMtxReset').addEventListener('click', mtxReset);
+        $('#btnMtxExport').addEventListener('click', mtxExport);
+    }
+
+    async function runMtxAnalyze() {
+        var statusEl = $('#mtxStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Analizando matriz...';
+
+        try {
+            var t0 = performance.now();
+            var result = await InsPipelineBundle.runMatrixAnalysis({ matrixFile: mtxState.file });
+            var t1 = performance.now();
+
+            mtxState.originalRows = JSON.parse(JSON.stringify(result.rows));
+            mtxState.rows = result.rows;
+            mtxState.analyzed = result.analyzed;
+            mtxState.stats = result.stats;
+
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ Analisis en ' + Math.round(t1 - t0) + 'ms — ' +
+                result.stats.total + ' filas cargadas.';
+
+            renderMtxStats(result.stats);
+            renderMtxTable(mtxState.rows, result.analyzed);
+            enableMtxActions(result.stats);
+            $('#mtxResultPanel').hidden = false;
+            $('#mtxExportPanel').hidden = false;
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
+    }
+
+    function renderMtxStats(stats) {
+        var el = $('#mtxStats');
+        el.innerHTML =
+            '<div class="stat"><span class="stat-n">' + stats.total + '</span><span class="stat-l">Filas totales</span></div>' +
+            '<div class="stat' + (stats.ambiguous ? ' stat-warn' : '') + '"><span class="stat-n">' + stats.ambiguous + '</span><span class="stat-l">Ambiguas</span></div>' +
+            '<div class="stat' + (stats.missingPdfField ? ' stat-warn' : '') + '"><span class="stat-n">' + stats.missingPdfField + '</span><span class="stat-l">Sin nombre PDF</span></div>' +
+            '<div class="stat' + (stats.obligatorioToFix ? ' stat-warn' : '') + '"><span class="stat-n">' + stats.obligatorioToFix + '</span><span class="stat-l">Obligatorio a fix</span></div>';
+    }
+
+    function renderMtxTable(rows, analyzed) {
+        var thead = $('#mtxTableHead');
+        var tbody = $('#mtxTableBody');
+        thead.innerHTML = '<tr><th>#</th>' + MTX_SHORT.map(function(h) {
+            return '<th>' + escapeHtml(h) + '</th>';
+        }).join('') + '</tr>';
+        tbody.innerHTML = '';
+
+        for (var i = 0; i < rows.length; i++) {
+            var row = rows[i];
+            var a = analyzed && analyzed[i] ? analyzed[i] : { issues: [] };
+            var hasAmbig = a.issues.some(function(is) { return is.type === 'ambiguous_pdf_name'; });
+            var hasMissing = a.issues.some(function(is) { return is.type === 'missing_pdf_field'; });
+            var hasOblig = a.issues.some(function(is) { return is.type === 'obligatorio_case'; });
+            var cls = hasAmbig ? 'mtx-row-warn' : (hasMissing || hasOblig ? 'mtx-row-info' : '');
+
+            var tr = document.createElement('tr');
+            if (cls) tr.className = cls;
+            var cells = '<td class="mtx-rownum">' + (i + 1) + '</td>';
+            for (var ci = 0; ci < MTX_COLUMNS.length; ci++) {
+                var col = MTX_COLUMNS[ci];
+                var val = row[col] || '';
+                cells += '<td><input type="text" class="mtx-cell" data-row="' + i + '" data-col="' + escapeHtml(col) + '" value="' + escapeHtml(val) + '"></td>';
+            }
+            tr.innerHTML = cells;
+            tbody.appendChild(tr);
+        }
+
+        tbody.addEventListener('change', function(e) {
+            if (e.target.classList.contains('mtx-cell')) {
+                var ri = parseInt(e.target.dataset.row, 10);
+                var col = e.target.dataset.col;
+                if (mtxState.rows[ri]) {
+                    mtxState.rows[ri][col] = e.target.value;
+                }
+            }
+        });
+    }
+
+    function enableMtxActions(stats) {
+        $('#btnMtxSplitAll').disabled = stats.ambiguous === 0;
+        $('#btnMtxDerivePdf').disabled = stats.missingPdfField === 0;
+        $('#btnMtxNormOblig').disabled = stats.obligatorioToFix === 0;
+        $('#btnMtxReset').disabled = false;
+    }
+
+    function mtxSplitAll() {
+        mtxState.rows = InsPipelineBundle.matrixSplitAll(mtxState.rows);
+        InsPipelineBundle.matrixDeriveFormulario(mtxState.rows);
+        var result = InsPipelineBundle.runMatrixAnalysis.__reanalyze
+            ? InsPipelineBundle.runMatrixAnalysis.__reanalyze(mtxState.rows)
+            : reanalyze(mtxState.rows);
+        mtxState.analyzed = result.analyzed;
+        mtxState.stats = result.stats;
+        renderMtxStats(result.stats);
+        renderMtxTable(mtxState.rows, result.analyzed);
+        enableMtxActions(result.stats);
+        $('#mtxStatus').textContent = '✓ Filas separadas — ahora ' + mtxState.rows.length + ' filas.';
+    }
+
+    function mtxDerivePdf() {
+        var count = InsPipelineBundle.matrixDerivePdfNames(mtxState.rows);
+        var result = reanalyze(mtxState.rows);
+        mtxState.analyzed = result.analyzed;
+        mtxState.stats = result.stats;
+        renderMtxStats(result.stats);
+        renderMtxTable(mtxState.rows, result.analyzed);
+        enableMtxActions(result.stats);
+        $('#mtxStatus').textContent = '✓ ' + count + ' campos PDF auto-rellenados.';
+    }
+
+    function mtxNormOblig() {
+        var count = InsPipelineBundle.matrixNormalizeObligatorio(mtxState.rows);
+        var result = reanalyze(mtxState.rows);
+        mtxState.analyzed = result.analyzed;
+        mtxState.stats = result.stats;
+        renderMtxStats(result.stats);
+        renderMtxTable(mtxState.rows, result.analyzed);
+        enableMtxActions(result.stats);
+        $('#mtxStatus').textContent = '✓ ' + count + ' valores de Obligatorio normalizados.';
+    }
+
+    function mtxReset() {
+        mtxState.rows = JSON.parse(JSON.stringify(mtxState.originalRows));
+        var result = reanalyze(mtxState.rows);
+        mtxState.analyzed = result.analyzed;
+        mtxState.stats = result.stats;
+        renderMtxStats(result.stats);
+        renderMtxTable(mtxState.rows, result.analyzed);
+        enableMtxActions(result.stats);
+        $('#mtxStatus').textContent = '✓ Reset a estado original.';
+    }
+
+    function mtxExport() {
+        InsPipelineBundle.matrixDeriveFormulario(mtxState.rows);
+        var xlsxBuffer = InsPipelineBundle.matrixExport(mtxState.rows);
+        var blob = new Blob([xlsxBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        var name = (mtxState.file ? mtxState.file.name.replace(/\.xlsx?$/i, '') : 'matriz') + '_ajustada.xlsx';
+        InsPipelineBundle.downloadBlob(blob, name);
+        $('#mtxExportStatus').className = 'status active success';
+        $('#mtxExportStatus').textContent = '✓ Descargando ' + name;
+    }
+
+    function reanalyze(rows) {
+        var analyzed = [];
+        var stats = { total: rows.length, ambiguous: 0, missingPdfField: 0, obligatorioToFix: 0 };
+        for (var i = 0; i < rows.length; i++) {
+            var issues = [];
+            var row = rows[i];
+            var nombrePDF = row['Nombre en PDF'] || '';
+            if (/Vida\s+(Colectiva|Universal)/i.test(nombrePDF) && nombrePDF.includes('/')) {
+                issues.push({ type: 'ambiguous_pdf_name' });
+                stats.ambiguous++;
+            }
+            if ((!row['Nombre del Campo en PDF'] || !row['Nombre del Campo en PDF'].trim()) &&
+                row['Nombre del Campo en Json'] && row['Nombre del Campo en Json'].trim()) {
+                issues.push({ type: 'missing_pdf_field' });
+                stats.missingPdfField++;
+            }
+            var oblig = String(row['Obligatorio'] || '').trim();
+            if (oblig === 'NO' || oblig === 'no') {
+                issues.push({ type: 'obligatorio_case' });
+                stats.obligatorioToFix++;
+            }
+            analyzed.push({ row: row, idx: i, issues: issues });
+        }
+        return { analyzed: analyzed, stats: stats };
     }
 
     // ==================== INIT ====================

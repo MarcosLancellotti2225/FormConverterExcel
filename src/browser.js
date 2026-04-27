@@ -7,6 +7,7 @@
 const { runPipelineAll, runEnrichAll } = require('./pipeline');
 const { analyzePdf, generatePdf } = require('./pdf-converter/pipeline-convert-pdf');
 const { runEnrichPipeline } = require('./enricher/pipeline-enrich');
+const matrixEditor = require('./matrix-editor/pipeline-edit');
 
 async function fileToUint8Array(file) {
     const ab = await file.arrayBuffer();
@@ -367,8 +368,23 @@ async function runEnrichJson(inputs) {
     });
 }
 
-if (typeof window !== 'undefined') {
-    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson };
+async function runMatrixAnalysis(inputs) {
+    const { matrixFile } = inputs;
+    if (!matrixFile) throw new Error('Excel matrix is required');
+    const buffer = await fileToUint8Array(matrixFile);
+    const rows = matrixEditor.loadMatrix(buffer);
+    const { analyzed, stats } = matrixEditor.analyzeMatrix(rows);
+    return { rows, analyzed, stats };
 }
 
-module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson };
+function matrixSplitAll(rows) { return matrixEditor.applySplitAll(rows); }
+function matrixDerivePdfNames(rows) { return matrixEditor.applyDerivePdfNames(rows); }
+function matrixNormalizeObligatorio(rows) { return matrixEditor.applyNormalizeObligatorio(rows); }
+function matrixDeriveFormulario(rows) { matrixEditor.applyDeriveFormulario(rows); }
+function matrixExport(rows) { return matrixEditor.exportToXlsx(rows); }
+
+if (typeof window !== 'undefined') {
+    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport };
+}
+
+module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport };

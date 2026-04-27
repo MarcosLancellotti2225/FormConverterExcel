@@ -89248,12 +89248,330 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     }
   });
 
+  // src/matrix-editor/parse-ambiguous.js
+  var require_parse_ambiguous = __commonJS({
+    "src/matrix-editor/parse-ambiguous.js"(exports, module) {
+      "use strict";
+      function parseAmbiguous(nombrePDF) {
+        const segments = nombrePDF.split(/\s*\/\s*/);
+        const result = [];
+        for (const segment of segments) {
+          const match = segment.match(/^(.+?):\s*(.+)$/);
+          if (!match) {
+            result.push({ formularios: [], nombrePDF: segment.trim() });
+            continue;
+          }
+          const formsRaw = match[1].trim();
+          const name = match[2].trim();
+          const forms = parseFormulariosFromText(formsRaw);
+          result.push({ formularios: forms, nombrePDF: name });
+        }
+        return result;
+      }
+      function parseFormulariosFromText(text) {
+        const forms = [];
+        if (/Vida\s+Colectiva/i.test(text)) forms.push("VC");
+        if (/Vida\s+Universal/i.test(text)) forms.push("VU");
+        if (/Protecci[oó]n\s+Crediticia/i.test(text)) forms.push("PC");
+        return forms;
+      }
+      module.exports = { parseAmbiguous, parseFormulariosFromText };
+    }
+  });
+
+  // src/matrix-editor/derive-pdf-name.js
+  var require_derive_pdf_name = __commonJS({
+    "src/matrix-editor/derive-pdf-name.js"(exports, module) {
+      "use strict";
+      function deriveFromJsonPath(jsonPath) {
+        if (!jsonPath || !jsonPath.trim()) return null;
+        const firstPath = String(jsonPath).split(/[,\n]/)[0].trim();
+        const leaf = firstPath.split(".").pop();
+        if (!leaf) return null;
+        return leaf.replace(/([A-Z])/g, "_$1").toLowerCase().replace(/^_/, "").replace(/_+/g, "_");
+      }
+      module.exports = { deriveFromJsonPath };
+    }
+  });
+
+  // src/matrix-editor/normalize-values.js
+  var require_normalize_values = __commonJS({
+    "src/matrix-editor/normalize-values.js"(exports, module) {
+      "use strict";
+      function normalizeObligatorio(val) {
+        const t = String(val || "").trim().toLowerCase();
+        if (t === "si" || t === "s\xED") return "Si";
+        if (t === "no") return "No";
+        return val;
+      }
+      function mapFormulario(formVis) {
+        const t = String(formVis || "").trim().toLowerCase();
+        if (!t) return "";
+        if (t === "todos") return "TODOS";
+        if (t.includes("colectiva")) return "VC";
+        if (t.includes("universal")) return "VU";
+        if (t.includes("crediticia")) return "PC";
+        return formVis;
+      }
+      module.exports = { normalizeObligatorio, mapFormulario };
+    }
+  });
+
+  // src/matrix-editor/analyze-matrix.js
+  var require_analyze_matrix = __commonJS({
+    "src/matrix-editor/analyze-matrix.js"(exports, module) {
+      "use strict";
+      var { parseAmbiguous } = require_parse_ambiguous();
+      var { deriveFromJsonPath } = require_derive_pdf_name();
+      var { mapFormulario } = require_normalize_values();
+      var COLUMNS = [
+        "Pasos Formulario",
+        "Secci\xF3n",
+        "Nombre en PDF",
+        "Nombre del campo en formulario",
+        "Tipo de dato",
+        "Valor",
+        "Regla",
+        "Obligatorio",
+        "Formulario a visualizar",
+        "Visualizaci\xF3n en Formularios",
+        "Observaciones",
+        "Nombre del Campo en Json",
+        "Nombre del Campo en PDF"
+      ];
+      function analyzeRow(row, idx) {
+        const issues = [];
+        const nombrePDF = row["Nombre en PDF"] || "";
+        const ambiguityRegex = /Vida\s+(Colectiva|Universal)/i;
+        if (ambiguityRegex.test(nombrePDF) && nombrePDF.includes("/")) {
+          issues.push({ type: "ambiguous_pdf_name", detail: parseAmbiguous(nombrePDF) });
+        }
+        const pdfFieldName = row["Nombre del Campo en PDF"];
+        const jsonPath = row["Nombre del Campo en Json"];
+        if ((!pdfFieldName || !pdfFieldName.trim()) && jsonPath && jsonPath.trim()) {
+          issues.push({ type: "missing_pdf_field", suggested: deriveFromJsonPath(jsonPath) });
+        }
+        const oblig = String(row["Obligatorio"] || "").trim();
+        if (oblig === "NO" || oblig === "no") {
+          issues.push({ type: "obligatorio_case", original: oblig, suggested: "No" });
+        }
+        const formVis = String(row["Formulario a visualizar"] || "").trim();
+        if (formVis) {
+          issues.push({ type: "derive_formulario", suggested: mapFormulario(formVis) });
+        }
+        return { row: { ...row }, idx, issues };
+      }
+      module.exports = { analyzeRow, COLUMNS };
+    }
+  });
+
+  // src/matrix-editor/export-matrix.js
+  var require_export_matrix = __commonJS({
+    "src/matrix-editor/export-matrix.js"(exports, module) {
+      "use strict";
+      var XLSX = require_xlsx();
+      var { COLUMNS } = require_analyze_matrix();
+      var EXPORT_COLUMNS = [...COLUMNS, "Formulario"];
+      function exportToXlsx(rows) {
+        const data = [EXPORT_COLUMNS];
+        for (const row of rows) {
+          data.push(EXPORT_COLUMNS.map((col) => row[col] || ""));
+        }
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        ws["!cols"] = EXPORT_COLUMNS.map((col) => {
+          if (col === "Nombre en PDF" || col === "Nombre del campo en formulario") return { wch: 40 };
+          if (col === "Regla" || col === "Observaciones") return { wch: 35 };
+          if (col === "Nombre del Campo en Json") return { wch: 45 };
+          if (col === "Nombre del Campo en PDF") return { wch: 30 };
+          return { wch: 18 };
+        });
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Formulario Digital");
+        return XLSX.write(wb, { type: "array", bookType: "xlsx" });
+      }
+      module.exports = { exportToXlsx };
+    }
+  });
+
+  // src/matrix-editor/pipeline-edit.js
+  var require_pipeline_edit = __commonJS({
+    "src/matrix-editor/pipeline-edit.js"(exports, module) {
+      "use strict";
+      var XLSX = require_xlsx();
+      var { analyzeRow, COLUMNS } = require_analyze_matrix();
+      var { parseAmbiguous } = require_parse_ambiguous();
+      var { deriveFromJsonPath } = require_derive_pdf_name();
+      var { normalizeObligatorio, mapFormulario } = require_normalize_values();
+      var { exportToXlsx } = require_export_matrix();
+      function loadMatrix(buffer) {
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const sheetName = findMatrixSheet(workbook);
+        const sheet = workbook.Sheets[sheetName];
+        const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+        const { headerRow, columnMap } = findHeaderRow(rawRows);
+        const headers = rawRows[headerRow];
+        const rows = [];
+        for (let i = headerRow + 1; i < rawRows.length; i++) {
+          const r = rawRows[i];
+          if (!r || r.every((c) => c === "" || c == null)) continue;
+          const row = {};
+          for (const [colName, colIdx] of Object.entries(columnMap)) {
+            row[colName] = clean(r[colIdx]);
+          }
+          rows.push(row);
+        }
+        return rows;
+      }
+      function analyzeMatrix(rows) {
+        const analyzed = rows.map((row, i) => analyzeRow(row, i));
+        const stats = {
+          total: rows.length,
+          ambiguous: 0,
+          missingPdfField: 0,
+          obligatorioToFix: 0
+        };
+        for (const a of analyzed) {
+          for (const issue of a.issues) {
+            if (issue.type === "ambiguous_pdf_name") stats.ambiguous++;
+            if (issue.type === "missing_pdf_field") stats.missingPdfField++;
+            if (issue.type === "obligatorio_case") stats.obligatorioToFix++;
+          }
+        }
+        return { analyzed, stats };
+      }
+      function applySplitAll(rows) {
+        const result = [];
+        for (const row of rows) {
+          const nombrePDF = row["Nombre en PDF"] || "";
+          const ambiguityRegex = /Vida\s+(Colectiva|Universal)/i;
+          if (ambiguityRegex.test(nombrePDF) && nombrePDF.includes("/")) {
+            const parts = parseAmbiguous(nombrePDF);
+            if (parts.length > 1) {
+              for (const part of parts) {
+                const newRow = { ...row };
+                newRow["Nombre en PDF"] = part.nombrePDF;
+                newRow["Formulario"] = part.formularios.join(", ") || row["Formulario"] || "";
+                result.push(newRow);
+              }
+              continue;
+            }
+          }
+          result.push({ ...row });
+        }
+        return result;
+      }
+      function applyDerivePdfNames(rows) {
+        let count = 0;
+        for (const row of rows) {
+          if ((!row["Nombre del Campo en PDF"] || !row["Nombre del Campo en PDF"].trim()) && row["Nombre del Campo en Json"] && row["Nombre del Campo en Json"].trim()) {
+            const derived = deriveFromJsonPath(row["Nombre del Campo en Json"]);
+            if (derived) {
+              row["Nombre del Campo en PDF"] = derived;
+              count++;
+            }
+          }
+        }
+        return count;
+      }
+      function applyNormalizeObligatorio(rows) {
+        let count = 0;
+        for (const row of rows) {
+          const orig = row["Obligatorio"] || "";
+          const normalized = normalizeObligatorio(orig);
+          if (normalized !== orig) {
+            row["Obligatorio"] = normalized;
+            count++;
+          }
+        }
+        return count;
+      }
+      function applyDeriveFormulario(rows) {
+        for (const row of rows) {
+          if (!row["Formulario"]) {
+            const formVis = row["Formulario a visualizar"] || "";
+            row["Formulario"] = mapFormulario(formVis);
+          }
+        }
+      }
+      function findMatrixSheet(workbook) {
+        const names = workbook.SheetNames;
+        const preferred = names.find(
+          (n) => /formulario\s*digital/i.test(n) || /formulario/i.test(n)
+        );
+        if (preferred) return preferred;
+        let biggest = names[0], maxRows = 0;
+        for (const n of names) {
+          const range = XLSX.utils.decode_range(workbook.Sheets[n]["!ref"] || "A1");
+          const rows = range.e.r - range.s.r + 1;
+          if (rows > maxRows) {
+            maxRows = rows;
+            biggest = n;
+          }
+        }
+        return biggest;
+      }
+      var COLUMN_MATCHERS = {
+        "Pasos Formulario": ["pasos formulario", "paso"],
+        "Secci\xF3n": ["secci\xF3n", "seccion"],
+        "Nombre en PDF": ["nombre en pdf"],
+        "Nombre del campo en formulario": ["nombre del campo en formulario", "campo en formulario"],
+        "Tipo de dato": ["tipo de dato", "tipo dato"],
+        "Valor": ["valor"],
+        "Regla": ["regla"],
+        "Obligatorio": ["obligatorio"],
+        "Formulario a visualizar": ["formulario a visualizar"],
+        "Visualizaci\xF3n en Formularios": ["visualizaci\xF3n en formularios", "visualizacion en formularios"],
+        "Observaciones": ["observaciones"],
+        "Nombre del Campo en Json": ["nombre del campo en json", "campo en json"],
+        "Nombre del Campo en PDF": ["nombre del campo en pdf", "campo en pdf"]
+      };
+      function findHeaderRow(rawRows) {
+        for (let i = 0; i < Math.min(10, rawRows.length); i++) {
+          const row = rawRows[i];
+          if (!row) continue;
+          const tempMap = {};
+          let matchCount = 0;
+          for (let j = 0; j < row.length; j++) {
+            const c = clean(String(row[j] || "")).toLowerCase();
+            if (!c) continue;
+            for (const [colName, matchers] of Object.entries(COLUMN_MATCHERS)) {
+              if (tempMap[colName] !== void 0) continue;
+              if (matchers.some((m) => c.includes(m))) {
+                tempMap[colName] = j;
+                matchCount++;
+                break;
+              }
+            }
+          }
+          if (matchCount >= 4) {
+            return { headerRow: i, columnMap: tempMap };
+          }
+        }
+        return { headerRow: 0, columnMap: {} };
+      }
+      function clean(v) {
+        return v === null || v === void 0 ? "" : String(v).trim();
+      }
+      module.exports = {
+        loadMatrix,
+        analyzeMatrix,
+        applySplitAll,
+        applyDerivePdfNames,
+        applyNormalizeObligatorio,
+        applyDeriveFormulario,
+        exportToXlsx,
+        COLUMNS
+      };
+    }
+  });
+
   // src/browser.js
   var require_browser = __commonJS({
     "src/browser.js"(exports, module) {
       var { runPipelineAll, runEnrichAll } = require_pipeline();
       var { analyzePdf, generatePdf } = require_pipeline_convert_pdf();
       var { runEnrichPipeline } = require_pipeline_enrich();
+      var matrixEditor = require_pipeline_edit();
       async function fileToUint8Array(file) {
         const ab = await file.arrayBuffer();
         return new Uint8Array(ab);
@@ -89556,10 +89874,33 @@ ${pagesHtml}</body>
           clientJsonText
         });
       }
-      if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson };
+      async function runMatrixAnalysis(inputs) {
+        const { matrixFile } = inputs;
+        if (!matrixFile) throw new Error("Excel matrix is required");
+        const buffer = await fileToUint8Array(matrixFile);
+        const rows = matrixEditor.loadMatrix(buffer);
+        const { analyzed, stats } = matrixEditor.analyzeMatrix(rows);
+        return { rows, analyzed, stats };
       }
-      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson };
+      function matrixSplitAll(rows) {
+        return matrixEditor.applySplitAll(rows);
+      }
+      function matrixDerivePdfNames(rows) {
+        return matrixEditor.applyDerivePdfNames(rows);
+      }
+      function matrixNormalizeObligatorio(rows) {
+        return matrixEditor.applyNormalizeObligatorio(rows);
+      }
+      function matrixDeriveFormulario(rows) {
+        matrixEditor.applyDeriveFormulario(rows);
+      }
+      function matrixExport(rows) {
+        return matrixEditor.exportToXlsx(rows);
+      }
+      if (typeof window !== "undefined") {
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport };
+      }
+      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport };
     }
   });
   return require_browser();

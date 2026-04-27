@@ -24,6 +24,12 @@
     <main>
         <!-- ============ MODE SELECTOR ============ -->
         <div id="modeSelector" class="mode-grid">
+            <div class="mode-card" data-mode="matrix-editor">
+                <div class="mode-icon">MTX</div>
+                <h2>Editor de Matriz</h2>
+                <p>Limpia y normaliza el Excel matriz del cliente: separa filas ambiguas, auto-rellena nombres y exporta la matriz ajustada.</p>
+                <button class="primary">Empezar</button>
+            </div>
             <div class="mode-card" data-mode="convert-pdf">
                 <div class="mode-icon">PDF</div>
                 <h2>Convertir PDF</h2>
@@ -241,6 +247,55 @@
                     <summary id="enrichWarningsSummary"></summary>
                     <pre id="enrichWarningsLog"></pre>
                 </details>
+            </section>
+        </div>
+
+        <!-- ============ MATRIX EDITOR FLOW ============ -->
+        <div id="matrixEditorFlow" hidden>
+            <section class="panel">
+                <h2>1. Cargar Matriz</h2>
+                <p class="hint">Subi el Excel matriz del cliente tal cual. Se analiza y muestra una tabla editable.</p>
+                <div class="inputs-grid">
+                    <label class="file-slot required" data-slot="mtx-excel">
+                        <span class="label">Matriz Excel</span>
+                        <span class="desc">El Excel original del cliente</span>
+                        <input type="file" accept=".xlsx,.xls" id="mtxExcelInput">
+                        <span class="file-status" id="mtxExcelStatus"></span>
+                    </label>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>2. Analizar</h2>
+                <div class="actions">
+                    <button id="btnMtxAnalyze" class="primary" disabled>Analizar Matriz</button>
+                </div>
+                <div id="mtxStatus" class="status"></div>
+            </section>
+
+            <section class="panel" id="mtxResultPanel" hidden>
+                <h2>3. Editar</h2>
+                <div id="mtxStats" class="stat-grid"></div>
+                <div class="mtx-actions">
+                    <button id="btnMtxSplitAll" class="secondary btn-sm" disabled>Separar filas ambiguas</button>
+                    <button id="btnMtxDerivePdf" class="secondary btn-sm" disabled>Auto-rellenar Nombre Campo PDF</button>
+                    <button id="btnMtxNormOblig" class="secondary btn-sm" disabled>Normalizar Obligatorio</button>
+                    <button id="btnMtxReset" class="secondary btn-sm" disabled>Reset</button>
+                </div>
+                <div class="mtx-table-wrap">
+                    <table id="mtxTable" class="mtx-table">
+                        <thead id="mtxTableHead"></thead>
+                        <tbody id="mtxTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="panel" id="mtxExportPanel" hidden>
+                <h2>4. Exportar</h2>
+                <div class="actions">
+                    <button id="btnMtxExport" class="primary">Descargar Matriz Ajustada (.xlsx)</button>
+                </div>
+                <div id="mtxExportStatus" class="status"></div>
             </section>
         </div>
     </main>
