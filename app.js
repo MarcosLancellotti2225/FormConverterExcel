@@ -867,7 +867,7 @@
 
             for (var ci = 0; ci < MTX_COLUMNS.length; ci++) {
                 var col = MTX_COLUMNS[ci];
-                var val = row[col] || '';
+                var val = String(row[col] != null ? row[col] : '');
 
                 if (col === 'PDF AcroForm Name' && mtxState.hasPdf) {
                     var mr2 = mtxState.matchResults && mtxState.matchResults[i] ? mtxState.matchResults[i] : null;
