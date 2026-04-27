@@ -1,6 +1,7 @@
 'use strict';
 
 const XLSX = require('xlsx');
+const JSZip = require('jszip');
 
 const FORMULARIOS = [
     { code: '1009052', name: 'Vida Colectiva', short: 'VC', keywords: ['vida colectiva'] },
@@ -8,16 +9,22 @@ const FORMULARIOS = [
     { code: 'D0309', name: 'Protección Crediticia', short: 'PC', keywords: ['proteccion crediticia', 'crediticia'] },
 ];
 
+const FILENAMES = {
+    '1009052': 'Matriz_1009052_Vida_Colectiva.xlsx',
+    'D0306': 'Matriz_D0306_Vida_Universal_Plus.xlsx',
+    'D0309': 'Matriz_D0309_Proteccion_Crediticia.xlsx',
+};
+
 const HEADERS = [
-    '#', 'Sección JSON', 'Etiqueta', 'Nombre del Campo en PDF',
-    'Salida JSON (principal)', 'Paths secundarios', 'Clave externa (prefill)',
-    'Tipo de campo', 'Origen', 'Obligatorio', 'Solo lectura',
-    'Valor compartido', 'Modo pre-llenado', 'MaxLength', 'Patrón regex',
+    '#', 'Código formulario', 'Sección JSON', 'Etiqueta',
+    'Nombre del Campo en PDF', 'Salida JSON (principal)', 'Paths secundarios',
+    'Clave externa (prefill)', 'Tipo de campo', 'Origen', 'Obligatorio',
+    'Solo lectura', 'Modo pre-llenado', 'MaxLength', 'Patrón regex',
     'Visibilidad condicional', 'Catálogo / Opciones', 'Texto de ayuda',
     'Regla original',
 ];
 
-const COL_WIDTHS = [4, 18, 28, 24, 38, 38, 38, 14, 14, 11, 11, 14, 22, 11, 26, 30, 38, 32, 38];
+const COL_WIDTHS = [4, 11, 18, 28, 24, 38, 38, 38, 14, 14, 11, 11, 22, 11, 26, 30, 38, 32, 38];
 
 const TIPO_MAP = {
     'texto': 'text',
@@ -53,11 +60,6 @@ function appliesTo(formVis, code) {
     const form = FORMULARIOS.find(f => f.code === code);
     if (!form) return false;
     return form.keywords.some(kw => s.includes(kw));
-}
-
-function isAllForms(formVis) {
-    const s = normalize(formVis);
-    return !s || s.includes('todos');
 }
 
 function getPdfNameForForm(nombrePdf, code) {
@@ -225,9 +227,9 @@ function normalize(s) {
         .normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
-function transformRow(row, idx, code, form, allRows, catalogos) {
-    const nombrePdfOriginal = getPdfNameForForm(row['Nombre en PDF'], code);
-    if (nombrePdfOriginal === null) return null;
+function transformRow(row, idx, code, allRows, catalogos) {
+    const nombrePdfFiltered = getPdfNameForForm(row['Nombre en PDF'], code);
+    if (nombrePdfFiltered === null) return null;
 
     const jsonPath = row['Nombre del Campo en Json'] || '';
     const { principal, secundarios } = splitJsonPaths(jsonPath);
@@ -237,6 +239,7 @@ function transformRow(row, idx, code, form, allRows, catalogos) {
 
     return [
         idx,
+        code,
         extractSeccionJson(jsonPath),
         row['Nombre del campo en formulario'] || '',
         deriveAcroformName(jsonPath),
@@ -247,7 +250,6 @@ function transformRow(row, idx, code, form, allRows, catalogos) {
         detectOrigen(row),
         normalizeOblig(row['Obligatorio']),
         detectSoloLectura(row),
-        isAllForms(row['Formulario a visualizar']) ? 'Sí' : 'No',
         detectModoPrellenado(row),
         parsed.maxLength,
         parsed.patron,
@@ -258,67 +260,25 @@ function transformRow(row, idx, code, form, allRows, catalogos) {
     ];
 }
 
-function buildPerFormulariosWorkbook(rows, catalogos) {
+function buildSingleFormularioWorkbook(allRows, code, catalogos) {
     const wb = XLSX.utils.book_new();
-    const formStats = [];
+    const filtered = [];
+    let idx = 0;
 
-    for (const form of FORMULARIOS) {
-        const filtered = [];
-        let countPdf = 0;
-        let countPre = 0;
-        let countComp = 0;
-        let idx = 0;
-
-        for (const row of rows) {
-            if (!appliesTo(row['Formulario a visualizar'], form.code)) continue;
-            idx++;
-            const transformed = transformRow(row, idx, form.code, form, rows, catalogos);
-            if (transformed === null) continue;
-            filtered.push(transformed);
-            const origen = transformed[8];
-            if (origen === 'PDF') countPdf++;
-            else if (origen === 'Pre-rellenado') countPre++;
-            else if (origen === 'Computado') countComp++;
-        }
-
-        formStats.push({
-            form,
-            total: filtered.length,
-            countPdf,
-            countPre,
-            countComp,
-            data: filtered,
-        });
+    for (const row of allRows) {
+        if (!appliesTo(row['Formulario a visualizar'], code)) continue;
+        idx++;
+        const transformed = transformRow(row, idx, code, allRows, catalogos);
+        if (transformed === null) continue;
+        filtered.push(transformed);
     }
 
-    const resumenData = [
-        ['Formulario', 'Código', 'Total campos', 'PDF', 'Pre-rellenado', 'Computado'],
-    ];
-    for (const fs of formStats) {
-        resumenData.push([fs.form.name, fs.form.code, fs.total, fs.countPdf, fs.countPre, fs.countComp]);
-    }
-    resumenData.push([]);
-    resumenData.push(['Notas:']);
-    resumenData.push(['• Cada hoja contiene TODOS los campos del formulario, sea que se completen en el PDF o vengan pre-rellenados desde el JSON cliente.']);
-    resumenData.push(['• Las columnas "Solo lectura", "Valor compartido" y "Modo pre-llenado" son las que necesita Lovable para configurar el campo.']);
-    resumenData.push(['• La columna "Catálogo / Opciones" trae las opciones inline cuando el campo es combo/radio.']);
-    if (catalogos) {
-        resumenData.push(['• La hoja "Catálogos" contiene todas las opciones disponibles para combos y radios.']);
-    }
-
-    const wsResumen = XLSX.utils.aoa_to_sheet(resumenData);
-    wsResumen['!cols'] = [{ wch: 28 }, { wch: 12 }, { wch: 14 }, { wch: 8 }, { wch: 14 }, { wch: 12 }];
-    XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
-
-    for (const fs of formStats) {
-        const sheetData = [HEADERS, ...fs.data];
-        const ws = XLSX.utils.aoa_to_sheet(sheetData);
-        ws['!cols'] = COL_WIDTHS.map(w => ({ wch: w }));
-        ws['!freeze'] = { xSplit: 0, ySplit: 1 };
-        if (!ws['!views']) ws['!views'] = [{ state: 'frozen', ySplit: 1 }];
-        const sheetName = fs.form.code + ' ' + fs.form.name;
-        XLSX.utils.book_append_sheet(wb, ws, sheetName.substring(0, 31));
-    }
+    const sheetData = [HEADERS, ...filtered];
+    const ws = XLSX.utils.aoa_to_sheet(sheetData);
+    ws['!cols'] = COL_WIDTHS.map(w => ({ wch: w }));
+    ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+    if (!ws['!views']) ws['!views'] = [{ state: 'frozen', ySplit: 1 }];
+    XLSX.utils.book_append_sheet(wb, ws, 'Campos del formulario');
 
     if (catalogos && Object.keys(catalogos).length > 0) {
         const catData = [['Catálogo', 'Código', 'Label']];
@@ -329,15 +289,49 @@ function buildPerFormulariosWorkbook(rows, catalogos) {
         }
         const wsCat = XLSX.utils.aoa_to_sheet(catData);
         wsCat['!cols'] = [{ wch: 28 }, { wch: 10 }, { wch: 40 }];
-        XLSX.utils.book_append_sheet(wb, wsCat, 'Catálogos');
+        XLSX.utils.book_append_sheet(wb, wsCat, 'Catálogos de opciones');
     }
 
-    return wb;
+    return { wb, rowCount: filtered.length };
 }
 
-function exportPerFormulario(rows, catalogos) {
-    const wb = buildPerFormulariosWorkbook(rows, catalogos || null);
-    return XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+function identifyPdfCode(pdfFileName) {
+    const name = String(pdfFileName || '').toLowerCase();
+    for (const form of FORMULARIOS) {
+        if (name.includes(form.code.toLowerCase())) return form.code;
+    }
+    return null;
 }
 
-module.exports = { exportPerFormulario, appliesTo, getPdfNameForForm, parseRegla, deriveAcroformName, splitJsonPaths };
+async function exportPerFormularioZip(rows, pdfFileNames, catalogos) {
+    let codesToExport;
+    if (pdfFileNames && pdfFileNames.length > 0) {
+        codesToExport = [];
+        for (const name of pdfFileNames) {
+            const code = identifyPdfCode(name);
+            if (code && !codesToExport.includes(code)) codesToExport.push(code);
+        }
+        if (codesToExport.length === 0) {
+            codesToExport = FORMULARIOS.map(f => f.code);
+        }
+    } else {
+        codesToExport = FORMULARIOS.map(f => f.code);
+    }
+
+    const zip = new JSZip();
+    const summary = [];
+
+    for (const code of codesToExport) {
+        const { wb, rowCount } = buildSingleFormularioWorkbook(rows, code, catalogos);
+        const filename = FILENAMES[code] || ('Matriz_' + code + '.xlsx');
+        const wbBytes = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+        zip.file(filename, wbBytes);
+        const form = FORMULARIOS.find(f => f.code === code);
+        summary.push({ code, name: form ? form.name : code, rowCount, filename });
+    }
+
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    return { zipBlob, summary };
+}
+
+module.exports = { exportPerFormularioZip, buildSingleFormularioWorkbook, appliesTo, getPdfNameForForm, identifyPdfCode };

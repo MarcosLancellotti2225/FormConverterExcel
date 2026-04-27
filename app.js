@@ -1055,7 +1055,7 @@
     async function mtxExportByForm() {
         var statusEl = $('#mtxExportStatus');
         statusEl.className = 'status active';
-        statusEl.textContent = '⟳ Generando catálogo por formulario...';
+        statusEl.textContent = '⟳ Generando Excel por formulario...';
 
         try {
             InsPipelineBundle.matrixDeriveFormulario(mtxState.rows);
@@ -1064,13 +1064,13 @@
                 mtxState.catalogos = await InsPipelineBundle.matrixParseCatalogos(mtxState.catalogosFile);
             }
 
-            var xlsxBuffer = InsPipelineBundle.matrixExportPerFormulario(mtxState.rows, mtxState.catalogos);
-            var blob = new Blob([xlsxBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            var name = (mtxState.file ? mtxState.file.name.replace(/\.xlsx?$/i, '') : 'matriz') + '_por_formulario.xlsx';
-            InsPipelineBundle.downloadBlob(blob, name);
-            var sheetCount = mtxState.catalogos ? 5 : 4;
+            var pdfNames = mtxState.pdfFiles.map(function(f) { return f.name; });
+            var result = await InsPipelineBundle.matrixExportPerFormularioZip(mtxState.rows, pdfNames, mtxState.catalogos);
+            InsPipelineBundle.downloadBlob(result.zipBlob, 'Matrices_por_Formulario.zip');
+
+            var details = result.summary.map(function(s) { return s.code + ' (' + s.rowCount + ' campos)'; }).join(', ');
             statusEl.className = 'status active success';
-            statusEl.textContent = '✓ Descargando ' + name + ' (' + sheetCount + ' hojas: Resumen + 3 formularios' + (mtxState.catalogos ? ' + Catálogos' : '') + ')';
+            statusEl.textContent = '✓ Descargando zip con ' + result.summary.length + ' Excel: ' + details;
         } catch (err) {
             console.error(err);
             statusEl.className = 'status active error';
