@@ -345,6 +345,149 @@ async function run() {
         assert.strictEqual(dateMap.get('DiaNac').groupKey, 'fecha_nacimiento');
     });
 
+    console.log('\n── propose-name ─────────────────────────');
+    const proposeNameMod = require('../src/matrix-editor/propose-name');
+
+    test('proposeName: solicitud_lugar (no sub-heading, no date)', () => {
+        const r = proposeNameMod.proposeName(
+            { name: 'Text1', type: 'text', detectedLabel: 'Lugar' },
+            { sectionPrefix: 'solicitud_', sectionName: 'Lugar y Fecha de Solicitud', subHeadingPrefix: '', group: null },
+            null
+        );
+        assert.strictEqual(r.acroFormPropuesto, 'solicitud_lugar');
+    });
+
+    test('proposeName: asegurado_primer_apellido', () => {
+        const r = proposeNameMod.proposeName(
+            { name: 'Text2', type: 'text', detectedLabel: 'Primer Apellido' },
+            { sectionPrefix: 'asegurado_', sectionName: 'Datos del Solicitante', subHeadingPrefix: '', group: null },
+            null
+        );
+        assert.strictEqual(r.acroFormPropuesto, 'asegurado_primer_apellido');
+    });
+
+    test('proposeName: asegurado_tipo_id_cedula (radio sub-heading)', () => {
+        const r = proposeNameMod.proposeName(
+            { name: 'CheckBox1', type: 'checkbox', detectedLabel: 'Cédula' },
+            { sectionPrefix: 'asegurado_', sectionName: 'Datos del Solicitante', subHeadingPrefix: 'tipo_id_', group: 'tipo_identificacion' },
+            null
+        );
+        assert.strictEqual(r.acroFormPropuesto, 'asegurado_tipo_id_cedula');
+        assert.strictEqual(r.group, 'tipo_identificacion');
+    });
+
+    test('proposeName: asegurado_sexo_masculino', () => {
+        const r = proposeNameMod.proposeName(
+            { name: 'CheckBox2', type: 'checkbox', detectedLabel: 'Masculino' },
+            { sectionPrefix: 'asegurado_', sectionName: 'Datos del Solicitante', subHeadingPrefix: 'sexo_', group: 'sexo' },
+            null
+        );
+        assert.strictEqual(r.acroFormPropuesto, 'asegurado_sexo_masculino');
+    });
+
+    test('proposeName: solicitud_fecha_dia (date group)', () => {
+        const r = proposeNameMod.proposeName(
+            { name: 'Text3', type: 'text', detectedLabel: 'Día' },
+            { sectionPrefix: 'solicitud_', sectionName: 'Lugar y Fecha de Solicitud', subHeadingPrefix: '', group: null },
+            { subHeadingPrefix: 'fecha_', part: 'dia', groupKey: 'fecha_solicitud' }
+        );
+        assert.strictEqual(r.acroFormPropuesto, 'solicitud_fecha_dia');
+        assert.strictEqual(r.group, 'fecha_solicitud');
+    });
+
+    test('proposeName: asegurado_fecha_nacimiento_dia', () => {
+        const r = proposeNameMod.proposeName(
+            { name: 'Text4', type: 'text', detectedLabel: 'Día' },
+            { sectionPrefix: 'asegurado_', sectionName: 'Datos del Solicitante', subHeadingPrefix: '', group: null },
+            { subHeadingPrefix: 'fecha_nacimiento_', part: 'dia', groupKey: 'fecha_nacimiento' }
+        );
+        assert.strictEqual(r.acroFormPropuesto, 'asegurado_fecha_nacimiento_dia');
+    });
+
+    test('proposeName: beneficiario_1_nombre (repeatable Row1)', () => {
+        const r = proposeNameMod.proposeName(
+            { name: 'NombreRow1', type: 'text', detectedLabel: 'Nombre' },
+            { sectionPrefix: 'beneficiario_', sectionName: 'Beneficiarios', sectionRepeatable: true, beneficiarioN: null },
+            null
+        );
+        assert.strictEqual(r.acroFormPropuesto, 'beneficiario_1_nombre');
+    });
+
+    test('proposeName: beneficiario_3_porcentaje', () => {
+        const r = proposeNameMod.proposeName(
+            { name: 'PorcentajeRow3', type: 'text', detectedLabel: 'Porcentaje' },
+            { sectionPrefix: 'beneficiario_', sectionName: 'Beneficiarios', sectionRepeatable: true },
+            null
+        );
+        assert.strictEqual(r.acroFormPropuesto, 'beneficiario_3_porcentaje');
+    });
+
+    test('detectRepeatableRow: NombreRow2 → beneficiario_2_', () => {
+        const r = proposeNameMod.detectRepeatableRow('NombreRow2', { sectionRepeatable: true, beneficiarioN: 2 });
+        assert.ok(r);
+        assert.strictEqual(r.rowN, 2);
+        assert.strictEqual(r.rowPrefix, 'beneficiario_2_');
+    });
+
+    test('detectRepeatableRow: no Row suffix → null', () => {
+        assert.strictEqual(proposeNameMod.detectRepeatableRow('Text3.0.0', { sectionName: 'Datos del Solicitante' }), null);
+    });
+
+    test('resolveCollisions: text+checkbox same name → text gets _texto', () => {
+        const rows = [
+            { acroFormPropuesto: 'asegurado_tipo_id_otro', _typeNative: 'checkbox' },
+            { acroFormPropuesto: 'asegurado_tipo_id_otro', _typeNative: 'text' },
+        ];
+        const renamed = proposeNameMod.resolveCollisions(rows);
+        assert.strictEqual(renamed, 1);
+        assert.strictEqual(rows[0].acroFormPropuesto, 'asegurado_tipo_id_otro');
+        assert.strictEqual(rows[1].acroFormPropuesto, 'asegurado_tipo_id_otro_texto');
+    });
+
+    test('resolveCollisions: same-type duplicates get _2, _3', () => {
+        const rows = [
+            { acroFormPropuesto: 'asegurado_telefono', _typeNative: 'text' },
+            { acroFormPropuesto: 'asegurado_telefono', _typeNative: 'text' },
+            { acroFormPropuesto: 'asegurado_telefono', _typeNative: 'text' },
+        ];
+        proposeNameMod.resolveCollisions(rows);
+        assert.strictEqual(rows[0].acroFormPropuesto, 'asegurado_telefono');
+        assert.strictEqual(rows[1].acroFormPropuesto, 'asegurado_telefono_2');
+        assert.strictEqual(rows[2].acroFormPropuesto, 'asegurado_telefono_3');
+    });
+
+    test('addContextIfDuplicate: Día appearing 3x gets context suffixes', () => {
+        const rows = [
+            { etiquetaPublico: 'Día', _dateGroupKey: 'fecha_solicitud' },
+            { etiquetaPublico: 'Día', _dateGroupKey: 'fecha_nacimiento' },
+            { etiquetaPublico: 'Día', _dateGroupKey: 'vigencia_desde' },
+            { etiquetaPublico: 'Lugar', _dateGroupKey: null },
+        ];
+        proposeNameMod.addContextIfDuplicate(rows);
+        assert.strictEqual(rows[0].etiquetaPublico, 'Día (Solicitud)');
+        assert.strictEqual(rows[1].etiquetaPublico, 'Día (Nacimiento)');
+        assert.strictEqual(rows[2].etiquetaPublico, 'Día (Vigencia Desde)');
+        assert.strictEqual(rows[3].etiquetaPublico, 'Lugar');
+    });
+
+    test('addContextIfDuplicate: unique label is left alone', () => {
+        const rows = [
+            { etiquetaPublico: 'Cédula', group: 'tipo_identificacion' },
+        ];
+        proposeNameMod.addContextIfDuplicate(rows);
+        assert.strictEqual(rows[0].etiquetaPublico, 'Cédula');
+    });
+
+    test('addContextIfDuplicate: falls back to sectionName for non-date groups', () => {
+        const rows = [
+            { etiquetaPublico: 'Nombre', _sectionName: 'Beneficiario 1' },
+            { etiquetaPublico: 'Nombre', _sectionName: 'Beneficiario 2' },
+        ];
+        proposeNameMod.addContextIfDuplicate(rows);
+        assert.strictEqual(rows[0].etiquetaPublico, 'Nombre (Beneficiario 1)');
+        assert.strictEqual(rows[1].etiquetaPublico, 'Nombre (Beneficiario 2)');
+    });
+
     console.log('\n── end-to-end pipeline ──────────────────');
     const inputsDir = path.join(ROOT, 'inputs');
     const hasMatrix = fs.existsSync(path.join(inputsDir, 'Matriz_Formularios_VidaColectiva_Secciones.xlsx'));
