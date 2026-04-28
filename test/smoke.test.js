@@ -779,6 +779,97 @@ async function run() {
         assert.strictEqual(r.warning, true);
     });
 
+    console.log('\n── catalogs-formatter ───────────────────');
+    const catFmt = require('../src/matrix-editor/catalogs-formatter');
+
+    test('findCatalog: group "sexo" → synthetic Sexo', () => {
+        const r = catFmt.findCatalog('sexo', 'Sexo', null);
+        assert.strictEqual(r.isSynthetic, true);
+        assert.strictEqual(r.sheetName, 'Sexo (sintético)');
+        assert.strictEqual(r.options.length, 2);
+        assert.strictEqual(r.options[0].code, 'M');
+    });
+
+    test('findCatalog: group "tipo_identificacion" → catalog by group whitelist', () => {
+        const fakeCatalogos = {
+            'tipo identificación': [
+                { code: '0', label: 'Cédula Física Nacional' },
+                { code: '2', label: 'DIMEX' },
+            ],
+        };
+        const r = catFmt.findCatalog('tipo_identificacion', 'Cédula', fakeCatalogos);
+        assert.strictEqual(r.isSynthetic, false);
+        assert.strictEqual(r.options.length, 2);
+        assert.strictEqual(r.options[0].label, 'Cédula Física Nacional');
+    });
+
+    test('findCatalog: by label "Parentesco" → parentesco sheet', () => {
+        const fakeCatalogos = {
+            'parentesco': [
+                { code: '', label: 'Madre' },
+                { code: '', label: 'Padre' },
+            ],
+        };
+        const r = catFmt.findCatalog('', 'Parentesco', fakeCatalogos);
+        assert.strictEqual(r.options.length, 2);
+        assert.strictEqual(r.options[0].label, 'Madre');
+    });
+
+    test('findCatalog: no match → null sheetName, empty options', () => {
+        const r = catFmt.findCatalog('', 'Algo Random', { 'parentesco': [{ label: 'x' }] });
+        assert.strictEqual(r.sheetName, null);
+        assert.strictEqual(r.options.length, 0);
+    });
+
+    test('formatCatalogOptionsJson: code present → value=code', () => {
+        const json = catFmt.formatCatalogOptionsJson([
+            { code: '0', label: 'Cédula' },
+            { code: '2', label: 'DIMEX' },
+        ]);
+        const parsed = JSON.parse(json);
+        assert.strictEqual(parsed[0].value, '0');
+        assert.strictEqual(parsed[0].label, 'Cédula');
+        assert.strictEqual(parsed[1].value, '2');
+    });
+
+    test('formatCatalogOptionsJson: empty code → value=label (Parentesco case)', () => {
+        const json = catFmt.formatCatalogOptionsJson([
+            { code: '', label: 'Madre' },
+            { code: '', label: 'Padre' },
+        ]);
+        const parsed = JSON.parse(json);
+        assert.strictEqual(parsed[0].value, 'Madre');
+        assert.strictEqual(parsed[0].label, 'Madre');
+    });
+
+    test('formatCatalogOptionsJson: empty options → empty string', () => {
+        assert.strictEqual(catFmt.formatCatalogOptionsJson([]), '');
+        assert.strictEqual(catFmt.formatCatalogOptionsJson(null), '');
+    });
+
+    test('formatCatalogOptionsJson: synthetic Sexo round-trip', () => {
+        const r = catFmt.findCatalog('sexo', 'Sexo', null);
+        const json = catFmt.formatCatalogOptionsJson(r.options);
+        const parsed = JSON.parse(json);
+        assert.strictEqual(parsed[0].value, 'M');
+        assert.strictEqual(parsed[1].value, 'F');
+    });
+
+    test('lookupCatalog: fuzzy partial match', () => {
+        const cats = { 'tipo identificación': [{ code: '0', label: 'X' }] };
+        const found = catFmt.lookupCatalog(cats, 'identificación');
+        assert.ok(found);
+        assert.strictEqual(found[0].code, '0');
+    });
+
+    test('parseCatalogos result keeps sheetName as non-enumerable', () => {
+        const arr = [{ code: '0', label: 'X' }];
+        Object.defineProperty(arr, 'sheetName', { value: 'Tipo Identificación', enumerable: false });
+        const cats = { 'tipo identificación': arr };
+        const r = catFmt.findCatalog('tipo_identificacion', '', cats);
+        assert.strictEqual(r.sheetName, 'Tipo Identificación');
+    });
+
     console.log('\n── end-to-end pipeline ──────────────────');
     const inputsDir = path.join(ROOT, 'inputs');
     const hasMatrix = fs.existsSync(path.join(inputsDir, 'Matriz_Formularios_VidaColectiva_Secciones.xlsx'));
