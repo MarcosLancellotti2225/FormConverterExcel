@@ -635,6 +635,68 @@ async function run() {
         assert.deepStrictEqual([out[0][0], out[1][0], out[2][0]], [1, 2, 3]);
     });
 
+    console.log('\n── export-by-formulario ─────────────────');
+    const exportMod = require('../src/matrix-editor/export-by-formulario');
+
+    test('identifyPdfCode: detects 1009052 from filename', () => {
+        assert.strictEqual(exportMod.identifyPdfCode('1009052_Solicitud_Vida_Colectiva.pdf'), '1009052');
+    });
+
+    test('identifyPdfCode: detects D0306', () => {
+        assert.strictEqual(exportMod.identifyPdfCode('D0306_Solicitud_Vida_Universal.pdf'), 'D0306');
+    });
+
+    test('identifyPdfCode: detects D0309', () => {
+        assert.strictEqual(exportMod.identifyPdfCode('D0309_Crediticia.pdf'), 'D0309');
+    });
+
+    test('identifyPdfCode: unknown returns null', () => {
+        assert.strictEqual(exportMod.identifyPdfCode('OtroFormulario.pdf'), null);
+    });
+
+    test('filenameFor: 1009052 → Mapeo_1009052_Vida_Colectiva.xlsx', () => {
+        assert.strictEqual(exportMod.filenameFor('1009052'), 'Mapeo_1009052_Vida_Colectiva.xlsx');
+    });
+
+    test('filenameFor: D0306 → Mapeo_D0306_Vida_Universal_Plus.xlsx', () => {
+        assert.strictEqual(exportMod.filenameFor('D0306'), 'Mapeo_D0306_Vida_Universal_Plus.xlsx');
+    });
+
+    test('filenameFor: D0309 → Mapeo_D0309_Proteccion_Crediticia.xlsx', () => {
+        assert.strictEqual(exportMod.filenameFor('D0309'), 'Mapeo_D0309_Proteccion_Crediticia.xlsx');
+    });
+
+    test('filenameFor: unknown code falls back to sanitized PDF name', () => {
+        assert.strictEqual(
+            exportMod.filenameFor(null, 'Custom_Form.pdf'),
+            'Mapeo_Custom_Form.xlsx'
+        );
+    });
+
+    test('buildWorkbook: contains "Mapeo de campos" sheet with HEADERS', () => {
+        const wb = exportMod.buildWorkbook([], '1009052', null);
+        assert.ok(wb.SheetNames.includes('Mapeo de campos'));
+        const ws = wb.Sheets['Mapeo de campos'];
+        assert.strictEqual(ws['A1'].v, '#');
+        assert.strictEqual(ws['B1'].v, 'Sección del PDF');
+        assert.strictEqual(ws['C1'].v, 'AcroForm Actual');
+        assert.strictEqual(ws['D1'].v, 'AcroForm Propuesto');
+        assert.strictEqual(ws['T1'].v, 'Regla original');
+    });
+
+    test('buildWorkbook: appends Catálogos sheet when catalogos provided', () => {
+        const wb = exportMod.buildWorkbook([], '1009052', { 'Tipo Identificacion': [{ code: '1', label: 'Cédula' }] });
+        assert.ok(wb.SheetNames.includes('Catálogos de opciones'));
+    });
+
+    test('exportPerFormularioZip: rejects when no PDFs', () => {
+        const p = exportMod.exportPerFormularioZip([], [], null);
+        return p.then(
+            () => { throw new Error('should have rejected'); },
+            err => { assert.match(err.message, /al menos un PDF/i); }
+        );
+    });
+
     console.log('\n── end-to-end pipeline ──────────────────');
     const inputsDir = path.join(ROOT, 'inputs');
     const hasMatrix = fs.existsSync(path.join(inputsDir, 'Matriz_Formularios_VidaColectiva_Secciones.xlsx'));
