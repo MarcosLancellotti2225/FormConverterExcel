@@ -588,19 +588,89 @@ async function run() {
 
     test('extractFromMatrix: parses validation, formato, jsonPath', () => {
         const matrixRow = {
-            'Nombre del Campo en Json': 'datosAsegurado.numeroIdentificacion, datosAsegurado.tipoIdentificacion',
+            'Nombre del Campo en Json': 'datosFormulario.personas.numeroIdentificacion, datosFormulario.personas.codigoTipoIdentificacion',
             'Regla': '16 caracteres, sólo números',
             'Observaciones': '',
             'Tipo de dato': 'Numérico',
             'Obligatorio': 'SI',
         };
-        const e = bpr.extractFromMatrix(matrixRow, null, []);
-        assert.strictEqual(e.pathPrincipal, 'datosAsegurado.numeroIdentificacion');
-        assert.ok(e.pathsSecundarios.includes('tipoIdentificacion'));
+        const intermediate = { _sectionPrefix: 'asegurado_', group: '', etiquetaPublico: 'Número Identificación' };
+        const e = bpr.extractFromMatrix(matrixRow, null, [], intermediate);
+        assert.strictEqual(e.pathPrincipal, 'datosFormulario.personas[0].numeroIdentificacion');
+        assert.ok(e.pathsSecundarios.includes('personas[0].codigoTipoIdentificacion'));
         assert.strictEqual(e.maxLength, '16');
         assert.ok(e.patron.includes('\\d'));
         assert.strictEqual(e.formato, 'numérico');
         assert.strictEqual(e.obligatorio, 'Sí');
+        assert.strictEqual(e.catalogoNombre, '');
+    });
+
+    test('extractFromMatrix: beneficiario_2_ → personas[2]', () => {
+        const matrixRow = {
+            'Nombre del Campo en Json': 'datosFormulario.personas.nombreCompleto',
+            'Tipo de dato': 'Texto',
+            'Obligatorio': 'No',
+        };
+        const intermediate = { _sectionPrefix: 'beneficiario_2_', group: '', etiquetaPublico: 'Nombre' };
+        const e = bpr.extractFromMatrix(matrixRow, null, [], intermediate);
+        assert.strictEqual(e.pathPrincipal, 'datosFormulario.personas[2].nombreCompleto');
+    });
+
+    test('extractFromMatrix: combo with synthetic Sexo catalog', () => {
+        const matrixRow = {
+            'Nombre del Campo en Json': 'datosFormulario.personas.codigoSexo',
+            'Tipo de dato': 'Combo',
+            'Obligatorio': 'Sí',
+        };
+        const intermediate = { _sectionPrefix: 'asegurado_', group: 'sexo', etiquetaPublico: 'Sexo' };
+        const e = bpr.extractFromMatrix(matrixRow, null, [], intermediate);
+        assert.strictEqual(e.catalogoNombre, 'Sexo (sintético)');
+        assert.ok(e.catalogoOpciones.includes('"M"'));
+        assert.ok(e.catalogoOpciones.includes('"Masculino"'));
+        assert.strictEqual(e.catalogoHoja, 'Sexo (sintético)');
+    });
+
+    test('extractFromMatrix: tipo_identificacion uses catalog from sheet', () => {
+        const fakeCatalogos = {
+            'tipo identificación': Object.assign(
+                [{ code: '0', label: 'Cédula Física Nacional' }, { code: '2', label: 'DIMEX' }],
+                {}
+            )
+        };
+        Object.defineProperty(fakeCatalogos['tipo identificación'], 'sheetName', { value: 'Tipo Identificación', enumerable: false });
+        const matrixRow = {
+            'Nombre del Campo en Json': 'datosFormulario.personas.codigoTipoIdentificacion',
+            'Tipo de dato': 'Combo',
+            'Obligatorio': 'Sí',
+        };
+        const intermediate = { _sectionPrefix: 'asegurado_', group: 'tipo_identificacion', etiquetaPublico: 'Cédula' };
+        const e = bpr.extractFromMatrix(matrixRow, fakeCatalogos, [], intermediate);
+        assert.strictEqual(e.catalogoNombre, 'Tipo Identificación');
+        const opts = JSON.parse(e.catalogoOpciones);
+        assert.strictEqual(opts.length, 2);
+        assert.strictEqual(opts[0].value, '0');
+    });
+
+    test('derivePrefixForRow: beneficiario_2_x → beneficiario_2_', () => {
+        const r = bpr.derivePrefixForRow('beneficiario_2_nombre', { sectionPrefix: 'beneficiario_' });
+        assert.strictEqual(r, 'beneficiario_2_');
+    });
+
+    test('derivePrefixForRow: regular row returns sectionInfo prefix', () => {
+        const r = bpr.derivePrefixForRow('asegurado_primer_apellido', { sectionPrefix: 'asegurado_' });
+        assert.strictEqual(r, 'asegurado_');
+    });
+
+    test('isCatalogExpected: tipo_identificacion group → true', () => {
+        assert.strictEqual(bpr.isCatalogExpected({ group: 'tipo_identificacion', etiquetaPublico: 'X' }), true);
+    });
+
+    test('isCatalogExpected: label "Parentesco" → true', () => {
+        assert.strictEqual(bpr.isCatalogExpected({ group: '', etiquetaPublico: 'Parentesco' }), true);
+    });
+
+    test('isCatalogExpected: regular text field → false', () => {
+        assert.strictEqual(bpr.isCatalogExpected({ group: '', etiquetaPublico: 'Primer Apellido' }), false);
     });
 
     test('collectPrefilledMatrixRows: only "no se llena en PDF" rows', () => {
@@ -617,13 +687,19 @@ async function run() {
     });
 
     test('interleavePrefilled: inserts prefilled row when section ends', () => {
+        const blankCols = (col1, prerellenado, ...rest) => {
+            const r = new Array(22).fill('');
+            r[1] = col1; r[11] = prerellenado;
+            for (let i = 0; i < rest.length; i++) r[i] = rest[i];
+            return r;
+        };
         const pdfRows = [
-            [1, 'DATOS DEL SOLICITANTE', 'Text1', 'asegurado_lugar', 'Lugar', 'asegurado_lugar', 'Tx', '', 1, '', '', 'No', '', '', '', '', '', '', '', ''],
-            [2, 'BENEFICIARIO 1',         'Text2', 'beneficiario_1_nombre', 'Nombre', 'beneficiario_1_nombre', 'Tx', '', 1, '', '', 'No', '', '', '', '', '', '', '', ''],
+            [1, 'DATOS DEL SOLICITANTE', 'Text1', 'asegurado_lugar', 'Lugar', 'asegurado_lugar', 'Tx', '', 1, '', '', 'No', '', '', '', '', '', '', '', '', '', ''],
+            [2, 'BENEFICIARIO 1',         'Text2', 'beneficiario_1_nombre', 'Nombre', 'beneficiario_1_nombre', 'Tx', '', 1, '', '', 'No', '', '', '', '', '', '', '', '', '', ''],
         ];
         const prefilled = [
             { sectionPdf: 'DATOS DEL SOLICITANTE', label: 'Código', tipoDatoMatriz: 'Texto',
-              enrich: { pathPrincipal: 'datosAsegurado.codigo', pathsSecundarios: '', obligatorio: 'No', maxLength: '', patron: '', formato: '', condicional: '', catalogo: '', tipoDatoMatriz: 'Texto', reglaOriginal: '' } },
+              enrich: { pathPrincipal: 'datosAsegurado.codigo', pathsSecundarios: '', obligatorio: 'No', maxLength: '', patron: '', formato: '', condicional: '', catalogoNombre: '', catalogoOpciones: '', catalogoHoja: '', tipoDatoMatriz: 'Texto', reglaOriginal: '' } },
         ];
         const out = bpr.interleavePrefilled(pdfRows, prefilled);
         assert.strictEqual(out.length, 3);
@@ -631,8 +707,11 @@ async function run() {
         assert.strictEqual(out[1][1], 'DATOS DEL SOLICITANTE');
         assert.strictEqual(out[1][11], 'Sí');                  // pre-rellenado
         assert.strictEqual(out[1][2], '');                      // AcroForm Actual vacío
+        assert.strictEqual(out[1].length, 22);                  // shape correcto
         assert.strictEqual(out[2][1], 'BENEFICIARIO 1');
         assert.deepStrictEqual([out[0][0], out[1][0], out[2][0]], [1, 2, 3]);
+        // dummy var to keep linter quiet
+        void blankCols;
     });
 
     console.log('\n── export-by-formulario ─────────────────');
@@ -673,7 +752,7 @@ async function run() {
         );
     });
 
-    test('buildWorkbook: contains "Mapeo de campos" sheet with HEADERS', () => {
+    test('buildWorkbook: contains "Mapeo de campos" sheet with 22-col HEADERS', () => {
         const wb = exportMod.buildWorkbook([], '1009052', null);
         assert.ok(wb.SheetNames.includes('Mapeo de campos'));
         const ws = wb.Sheets['Mapeo de campos'];
@@ -681,7 +760,11 @@ async function run() {
         assert.strictEqual(ws['B1'].v, 'Sección del PDF');
         assert.strictEqual(ws['C1'].v, 'AcroForm Actual');
         assert.strictEqual(ws['D1'].v, 'AcroForm Propuesto');
-        assert.strictEqual(ws['T1'].v, 'Regla original');
+        assert.strictEqual(ws['R1'].v, 'Catálogo (nombre)');
+        assert.strictEqual(ws['S1'].v, 'Opciones formato Lovable (JSON)');
+        assert.strictEqual(ws['T1'].v, 'Tipo de dato (matriz)');
+        assert.strictEqual(ws['U1'].v, 'Regla original');
+        assert.strictEqual(ws['V1'].v, 'Hoja del Excel catálogo');
     });
 
     test('buildWorkbook: appends Catálogos sheet when catalogos provided', () => {

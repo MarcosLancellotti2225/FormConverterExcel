@@ -31,17 +31,19 @@ const { detectSections, assignSectionToField, detectDateGroups } = require('./se
 const { proposeName, resolveCollisions, addContextIfDuplicate } = require('./propose-name');
 const { _internal: ruleInternal } = require('../parsers/rule-parser');
 const { normalize } = require('./cross-with-pdf');
+const { indexPaths } = require('./path-indexer');
+const { findCatalog, formatCatalogOptionsJson } = require('./catalogs-formatter');
 
 const HEADERS = [
     '#', 'Sección del PDF', 'AcroForm Actual', 'AcroForm Propuesto',
     'Etiqueta para el público', 'Nombre interno (sourceName)', 'Tipo', 'Grupo',
     'Página', 'Path JSON principal', 'Paths secundarios', 'Pre-rellenado',
     'Obligatorio', 'MaxLength', 'Patrón regex', 'Formato',
-    'Visibilidad condicional', 'Catálogo / Opciones', 'Tipo de dato (matriz)',
-    'Regla original',
+    'Visibilidad condicional', 'Catálogo (nombre)', 'Opciones formato Lovable (JSON)',
+    'Tipo de dato (matriz)', 'Regla original', 'Hoja del Excel catálogo',
 ];
 
-const COL_WIDTHS = [4, 22, 28, 26, 24, 32, 5, 18, 5, 36, 30, 11, 11, 9, 22, 13, 30, 22, 18, 38];
+const COL_WIDTHS = [4, 22, 28, 26, 24, 32, 5, 18, 5, 36, 30, 11, 11, 9, 22, 13, 30, 22, 60, 18, 38, 22];
 
 const FORMATO_MAP = {
     'fecha':            'fecha',
@@ -54,13 +56,6 @@ const FORMATO_MAP = {
     'alfanumérico':     'alfanumérico',
     'texto':            'alfanumérico',
 };
-
-const CATALOGO_NAMES = [
-    'tipo identificacion', 'tipo identificación', 'parentesco',
-    'estado civil', 'moneda', 'tipo formulario', 'tipo persona',
-    'tipo tramite', 'tipo trámite', 'nacionalidad', 'provincia',
-    'canton', 'distrito', 'ocupacion', 'ocupación',
-];
 
 const FORMULARIO_KEYWORDS = {
     '1009052': ['vida colectiva', 'colectiva'],
@@ -92,6 +87,7 @@ async function buildPdfRows(pdfBytes, matrixRows, formularioCode, catalogos) {
             _typeNative: field.type,
             _sectionName: sectionInfo ? (sectionInfo.sectionName || sectionInfo.sectionHeading) : '',
             _dateGroupKey: dateInfo ? dateInfo.groupKey : null,
+            _sectionPrefix: derivePrefixForRow(named.acroFormPropuesto, sectionInfo),
         });
     }
 
@@ -101,11 +97,41 @@ async function buildPdfRows(pdfBytes, matrixRows, formularioCode, catalogos) {
     const matrixIndex = buildMatrixIndex(matrixRows, formularioCode);
     const usedMatrixIdx = new Set();
 
+    const summary = {
+        pdfFieldCount: intermediates.length,
+        matchedToMatrix: 0,
+        unmatched: 0,
+        prefilledCount: 0,
+        sinCatalogo: 0,
+        pathsSinIndice: 0,
+    };
+
     const pdfRows = [];
+    const renameMapping = [];
+
     for (let i = 0; i < intermediates.length; i++) {
         const im = intermediates[i];
         const matrixRow = matchMatrixRow(im, matrixIndex, usedMatrixIdx);
-        const enrich = matrixRow ? extractFromMatrix(matrixRow, catalogos, matrixRows) : emptyEnrichment();
+
+        let enrich;
+        if (matrixRow) {
+            enrich = extractFromMatrix(matrixRow, catalogos, matrixRows, im);
+            summary.matchedToMatrix++;
+        } else {
+            enrich = emptyEnrichment();
+            summary.unmatched++;
+            // Catálogo can still be resolved from the field's group/label even
+            // without a matrix match (e.g. synthetic Sexo).
+            const cat = findCatalog(im.group, im.etiquetaPublico, catalogos);
+            if (cat.options.length) {
+                enrich.catalogoNombre = cat.sheetName;
+                enrich.catalogoOpciones = formatCatalogOptionsJson(cat.options);
+                enrich.catalogoHoja = cat.sheetName;
+            }
+        }
+
+        if (enrich._pathWarning) summary.pathsSinIndice++;
+        if (isCatalogExpected(im) && !enrich.catalogoOpciones) summary.sinCatalogo++;
 
         pdfRows.push(buildRow({
             idx: i + 1,
@@ -119,19 +145,33 @@ async function buildPdfRows(pdfBytes, matrixRows, formularioCode, catalogos) {
             ...enrich,
             prerellenado: 'No',
         }));
+
+        if (im.field.name && im.acroFormPropuesto) {
+            renameMapping.push({ originalName: im.field.name, newName: im.acroFormPropuesto });
+        }
     }
 
     const prefilled = collectPrefilledMatrixRows(matrixRows, formularioCode, usedMatrixIdx, catalogos);
+    summary.prefilledCount = prefilled.length;
     const finalRows = interleavePrefilled(pdfRows, prefilled);
 
-    return {
-        rows: finalRows,
-        summary: {
-            pdfFieldCount: intermediates.length,
-            matchedToMatrix: usedMatrixIdx.size,
-            prefilledCount: prefilled.length,
-        }
-    };
+    return { rows: finalRows, summary, renameMapping };
+}
+
+function derivePrefixForRow(acroFormPropuesto, sectionInfo) {
+    // beneficiario_N_ has the index baked into the prefix and is not in
+    // sectionInfo.sectionPrefix (which is just "beneficiario_"). Re-derive
+    // it from the propuesto so path-indexer maps to personas[N] correctly.
+    if (!acroFormPropuesto) return sectionInfo ? (sectionInfo.sectionPrefix || '') : '';
+    const m = String(acroFormPropuesto).match(/^(beneficiario_\d+_)/);
+    if (m) return m[1];
+    return sectionInfo ? (sectionInfo.sectionPrefix || '') : '';
+}
+
+function isCatalogExpected(intermediate) {
+    if (intermediate.group === 'tipo_identificacion' || intermediate.group === 'sexo') return true;
+    const lab = String(intermediate.etiquetaPublico || '').toLowerCase();
+    return /parentesco|tipo\s+(de\s+)?identificaci|estado\s+civil|nacionalidad|moneda|tipo\s+(de\s+)?persona/.test(lab);
 }
 
 function buildMatrixIndex(matrixRows, code) {
@@ -179,11 +219,14 @@ function matchMatrixRow(intermediate, matrixIndex, usedSet) {
     return null;
 }
 
-function extractFromMatrix(matrixRow, catalogos, allRows) {
+function extractFromMatrix(matrixRow, catalogos, allRows, intermediate) {
     const jsonPath = matrixRow['Nombre del Campo en Json'] || '';
     const all = String(jsonPath).split(/[,\n]+/).map(s => s.trim()).filter(Boolean);
-    const principal = all[0] || '';
-    const secundarios = all.slice(1).join(' | ');
+    const principalRaw = all[0] || '';
+    const secundariosRaw = all.slice(1).join(' | ');
+
+    const sectionPrefix = intermediate ? intermediate._sectionPrefix : '';
+    const indexed = indexPaths(principalRaw, secundariosRaw, sectionPrefix);
 
     const regla = matrixRow['Regla'] || '';
     const obs = matrixRow['Observaciones'] || '';
@@ -193,27 +236,69 @@ function extractFromMatrix(matrixRow, catalogos, allRows) {
     const condicional = parseConditionalText(regla, obs);
     const formato = mapFormato(tipoDato);
     const obligatorio = normalizeYesNo(matrixRow['Obligatorio']);
-    const catalogo = buildCatalogoColumn(matrixRow, allRows, catalogos);
+
+    const catRes = resolveCatalogo(intermediate, matrixRow, catalogos, allRows);
 
     return {
-        pathPrincipal: principal,
-        pathsSecundarios: secundarios,
+        pathPrincipal: indexed.principal,
+        pathsSecundarios: indexed.secundarios,
         obligatorio,
         maxLength: validation.maxLength != null ? String(validation.maxLength) : '',
         patron: validation.pattern || '',
         formato,
         condicional,
-        catalogo,
+        catalogoNombre: catRes.nombre,
+        catalogoOpciones: catRes.opcionesJson,
+        catalogoHoja: catRes.hoja,
         tipoDatoMatriz: tipoDato,
         reglaOriginal: regla,
+        _pathWarning: indexed.warning,
     };
+}
+
+function resolveCatalogo(intermediate, matrixRow, catalogos, allRows) {
+    const group = intermediate ? intermediate.group : '';
+    const label = intermediate ? intermediate.etiquetaPublico : (matrixRow['Nombre del campo en formulario'] || '');
+
+    const cat = findCatalog(group, label, catalogos);
+    if (cat.options.length) {
+        return {
+            nombre: cat.sheetName,
+            opcionesJson: formatCatalogOptionsJson(cat.options),
+            hoja: cat.sheetName,
+        };
+    }
+
+    // Fallback: inline values from the matrix when same label has multiple "Valor" rows
+    if (Array.isArray(allRows) && matrixRow) {
+        const matrixLabel = matrixRow['Nombre del campo en formulario'] || '';
+        const sameLabel = allRows.filter(r =>
+            r['Nombre del campo en formulario'] === matrixLabel &&
+            r['Valor'] && String(r['Valor']).trim()
+        );
+        if (sameLabel.length > 1) {
+            const inlineOpts = [...new Set(sameLabel.map(r => String(r['Valor']).trim()))]
+                .filter(Boolean)
+                .map(v => ({ value: v, label: v }));
+            if (inlineOpts.length) {
+                return {
+                    nombre: '(inline)',
+                    opcionesJson: JSON.stringify(inlineOpts),
+                    hoja: '(inline)',
+                };
+            }
+        }
+    }
+
+    return { nombre: '', opcionesJson: '', hoja: '' };
 }
 
 function emptyEnrichment() {
     return {
         pathPrincipal: '', pathsSecundarios: '', obligatorio: '',
         maxLength: '', patron: '', formato: '', condicional: '',
-        catalogo: '', tipoDatoMatriz: '', reglaOriginal: '',
+        catalogoNombre: '', catalogoOpciones: '', catalogoHoja: '',
+        tipoDatoMatriz: '', reglaOriginal: '', _pathWarning: false,
     };
 }
 
@@ -236,9 +321,11 @@ function buildRow(o) {
         o.patron,
         o.formato,
         o.condicional,
-        o.catalogo,
+        o.catalogoNombre,
+        o.catalogoOpciones,
         o.tipoDatoMatriz,
         o.reglaOriginal,
+        o.catalogoHoja,
     ];
 }
 
@@ -288,44 +375,6 @@ function capFirst(s) {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function buildCatalogoColumn(matrixRow, allRows, catalogos) {
-    const tipo = String(matrixRow['Tipo de dato'] || '').toLowerCase();
-    if (!/(combo|radio|checkbox)/.test(tipo)) return '';
-
-    const label = matrixRow['Nombre del campo en formulario'] || '';
-    if (Array.isArray(allRows)) {
-        const sameLabel = allRows.filter(r =>
-            r['Nombre del campo en formulario'] === label &&
-            r['Valor'] && String(r['Valor']).trim() && r['Valor'] !== (matrixRow['Valor'] || '')
-        );
-        if (sameLabel.length > 0) {
-            const allVals = [matrixRow['Valor'], ...sameLabel.map(r => r['Valor'])].filter(Boolean);
-            const unique = [...new Set(allVals)];
-            return '(inline): ' + unique.join(' | ');
-        }
-    }
-
-    const text = normalize((matrixRow['Regla'] || '') + ' ' + (matrixRow['Observaciones'] || ''));
-    for (const name of CATALOGO_NAMES) {
-        const nameNorm = normalize(name);
-        if (text.includes(nameNorm)) {
-            if (catalogos) {
-                const cat = catalogos[nameNorm] || catalogos[name.toLowerCase()];
-                if (cat) {
-                    return name + ': ' + cat.map(o => o.label).join(' | ');
-                }
-                for (const [key, val] of Object.entries(catalogos)) {
-                    if (normalize(key).includes(nameNorm) || nameNorm.includes(normalize(key))) {
-                        return name + ': ' + val.map(o => o.label).join(' | ');
-                    }
-                }
-            }
-            return name + ': (ver hoja Catálogos)';
-        }
-    }
-
-    return '';
-}
 
 function collectPrefilledMatrixRows(matrixRows, code, usedSet, catalogos) {
     const result = [];
@@ -429,24 +478,26 @@ function buildPrefilledRow(pf, idx) {
     return [
         idx,
         pf.sectionPdf,
-        '',                         // AcroForm Actual (vacío)
-        '',                         // AcroForm Propuesto (no aplica)
+        '',                                  // AcroForm Actual (vacío)
+        '',                                  // AcroForm Propuesto (no aplica)
         pf.label,
-        '',                         // sourceName
-        '',                         // Tipo
-        '',                         // Grupo
-        '',                         // Página
+        '',                                  // sourceName
+        '',                                  // Tipo
+        '',                                  // Grupo
+        '',                                  // Página
         pf.enrich.pathPrincipal,
         pf.enrich.pathsSecundarios,
-        'Sí',                       // Pre-rellenado
+        'Sí',                                // Pre-rellenado
         pf.enrich.obligatorio,
         pf.enrich.maxLength,
         pf.enrich.patron,
         pf.enrich.formato,
         pf.enrich.condicional,
-        pf.enrich.catalogo,
+        pf.enrich.catalogoNombre || '',
+        pf.enrich.catalogoOpciones || '',
         pf.enrich.tipoDatoMatriz,
         pf.enrich.reglaOriginal,
+        pf.enrich.catalogoHoja || '',
     ];
 }
 
@@ -465,7 +516,8 @@ module.exports = {
     _internal: {
         buildMatrixIndex, matchMatrixRow, extractFromMatrix,
         appliesToFormulario, mapFormato, normalizeYesNo,
-        parseConditionalText, buildCatalogoColumn,
+        parseConditionalText, resolveCatalogo, derivePrefixForRow,
+        isCatalogExpected,
         collectPrefilledMatrixRows, interleavePrefilled, inferSectionFromPath,
     },
 };
