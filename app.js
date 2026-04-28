@@ -1055,22 +1055,31 @@
     async function mtxExportByForm() {
         var statusEl = $('#mtxExportStatus');
         statusEl.className = 'status active';
-        statusEl.textContent = '⟳ Generando Excel por formulario...';
+        statusEl.textContent = '⟳ Generando mapeo por formulario...';
 
         try {
+            if (!mtxState.pdfFiles || mtxState.pdfFiles.length === 0) {
+                statusEl.className = 'status active warning';
+                statusEl.textContent = '⚠ Cargá al menos un PDF para generar el mapeo';
+                return;
+            }
+
             InsPipelineBundle.matrixDeriveFormulario(mtxState.rows);
 
             if (mtxState.catalogosFile && !mtxState.catalogos) {
                 mtxState.catalogos = await InsPipelineBundle.matrixParseCatalogos(mtxState.catalogosFile);
             }
 
-            var pdfNames = mtxState.pdfFiles.map(function(f) { return f.name; });
-            var result = await InsPipelineBundle.matrixExportPerFormularioZip(mtxState.rows, pdfNames, mtxState.catalogos);
-            InsPipelineBundle.downloadBlob(result.zipBlob, 'Matrices_por_Formulario.zip');
+            var result = await InsPipelineBundle.matrixExportPerFormularioZip(
+                mtxState.rows, mtxState.pdfFiles, mtxState.catalogos
+            );
+
+            var blob = result.xlsxBlob || result.zipBlob;
+            InsPipelineBundle.downloadBlob(blob, result.filename);
 
             var details = result.summary.map(function(s) { return s.code + ' (' + s.rowCount + ' campos)'; }).join(', ');
             statusEl.className = 'status active success';
-            statusEl.textContent = '✓ Descargando zip con ' + result.summary.length + ' Excel: ' + details;
+            statusEl.textContent = '✓ Descargando ' + result.filename + ': ' + details;
         } catch (err) {
             console.error(err);
             statusEl.className = 'status active error';
