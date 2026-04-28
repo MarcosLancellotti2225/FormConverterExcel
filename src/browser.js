@@ -382,8 +382,12 @@ function matrixDerivePdfNames(rows) { return matrixEditor.applyDerivePdfNames(ro
 function matrixNormalizeObligatorio(rows) { return matrixEditor.applyNormalizeObligatorio(rows); }
 function matrixDeriveFormulario(rows) { matrixEditor.applyDeriveFormulario(rows); }
 function matrixExport(rows) { return matrixEditor.exportToXlsx(rows); }
-async function matrixExportPerFormularioZip(rows, pdfFileNames, catalogos) {
-    return matrixEditor.exportPerFormularioZip(rows, pdfFileNames, catalogos);
+async function matrixExportPerFormularioZip(rows, pdfFiles, catalogos) {
+    const pdfEntries = [];
+    for (const f of (pdfFiles || [])) {
+        pdfEntries.push({ name: f.name, bytes: await fileToUint8Array(f) });
+    }
+    return matrixEditor.exportPerFormularioZip(rows, pdfEntries, catalogos);
 }
 
 async function matrixParseCatalogos(file) {

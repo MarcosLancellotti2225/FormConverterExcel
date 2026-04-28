@@ -343,6 +343,7 @@ button.secondary:hover:not(:disabled) { border-color: var(--accent); }
 .status.active { display: block; }
 .status.success { border-color: var(--accent-green); color: var(--accent-green); }
 .status.error   { border-color: var(--accent-red);   color: var(--accent-red); }
+.status.warning { border-color: #d97706; color: #d97706; }
 
 /* Results */
 .result-card {
