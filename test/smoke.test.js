@@ -697,6 +697,88 @@ async function run() {
         );
     });
 
+    console.log('\n── path-indexer ─────────────────────────');
+    const pathIndexer = require('../src/matrix-editor/path-indexer');
+
+    test('addPathIndex: asegurado_ → personas[0]', () => {
+        const r = pathIndexer.addPathIndex('datosFormulario.personas.primerApellido', 'asegurado_');
+        assert.strictEqual(r.path, 'datosFormulario.personas[0].primerApellido');
+        assert.strictEqual(r.warning, false);
+    });
+
+    test('addPathIndex: beneficiario_1_ → personas[1]', () => {
+        const r = pathIndexer.addPathIndex('datosFormulario.personas.nombreCompleto', 'beneficiario_1_');
+        assert.strictEqual(r.path, 'datosFormulario.personas[1].nombreCompleto');
+    });
+
+    test('addPathIndex: beneficiario_2_ → personas[2]', () => {
+        const r = pathIndexer.addPathIndex('datosFormulario.personas.descripcionParentesco', 'beneficiario_2_');
+        assert.strictEqual(r.path, 'datosFormulario.personas[2].descripcionParentesco');
+    });
+
+    test('addPathIndex: beneficiario_3_ → personas[3]', () => {
+        const r = pathIndexer.addPathIndex('datosFormulario.personas.porcentaje', 'beneficiario_3_');
+        assert.strictEqual(r.path, 'datosFormulario.personas[3].porcentaje');
+    });
+
+    test('addPathIndex: solicitud_ → unchanged (no personas)', () => {
+        const r = pathIndexer.addPathIndex('datosFormulario.datosGenerales.lugar', 'solicitud_');
+        assert.strictEqual(r.path, 'datosFormulario.datosGenerales.lugar');
+        assert.strictEqual(r.warning, false);
+    });
+
+    test('addPathIndex: poliza_ + non-personas path → unchanged', () => {
+        const r = pathIndexer.addPathIndex('datosFormulario.polizaMadre.numero', 'poliza_');
+        assert.strictEqual(r.path, 'datosFormulario.polizaMadre.numero');
+    });
+
+    test('addPathIndex: empty path → empty result', () => {
+        const r = pathIndexer.addPathIndex('', 'asegurado_');
+        assert.strictEqual(r.path, '');
+    });
+
+    test('addPathIndex: path already indexed → leave alone', () => {
+        const r = pathIndexer.addPathIndex('datosFormulario.personas[0].primerApellido', 'asegurado_');
+        assert.strictEqual(r.path, 'datosFormulario.personas[0].primerApellido');
+    });
+
+    test('addPathIndex: future section dme_ → warning, path unchanged', () => {
+        const r = pathIndexer.addPathIndex('datosFormulario.personas.nombre', 'dme_');
+        assert.strictEqual(r.path, 'datosFormulario.personas.nombre');
+        assert.strictEqual(r.warning, true);
+    });
+
+    test('addPathIndex: unknown prefix on personas path → warning', () => {
+        const r = pathIndexer.addPathIndex('datosFormulario.personas.primerApellido', 'whatever_');
+        assert.strictEqual(r.warning, true);
+    });
+
+    test('indexPaths: principal + secundarios both rewritten', () => {
+        const r = pathIndexer.indexPaths(
+            'datosFormulario.personas.codigoTipoIdentificacion',
+            'datosFormulario.personas.descripcionTipoIdentificacion',
+            'asegurado_'
+        );
+        assert.strictEqual(r.principal, 'datosFormulario.personas[0].codigoTipoIdentificacion');
+        assert.ok(r.secundarios.includes('personas[0].descripcionTipoIdentificacion'));
+        assert.strictEqual(r.warning, false);
+    });
+
+    test('indexPaths: empty secundarios → empty string back', () => {
+        const r = pathIndexer.indexPaths('datosFormulario.personas.x', '', 'asegurado_');
+        assert.strictEqual(r.principal, 'datosFormulario.personas[0].x');
+        assert.strictEqual(r.secundarios, '');
+    });
+
+    test('indexPaths: warning propagates from any path', () => {
+        const r = pathIndexer.indexPaths(
+            'datosFormulario.datosGenerales.lugar',
+            'datosFormulario.personas.x',
+            'dme_'
+        );
+        assert.strictEqual(r.warning, true);
+    });
+
     console.log('\n── end-to-end pipeline ──────────────────');
     const inputsDir = path.join(ROOT, 'inputs');
     const hasMatrix = fs.existsSync(path.join(inputsDir, 'Matriz_Formularios_VidaColectiva_Secciones.xlsx'));
