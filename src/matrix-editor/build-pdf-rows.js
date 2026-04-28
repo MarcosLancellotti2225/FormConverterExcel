@@ -68,12 +68,12 @@ async function buildPdfRows(pdfBytes, matrixRows, formularioCode, catalogos) {
     const textItems = await extractText(pdfBytes);
     const labeled = detectLabels(rawFields, textItems);
 
-    const sections = detectSections(textItems);
-    const dateGroupsMap = detectDateGroups(labeled, sections);
+    const { headings, subHeadings } = detectSections(textItems, labeled);
+    const dateGroupsMap = detectDateGroups(labeled, headings, textItems);
 
     const intermediates = [];
     for (const field of labeled) {
-        const sectionInfo = assignSectionToField(field, sections);
+        const sectionInfo = assignSectionToField(field, headings, subHeadings);
         const dateInfo = dateGroupsMap.get(field.name) || null;
         const named = proposeName(field, sectionInfo, dateInfo);
 
