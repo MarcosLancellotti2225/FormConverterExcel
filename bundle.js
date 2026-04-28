@@ -92636,6 +92636,159 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     }
   });
 
+  // src/matrix-editor/path-indexer.js
+  var require_path_indexer = __commonJS({
+    "src/matrix-editor/path-indexer.js"(exports, module) {
+      "use strict";
+      var PERSONAS_INDEX = {
+        "asegurado_": 0,
+        "beneficiario_1_": 1,
+        "beneficiario_2_": 2,
+        "beneficiario_3_": 3
+      };
+      var FUTURE_SECTIONS = ["dme_", "asn_", "dependiente_", "codeudor_"];
+      var PERSONAS_TOKEN_RE = /\bpersonas\b(?!\s*\[)/g;
+      function addPathIndex(rawPath, sectionPrefix) {
+        if (!rawPath) return { path: "", warning: false };
+        const path = String(rawPath).trim();
+        if (!path) return { path: "", warning: false };
+        if (!path.includes("personas")) {
+          return { path, warning: false };
+        }
+        if (PERSONAS_TOKEN_RE.test(path)) {
+          PERSONAS_TOKEN_RE.lastIndex = 0;
+        } else {
+          PERSONAS_TOKEN_RE.lastIndex = 0;
+          return { path, warning: false };
+        }
+        const prefix = String(sectionPrefix || "");
+        if (Object.prototype.hasOwnProperty.call(PERSONAS_INDEX, prefix)) {
+          const idx = PERSONAS_INDEX[prefix];
+          const newPath = path.replace(PERSONAS_TOKEN_RE, "personas[" + idx + "]");
+          PERSONAS_TOKEN_RE.lastIndex = 0;
+          return { path: newPath, warning: false };
+        }
+        if (FUTURE_SECTIONS.includes(prefix)) {
+          console.warn(
+            `[path-indexer] Section prefix "${prefix}" hits a personas[] path but no index is defined yet. Path left without index: "${path}". Add it to PERSONAS_INDEX once the JSON layout is known.`
+          );
+          return { path, warning: true };
+        }
+        console.warn(
+          `[path-indexer] Path "${path}" mentions personas but section prefix "${prefix}" has no defined index. Leaving path unchanged.`
+        );
+        return { path, warning: true };
+      }
+      function indexPaths(principal, secundariosStr, sectionPrefix) {
+        const p = addPathIndex(principal, sectionPrefix);
+        const secList = String(secundariosStr || "").split("|").map((s) => s.trim()).filter(Boolean);
+        let warning = p.warning;
+        const indexedSec = [];
+        for (const sec of secList) {
+          const r = addPathIndex(sec, sectionPrefix);
+          indexedSec.push(r.path);
+          if (r.warning) warning = true;
+        }
+        return {
+          principal: p.path,
+          secundarios: indexedSec.join(" | "),
+          warning
+        };
+      }
+      module.exports = {
+        addPathIndex,
+        indexPaths,
+        PERSONAS_INDEX,
+        FUTURE_SECTIONS
+      };
+    }
+  });
+
+  // src/matrix-editor/catalogs-formatter.js
+  var require_catalogs_formatter = __commonJS({
+    "src/matrix-editor/catalogs-formatter.js"(exports, module) {
+      "use strict";
+      var SYNTHETIC_CATALOGS = {
+        sexo: {
+          sheetName: "Sexo (sint\xE9tico)",
+          options: [
+            { code: "M", label: "Masculino" },
+            { code: "F", label: "Femenino" }
+          ]
+        }
+      };
+      var GROUP_TO_SHEET = {
+        tipo_identificacion: "tipo identificaci\xF3n",
+        parentesco: "parentesco",
+        estado_civil: "estado civil",
+        moneda: "moneda",
+        tipo_persona: "tipo persona",
+        tipo_tramite: "tipotramite",
+        tipo_formulario: "tipo formulario",
+        nacionalidad: "nacionalidad"
+      };
+      var LABEL_TO_SHEET = [
+        { match: /tipo\s+(de\s+)?identificaci/i, sheet: "tipo identificaci\xF3n" },
+        { match: /parentesco/i, sheet: "parentesco" },
+        { match: /estado\s+civil/i, sheet: "estado civil" },
+        { match: /nacionalidad/i, sheet: "nacionalidad" },
+        { match: /moneda/i, sheet: "moneda" },
+        { match: /tipo\s+(de\s+)?persona/i, sheet: "tipo persona" },
+        { match: /tipo\s+(de\s+)?tr[aá]mite/i, sheet: "tipotramite" },
+        { match: /tipo\s+(de\s+)?formulario/i, sheet: "tipo formulario" }
+      ];
+      function findCatalog(group, label, catalogos) {
+        const g = String(group || "").toLowerCase().trim();
+        if (g && SYNTHETIC_CATALOGS[g]) {
+          const syn = SYNTHETIC_CATALOGS[g];
+          return { sheetName: syn.sheetName, options: syn.options, isSynthetic: true };
+        }
+        if (g && GROUP_TO_SHEET[g]) {
+          const opts = lookupCatalog(catalogos, GROUP_TO_SHEET[g]);
+          if (opts) {
+            return { sheetName: opts.sheetName || GROUP_TO_SHEET[g], options: opts, isSynthetic: false };
+          }
+        }
+        const labelStr = String(label || "");
+        for (const { match, sheet } of LABEL_TO_SHEET) {
+          if (match.test(labelStr)) {
+            const opts = lookupCatalog(catalogos, sheet);
+            if (opts) {
+              return { sheetName: opts.sheetName || sheet, options: opts, isSynthetic: false };
+            }
+          }
+        }
+        return { sheetName: null, options: [], isSynthetic: false };
+      }
+      function lookupCatalog(catalogos, sheetName) {
+        if (!catalogos) return null;
+        const norm = String(sheetName).toLowerCase().trim();
+        if (catalogos[norm]) return catalogos[norm];
+        for (const [key, val] of Object.entries(catalogos)) {
+          if (key.includes(norm) || norm.includes(key)) return val;
+        }
+        return null;
+      }
+      function formatCatalogOptionsJson(options) {
+        if (!options || options.length === 0) return "";
+        const arr = options.map((o) => {
+          const code = o.code != null && o.code !== "" ? String(o.code) : String(o.label || "");
+          const label = String(o.label || "");
+          return { value: code, label };
+        });
+        return JSON.stringify(arr);
+      }
+      module.exports = {
+        findCatalog,
+        formatCatalogOptionsJson,
+        lookupCatalog,
+        SYNTHETIC_CATALOGS,
+        GROUP_TO_SHEET,
+        LABEL_TO_SHEET
+      };
+    }
+  });
+
   // src/matrix-editor/build-pdf-rows.js
   var require_build_pdf_rows = __commonJS({
     "src/matrix-editor/build-pdf-rows.js"(exports, module) {
@@ -92647,6 +92800,8 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       var { proposeName, resolveCollisions, addContextIfDuplicate } = require_propose_name();
       var { _internal: ruleInternal } = require_rule_parser();
       var { normalize } = require_cross_with_pdf();
+      var { indexPaths } = require_path_indexer();
+      var { findCatalog, formatCatalogOptionsJson } = require_catalogs_formatter();
       var HEADERS = [
         "#",
         "Secci\xF3n del PDF",
@@ -92665,11 +92820,13 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         "Patr\xF3n regex",
         "Formato",
         "Visibilidad condicional",
-        "Cat\xE1logo / Opciones",
+        "Cat\xE1logo (nombre)",
+        "Opciones formato Lovable (JSON)",
         "Tipo de dato (matriz)",
-        "Regla original"
+        "Regla original",
+        "Hoja del Excel cat\xE1logo"
       ];
-      var COL_WIDTHS = [4, 22, 28, 26, 24, 32, 5, 18, 5, 36, 30, 11, 11, 9, 22, 13, 30, 22, 18, 38];
+      var COL_WIDTHS = [4, 22, 28, 26, 24, 32, 5, 18, 5, 36, 30, 11, 11, 9, 22, 13, 30, 22, 60, 18, 38, 22];
       var FORMATO_MAP = {
         "fecha": "fecha",
         "email": "email",
@@ -92681,23 +92838,6 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         "alfanum\xE9rico": "alfanum\xE9rico",
         "texto": "alfanum\xE9rico"
       };
-      var CATALOGO_NAMES = [
-        "tipo identificacion",
-        "tipo identificaci\xF3n",
-        "parentesco",
-        "estado civil",
-        "moneda",
-        "tipo formulario",
-        "tipo persona",
-        "tipo tramite",
-        "tipo tr\xE1mite",
-        "nacionalidad",
-        "provincia",
-        "canton",
-        "distrito",
-        "ocupacion",
-        "ocupaci\xF3n"
-      ];
       var FORMULARIO_KEYWORDS = {
         "1009052": ["vida colectiva", "colectiva"],
         "D0306": ["vida universal", "universal"],
@@ -92723,18 +92863,43 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             group: named.group,
             _typeNative: field.type,
             _sectionName: sectionInfo ? sectionInfo.sectionName || sectionInfo.sectionHeading : "",
-            _dateGroupKey: dateInfo ? dateInfo.groupKey : null
+            _dateGroupKey: dateInfo ? dateInfo.groupKey : null,
+            _sectionPrefix: derivePrefixForRow(named.acroFormPropuesto, sectionInfo)
           });
         }
         resolveCollisions(intermediates);
         addContextIfDuplicate(intermediates);
         const matrixIndex = buildMatrixIndex(matrixRows, formularioCode);
         const usedMatrixIdx = /* @__PURE__ */ new Set();
+        const summary = {
+          pdfFieldCount: intermediates.length,
+          matchedToMatrix: 0,
+          unmatched: 0,
+          prefilledCount: 0,
+          sinCatalogo: 0,
+          pathsSinIndice: 0
+        };
         const pdfRows = [];
+        const renameMapping = [];
         for (let i = 0; i < intermediates.length; i++) {
           const im = intermediates[i];
           const matrixRow = matchMatrixRow(im, matrixIndex, usedMatrixIdx);
-          const enrich = matrixRow ? extractFromMatrix(matrixRow, catalogos, matrixRows) : emptyEnrichment();
+          let enrich;
+          if (matrixRow) {
+            enrich = extractFromMatrix(matrixRow, catalogos, matrixRows, im);
+            summary.matchedToMatrix++;
+          } else {
+            enrich = emptyEnrichment();
+            summary.unmatched++;
+            const cat = findCatalog(im.group, im.etiquetaPublico, catalogos);
+            if (cat.options.length) {
+              enrich.catalogoNombre = cat.sheetName;
+              enrich.catalogoOpciones = formatCatalogOptionsJson(cat.options);
+              enrich.catalogoHoja = cat.sheetName;
+            }
+          }
+          if (enrich._pathWarning) summary.pathsSinIndice++;
+          if (isCatalogExpected(im) && !enrich.catalogoOpciones) summary.sinCatalogo++;
           pdfRows.push(buildRow({
             idx: i + 1,
             sectionPdf: im._sectionName || "",
@@ -92747,17 +92912,25 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             ...enrich,
             prerellenado: "No"
           }));
+          if (im.field.name && im.acroFormPropuesto) {
+            renameMapping.push({ originalName: im.field.name, newName: im.acroFormPropuesto });
+          }
         }
         const prefilled = collectPrefilledMatrixRows(matrixRows, formularioCode, usedMatrixIdx, catalogos);
+        summary.prefilledCount = prefilled.length;
         const finalRows = interleavePrefilled(pdfRows, prefilled);
-        return {
-          rows: finalRows,
-          summary: {
-            pdfFieldCount: intermediates.length,
-            matchedToMatrix: usedMatrixIdx.size,
-            prefilledCount: prefilled.length
-          }
-        };
+        return { rows: finalRows, summary, renameMapping };
+      }
+      function derivePrefixForRow(acroFormPropuesto, sectionInfo) {
+        if (!acroFormPropuesto) return sectionInfo ? sectionInfo.sectionPrefix || "" : "";
+        const m = String(acroFormPropuesto).match(/^(beneficiario_\d+_)/);
+        if (m) return m[1];
+        return sectionInfo ? sectionInfo.sectionPrefix || "" : "";
+      }
+      function isCatalogExpected(intermediate) {
+        if (intermediate.group === "tipo_identificacion" || intermediate.group === "sexo") return true;
+        const lab = String(intermediate.etiquetaPublico || "").toLowerCase();
+        return /parentesco|tipo\s+(de\s+)?identificaci|estado\s+civil|nacionalidad|moneda|tipo\s+(de\s+)?persona/.test(lab);
       }
       function buildMatrixIndex(matrixRows, code) {
         const idx = [];
@@ -92806,11 +92979,13 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         }
         return null;
       }
-      function extractFromMatrix(matrixRow, catalogos, allRows) {
+      function extractFromMatrix(matrixRow, catalogos, allRows, intermediate) {
         const jsonPath = matrixRow["Nombre del Campo en Json"] || "";
         const all = String(jsonPath).split(/[,\n]+/).map((s) => s.trim()).filter(Boolean);
-        const principal = all[0] || "";
-        const secundarios = all.slice(1).join(" | ");
+        const principalRaw = all[0] || "";
+        const secundariosRaw = all.slice(1).join(" | ");
+        const sectionPrefix = intermediate ? intermediate._sectionPrefix : "";
+        const indexed = indexPaths(principalRaw, secundariosRaw, sectionPrefix);
         const regla = matrixRow["Regla"] || "";
         const obs = matrixRow["Observaciones"] || "";
         const tipoDato = matrixRow["Tipo de dato"] || "";
@@ -92818,19 +92993,51 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const condicional = parseConditionalText(regla, obs);
         const formato = mapFormato(tipoDato);
         const obligatorio = normalizeYesNo(matrixRow["Obligatorio"]);
-        const catalogo = buildCatalogoColumn(matrixRow, allRows, catalogos);
+        const catRes = resolveCatalogo(intermediate, matrixRow, catalogos, allRows);
         return {
-          pathPrincipal: principal,
-          pathsSecundarios: secundarios,
+          pathPrincipal: indexed.principal,
+          pathsSecundarios: indexed.secundarios,
           obligatorio,
           maxLength: validation.maxLength != null ? String(validation.maxLength) : "",
           patron: validation.pattern || "",
           formato,
           condicional,
-          catalogo,
+          catalogoNombre: catRes.nombre,
+          catalogoOpciones: catRes.opcionesJson,
+          catalogoHoja: catRes.hoja,
           tipoDatoMatriz: tipoDato,
-          reglaOriginal: regla
+          reglaOriginal: regla,
+          _pathWarning: indexed.warning
         };
+      }
+      function resolveCatalogo(intermediate, matrixRow, catalogos, allRows) {
+        const group = intermediate ? intermediate.group : "";
+        const label = intermediate ? intermediate.etiquetaPublico : matrixRow["Nombre del campo en formulario"] || "";
+        const cat = findCatalog(group, label, catalogos);
+        if (cat.options.length) {
+          return {
+            nombre: cat.sheetName,
+            opcionesJson: formatCatalogOptionsJson(cat.options),
+            hoja: cat.sheetName
+          };
+        }
+        if (Array.isArray(allRows) && matrixRow) {
+          const matrixLabel = matrixRow["Nombre del campo en formulario"] || "";
+          const sameLabel = allRows.filter(
+            (r) => r["Nombre del campo en formulario"] === matrixLabel && r["Valor"] && String(r["Valor"]).trim()
+          );
+          if (sameLabel.length > 1) {
+            const inlineOpts = [...new Set(sameLabel.map((r) => String(r["Valor"]).trim()))].filter(Boolean).map((v) => ({ value: v, label: v }));
+            if (inlineOpts.length) {
+              return {
+                nombre: "(inline)",
+                opcionesJson: JSON.stringify(inlineOpts),
+                hoja: "(inline)"
+              };
+            }
+          }
+        }
+        return { nombre: "", opcionesJson: "", hoja: "" };
       }
       function emptyEnrichment() {
         return {
@@ -92841,9 +93048,12 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           patron: "",
           formato: "",
           condicional: "",
-          catalogo: "",
+          catalogoNombre: "",
+          catalogoOpciones: "",
+          catalogoHoja: "",
           tipoDatoMatriz: "",
-          reglaOriginal: ""
+          reglaOriginal: "",
+          _pathWarning: false
         };
       }
       function buildRow(o) {
@@ -92866,9 +93076,11 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           o.patron,
           o.formato,
           o.condicional,
-          o.catalogo,
+          o.catalogoNombre,
+          o.catalogoOpciones,
           o.tipoDatoMatriz,
-          o.reglaOriginal
+          o.reglaOriginal,
+          o.catalogoHoja
         ];
       }
       function tipoFromNative(t) {
@@ -92908,40 +93120,6 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       function capFirst(s) {
         if (!s) return s;
         return s.charAt(0).toUpperCase() + s.slice(1);
-      }
-      function buildCatalogoColumn(matrixRow, allRows, catalogos) {
-        const tipo = String(matrixRow["Tipo de dato"] || "").toLowerCase();
-        if (!/(combo|radio|checkbox)/.test(tipo)) return "";
-        const label = matrixRow["Nombre del campo en formulario"] || "";
-        if (Array.isArray(allRows)) {
-          const sameLabel = allRows.filter(
-            (r) => r["Nombre del campo en formulario"] === label && r["Valor"] && String(r["Valor"]).trim() && r["Valor"] !== (matrixRow["Valor"] || "")
-          );
-          if (sameLabel.length > 0) {
-            const allVals = [matrixRow["Valor"], ...sameLabel.map((r) => r["Valor"])].filter(Boolean);
-            const unique = [...new Set(allVals)];
-            return "(inline): " + unique.join(" | ");
-          }
-        }
-        const text = normalize((matrixRow["Regla"] || "") + " " + (matrixRow["Observaciones"] || ""));
-        for (const name of CATALOGO_NAMES) {
-          const nameNorm = normalize(name);
-          if (text.includes(nameNorm)) {
-            if (catalogos) {
-              const cat = catalogos[nameNorm] || catalogos[name.toLowerCase()];
-              if (cat) {
-                return name + ": " + cat.map((o) => o.label).join(" | ");
-              }
-              for (const [key, val] of Object.entries(catalogos)) {
-                if (normalize(key).includes(nameNorm) || nameNorm.includes(normalize(key))) {
-                  return name + ": " + val.map((o) => o.label).join(" | ");
-                }
-              }
-            }
-            return name + ": (ver hoja Cat\xE1logos)";
-          }
-        }
-        return "";
       }
       function collectPrefilledMatrixRows(matrixRows, code, usedSet, catalogos) {
         const result = [];
@@ -93050,9 +93228,11 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           pf.enrich.patron,
           pf.enrich.formato,
           pf.enrich.condicional,
-          pf.enrich.catalogo,
+          pf.enrich.catalogoNombre || "",
+          pf.enrich.catalogoOpciones || "",
           pf.enrich.tipoDatoMatriz,
-          pf.enrich.reglaOriginal
+          pf.enrich.reglaOriginal,
+          pf.enrich.catalogoHoja || ""
         ];
       }
       function sectionMatches(a, b) {
@@ -93074,7 +93254,9 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           mapFormato,
           normalizeYesNo,
           parseConditionalText,
-          buildCatalogoColumn,
+          resolveCatalogo,
+          derivePrefixForRow,
+          isCatalogExpected,
           collectPrefilledMatrixRows,
           interleavePrefilled,
           inferSectionFromPath
@@ -93104,9 +93286,9 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       }
       function filenameFor(code, fallbackName) {
         const form = FORMULARIOS.find((f) => f.code === code);
-        if (form) return "Mapeo_" + form.code + "_" + form.filenameTag + ".xlsx";
+        if (form) return "Matriz_" + form.code + "_" + form.filenameTag + ".xlsx";
         const safe = String(fallbackName || "desconocido").replace(/\.pdf$/i, "").replace(/[^A-Za-z0-9_-]+/g, "_");
-        return "Mapeo_" + safe + ".xlsx";
+        return "Matriz_" + safe + ".xlsx";
       }
       function buildWorkbook(rows, code, catalogos) {
         const wb = XLSX.utils.book_new();
@@ -93194,13 +93376,20 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           const data = XLSX.utils.sheet_to_json(sheet);
           const options = [];
           for (const row of data) {
-            const code = row.Codigo != null ? row.Codigo : row.codigo != null ? row.codigo : void 0;
+            const codeRaw = row.Codigo != null ? row.Codigo : row.codigo != null ? row.codigo : "";
             const label = row.Nombre || row.nombre || row.Descripcion || row.descripcion || "";
-            if (code !== void 0) {
-              options.push({ code: String(code), label: String(label) });
-            }
+            if (!label) continue;
+            options.push({
+              code: codeRaw === "" || codeRaw == null ? "" : String(codeRaw),
+              label: String(label)
+            });
           }
           if (options.length > 0) {
+            Object.defineProperty(options, "sheetName", {
+              value: sheetName,
+              enumerable: false,
+              writable: false
+            });
             result[sheetName.toLowerCase().trim()] = options;
           }
         }
@@ -93424,6 +93613,150 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         crossMatrixWithPdfs,
         extractPdfFields,
         COLUMNS
+      };
+    }
+  });
+
+  // src/matrix-editor/process-formulario.js
+  var require_process_formulario = __commonJS({
+    "src/matrix-editor/process-formulario.js"(exports, module) {
+      "use strict";
+      var XLSX = require_xlsx();
+      var JSZip = require_jszip_min();
+      var { PDFDocument } = require_cjs();
+      var { buildPdfRows } = require_build_pdf_rows();
+      var { buildWorkbook, identifyPdfCode, FORMULARIOS, filenameFor } = require_export_by_formulario();
+      var { rewritePdf } = require_pdf_rewriter();
+      async function processSinglePdf(pdfEntry, matrixRows, catalogos) {
+        const code = identifyPdfCode(pdfEntry.name);
+        const form = FORMULARIOS.find((f) => f.code === code);
+        const { rows, summary, renameMapping } = await buildPdfRows(
+          pdfEntry.bytes,
+          matrixRows,
+          code,
+          catalogos
+        );
+        const wb = buildWorkbook(rows, code, catalogos);
+        const matrizBytes = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+        const matrizFilename = filenameFor(code, pdfEntry.name);
+        const pdfRewriteMap = renameMapping.filter((m) => m.originalName && m.newName && m.originalName !== m.newName).map((m) => ({ oldName: m.originalName, newName: m.newName }));
+        let renamedPdfBytes = pdfEntry.bytes;
+        let rewriteWarnings = [];
+        let renameErrors = [];
+        if (pdfRewriteMap.length > 0) {
+          const rw = await rewritePdf(pdfEntry.bytes, pdfRewriteMap);
+          renamedPdfBytes = rw.pdfBytes;
+          rewriteWarnings = rw.warnings || [];
+          renameErrors = await verifyRenamedPdf(renamedPdfBytes, pdfRewriteMap);
+        }
+        const pdfFilename = (form ? form.code + "_" + form.filenameTag : sanitize(pdfEntry.name)) + "_renamed.pdf";
+        const folderName = form ? form.code + "_" + form.filenameTag : sanitize(pdfEntry.name);
+        return {
+          code: code || pdfEntry.name,
+          name: form ? form.name : pdfEntry.name,
+          folderName,
+          matrizBytes,
+          matrizFilename,
+          renamedPdfBytes,
+          pdfFilename,
+          summary: {
+            ...summary,
+            renameAttempted: pdfRewriteMap.length,
+            renameErrors,
+            rewriteWarnings
+          }
+        };
+      }
+      async function verifyRenamedPdf(renamedBytes, mapping) {
+        try {
+          const doc = await PDFDocument.load(renamedBytes, { ignoreEncryption: true });
+          const fieldNames = new Set(doc.getForm().getFields().map((f) => f.getName()));
+          return mapping.filter((m) => !fieldNames.has(m.newName));
+        } catch (err) {
+          return [{ oldName: "*", newName: "*", reason: "Verification failed: " + err.message }];
+        }
+      }
+      function sanitize(name) {
+        return String(name || "").replace(/\.pdf$/i, "").replace(/[^A-Za-z0-9_-]+/g, "_");
+      }
+      function todayYYYYMMDD() {
+        const d = /* @__PURE__ */ new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return "" + y + m + day;
+      }
+      async function runProcessFormulario(matrixRows, pdfEntries, catalogos) {
+        if (!pdfEntries || pdfEntries.length === 0) {
+          throw new Error("Carg\xE1 al menos un PDF");
+        }
+        if (!matrixRows || matrixRows.length === 0) {
+          throw new Error("Carg\xE1 la matriz del cliente");
+        }
+        const builds = [];
+        for (const entry of pdfEntries) {
+          const built = await processSinglePdf(entry, matrixRows, catalogos);
+          builds.push(built);
+        }
+        const zip = new JSZip();
+        let zipFilename;
+        if (builds.length === 1) {
+          const b = builds[0];
+          zipFilename = b.folderName + ".zip";
+          zip.file(b.matrizFilename, b.matrizBytes);
+          zip.file(b.pdfFilename, b.renamedPdfBytes);
+        } else {
+          zipFilename = "INS_" + todayYYYYMMDD() + ".zip";
+          for (const b of builds) {
+            zip.file(b.folderName + "/" + b.matrizFilename, b.matrizBytes);
+            zip.file(b.folderName + "/" + b.pdfFilename, b.renamedPdfBytes);
+          }
+        }
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        return {
+          zipBlob,
+          zipFilename,
+          formularios: builds.map((b) => ({
+            code: b.code,
+            name: b.name,
+            matrizFile: b.matrizFilename,
+            pdfFile: b.pdfFilename,
+            stats: b.summary
+          })),
+          warnings: collectWarnings(catalogos, builds)
+        };
+      }
+      function collectWarnings(catalogos, builds) {
+        const out = [];
+        if (!catalogos || Object.keys(catalogos).length === 0) {
+          out.push({ type: "no_catalogos", message: "Sin cat\xE1logos cargados \u2014 columnas de opciones quedar\xE1n vac\xEDas" });
+        }
+        for (const b of builds) {
+          if (b.summary.renameErrors && b.summary.renameErrors.length > 0) {
+            out.push({
+              type: "rename_errors",
+              code: b.code,
+              count: b.summary.renameErrors.length,
+              message: b.code + ": " + b.summary.renameErrors.length + " AcroForm(s) no se renombraron correctamente"
+            });
+          }
+          if (b.summary.pathsSinIndice > 0) {
+            out.push({
+              type: "paths_sin_indice",
+              code: b.code,
+              count: b.summary.pathsSinIndice,
+              message: b.code + ": " + b.summary.pathsSinIndice + " path(s) sin \xEDndice \u2014 revisar PERSONAS_INDEX"
+            });
+          }
+        }
+        return out;
+      }
+      module.exports = {
+        runProcessFormulario,
+        processSinglePdf,
+        verifyRenamedPdf,
+        todayYYYYMMDD,
+        sanitize
       };
     }
   });
@@ -93771,6 +94104,21 @@ ${pagesHtml}</body>
         const buffer = await fileToUint8Array(file);
         return matrixEditor.parseCatalogos(buffer);
       }
+      async function runProcessFormulario(inputs) {
+        const { matrixFile, pdfFiles = [], catalogsFile } = inputs || {};
+        if (!matrixFile) throw new Error("Carg\xE1 la matriz del cliente");
+        if (!pdfFiles || pdfFiles.length === 0) throw new Error("Carg\xE1 al menos un PDF");
+        const matrixBuffer = await fileToUint8Array(matrixFile);
+        const matrixRows = matrixEditor.loadMatrix(matrixBuffer);
+        matrixEditor.applyDeriveFormulario(matrixRows);
+        const catalogos = catalogsFile ? matrixEditor.parseCatalogos(await fileToUint8Array(catalogsFile)) : null;
+        const pdfEntries = [];
+        for (const f of pdfFiles) {
+          pdfEntries.push({ name: f.name, bytes: await fileToUint8Array(f) });
+        }
+        const { runProcessFormulario: runProc } = require_process_formulario();
+        return runProc(matrixRows, pdfEntries, catalogos);
+      }
       async function matrixCrossWithPdfs(rows, pdfFiles) {
         const pdfEntries = [];
         for (const f of pdfFiles) {
@@ -93779,9 +94127,9 @@ ${pagesHtml}</body>
         return matrixEditor.crossMatrixWithPdfs(rows, pdfEntries);
       }
       if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs };
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario };
       }
-      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs };
+      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario };
     }
   });
   return require_browser();

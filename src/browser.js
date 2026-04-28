@@ -395,6 +395,28 @@ async function matrixParseCatalogos(file) {
     return matrixEditor.parseCatalogos(buffer);
 }
 
+async function runProcessFormulario(inputs) {
+    const { matrixFile, pdfFiles = [], catalogsFile } = inputs || {};
+    if (!matrixFile) throw new Error('Cargá la matriz del cliente');
+    if (!pdfFiles || pdfFiles.length === 0) throw new Error('Cargá al menos un PDF');
+
+    const matrixBuffer = await fileToUint8Array(matrixFile);
+    const matrixRows = matrixEditor.loadMatrix(matrixBuffer);
+    matrixEditor.applyDeriveFormulario(matrixRows);
+
+    const catalogos = catalogsFile
+        ? matrixEditor.parseCatalogos(await fileToUint8Array(catalogsFile))
+        : null;
+
+    const pdfEntries = [];
+    for (const f of pdfFiles) {
+        pdfEntries.push({ name: f.name, bytes: await fileToUint8Array(f) });
+    }
+
+    const { runProcessFormulario: runProc } = require('./matrix-editor/process-formulario');
+    return runProc(matrixRows, pdfEntries, catalogos);
+}
+
 async function matrixCrossWithPdfs(rows, pdfFiles) {
     const pdfEntries = [];
     for (const f of pdfFiles) {
@@ -404,7 +426,7 @@ async function matrixCrossWithPdfs(rows, pdfFiles) {
 }
 
 if (typeof window !== 'undefined') {
-    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs };
+    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario };
 }
 
-module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs };
+module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario };
