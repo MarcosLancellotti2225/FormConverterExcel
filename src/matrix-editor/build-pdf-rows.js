@@ -57,6 +57,25 @@ const FORMATO_MAP = {
     'texto':            'alfanumérico',
 };
 
+const NOISE_MIN_LEN = 35;
+const NOISE_CONNECTORS = /_(y|de|del|la|el|que|con|en|los|las|para|una|un|se|por)_/;
+const NOISE_PHRASES = [
+    'exprese_claramente', 'nombre_completo_y_el_cargo',
+    'desempena_dentro', 'persona_juridica', 'datos_personales',
+    'declaro_que', 'acepto_que', 'autorizo_a',
+];
+
+function isNoiseField(proposedName) {
+    if (!proposedName) return false;
+    if (proposedName.length < NOISE_MIN_LEN) return false;
+    const connectorMatches = (proposedName.match(NOISE_CONNECTORS) || []).length;
+    if (connectorMatches >= 2) return true;
+    for (const phrase of NOISE_PHRASES) {
+        if (proposedName.includes(phrase)) return true;
+    }
+    return false;
+}
+
 const FORMULARIO_KEYWORDS = {
     '1009052': ['vida colectiva', 'colectiva'],
     'D0306':   ['vida universal', 'universal'],
@@ -91,14 +110,17 @@ async function buildPdfRows(pdfBytes, matrixRows, formularioCode, catalogos) {
         });
     }
 
-    resolveCollisions(intermediates);
-    addContextIfDuplicate(intermediates);
+    const filtered = intermediates.filter(im => !isNoiseField(im.acroFormPropuesto));
+
+    resolveCollisions(filtered);
+    addContextIfDuplicate(filtered);
 
     const matrixIndex = buildMatrixIndex(matrixRows, formularioCode);
     const usedMatrixIdx = new Set();
 
     const summary = {
-        pdfFieldCount: intermediates.length,
+        pdfFieldCount: filtered.length,
+        noiseFiltered: intermediates.length - filtered.length,
         matchedToMatrix: 0,
         unmatched: 0,
         prefilledCount: 0,
@@ -109,8 +131,8 @@ async function buildPdfRows(pdfBytes, matrixRows, formularioCode, catalogos) {
     const pdfRows = [];
     const renameMapping = [];
 
-    for (let i = 0; i < intermediates.length; i++) {
-        const im = intermediates[i];
+    for (let i = 0; i < filtered.length; i++) {
+        const im = filtered[i];
         const matrixRow = matchMatrixRow(im, matrixIndex, usedMatrixIdx);
 
         let enrich;
@@ -151,11 +173,7 @@ async function buildPdfRows(pdfBytes, matrixRows, formularioCode, catalogos) {
         }
     }
 
-    const prefilled = collectPrefilledMatrixRows(matrixRows, formularioCode, usedMatrixIdx, catalogos);
-    summary.prefilledCount = prefilled.length;
-    const finalRows = interleavePrefilled(pdfRows, prefilled);
-
-    return { rows: finalRows, summary, renameMapping };
+    return { rows: pdfRows, summary, renameMapping };
 }
 
 function derivePrefixForRow(acroFormPropuesto, sectionInfo) {
@@ -199,7 +217,14 @@ function matchMatrixRow(intermediate, matrixIndex, usedSet) {
     const fieldNameN = normalize(intermediate.field.name);
     if (!labelN && !fieldNameN) return null;
 
+    const sectionN = normalize(intermediate._sectionName || '');
+
     if (labelN) {
+        const exactInSection = matrixIndex.find(m =>
+            !usedSet.has(m.rowIndex) && m.labelN === labelN && pathMatchesSection(m.row, sectionN)
+        );
+        if (exactInSection) { usedSet.add(exactInSection.rowIndex); return exactInSection.row; }
+
         const exact = matrixIndex.find(m => !usedSet.has(m.rowIndex) && m.labelN === labelN);
         if (exact) { usedSet.add(exact.rowIndex); return exact.row; }
     }
@@ -217,6 +242,23 @@ function matchMatrixRow(intermediate, matrixIndex, usedSet) {
     }
 
     return null;
+}
+
+function pathMatchesSection(matrixRow, sectionN) {
+    if (!sectionN) return false;
+    const path = normalize(matrixRow['Nombre del Campo en Json'] || '');
+    if (!path) return false;
+    if (sectionN.includes('solicitante') || sectionN.includes('asegurado')) {
+        return path.includes('asegurado') || path.includes('solicitante');
+    }
+    if (sectionN.includes('beneficiario')) return path.includes('beneficiario');
+    if (sectionN.includes('tomador') || sectionN.includes('firma')) {
+        return path.includes('tomador') || path.includes('firma');
+    }
+    if (sectionN.includes('poliza')) return path.includes('poliza');
+    if (sectionN.includes('vigencia')) return path.includes('vigencia');
+    if (sectionN.includes('notificacion')) return path.includes('notificacion');
+    return false;
 }
 
 function extractFromMatrix(matrixRow, catalogos, allRows, intermediate) {
@@ -517,7 +559,7 @@ module.exports = {
         buildMatrixIndex, matchMatrixRow, extractFromMatrix,
         appliesToFormulario, mapFormato, normalizeYesNo,
         parseConditionalText, resolveCatalogo, derivePrefixForRow,
-        isCatalogExpected,
+        isCatalogExpected, isNoiseField, pathMatchesSection,
         collectPrefilledMatrixRows, interleavePrefilled, inferSectionFromPath,
     },
 };

@@ -50,7 +50,7 @@ const DATE_PART_LABELS = {
     ano: ['ano', 'año'],
 };
 
-const HEADING_MIN_LEN     = 8;       // "POLIZA" is 6, but real headings are 10+
+const HEADING_MIN_LEN     = 5;       // "FIRMA" is 5, whitelist is authoritative
 const HEADING_UPPER_RATIO = 0.7;     // % uppercase letters
 const SUBHEADING_MAX_LEN  = 40;
 const SUBHEADING_CHECKBOX_Y_TOLERANCE = 6;
@@ -110,7 +110,7 @@ function detectSections(textItems, fields) {
         if (!text) continue;
 
         const wl = matchSectionWhitelist(text);
-        if (wl && (looksLikeHeading(text) || /^[A-ZÁÉÍÓÚÑÜ\s\d./-]+$/.test(text))) {
+        if (wl && (looksLikeHeading(text) || /^[A-ZÁÉÍÓÚÑÜ\s\d./-]+$/.test(text) || text.length >= 4)) {
             const beneficiarioN = wl.repeatable ? extractBeneficiarioNumber(text) : null;
             headings.push({
                 text, page: item.page, x: item.x, y: item.y,
@@ -122,7 +122,7 @@ function detectSections(textItems, fields) {
             continue;
         }
 
-        if (text.endsWith(':') && text.length <= SUBHEADING_MAX_LEN) {
+        if (text.length <= SUBHEADING_MAX_LEN) {
             const sw = matchSubHeadingWhitelist(text);
             if (sw) {
                 subHeadings.push({
@@ -132,7 +132,7 @@ function detectSections(textItems, fields) {
                 });
                 continue;
             }
-            if (fields && hasCheckboxesAlignedBelow(item, fields)) {
+            if (text.endsWith(':') && fields && hasCheckboxesAlignedBelow(item, fields)) {
                 console.warn(
                     `[section-detector] Sub-heading no en whitelist: "${text}" (page ${item.page + 1}). ` +
                     `Considerar agregar a SUBHEADING_WHITELIST. Aplicando prefijo vacío.`
@@ -192,7 +192,8 @@ function assignSectionToField(field, headings, subHeadings) {
         if (subCandidates.length > 0) {
             const closest = subCandidates[0];
             const distToField = closest.y - (field.rect.y + field.rect.height);
-            if (distToField <= 60) subHeading = closest;
+            const maxDist = closest.source === 'whitelist' ? 25 : 60;
+            if (distToField <= maxDist) subHeading = closest;
         }
     }
 

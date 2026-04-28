@@ -21,6 +21,8 @@ const slugify = detectorInternal.slugify;
 const normalize = detectorInternal.normalize;
 
 const ROW_REGEX = /Row\s*(\d+)$/i;
+const SLUG_STOP_WORDS = new Set(['y', 'de', 'del', 'la', 'el', 'los', 'las', 'en', 'con', 'que', 'se', 'por', 'para', 'una', 'un', 'al', 'su', 'u', 'o', 'completo', 'completa']);
+const MAX_SLUG_LEN = 30;
 
 const GROUP_LABEL_ES = {
     fecha_solicitud:    'Solicitud',
@@ -31,6 +33,13 @@ const GROUP_LABEL_ES = {
     sexo:               'Sexo',
     calidad:            'Calidad',
 };
+
+function simplifySlug(slug) {
+    const parts = slug.split('_').filter(p => !SLUG_STOP_WORDS.has(p));
+    const simplified = parts.join('_');
+    if (simplified.length <= MAX_SLUG_LEN) return simplified;
+    return parts.slice(0, 3).join('_');
+}
 
 function detectRepeatableRow(fieldName, sectionInfo) {
     const m = String(fieldName || '').match(ROW_REGEX);
@@ -97,6 +106,10 @@ function proposeName(field, sectionInfo, dateInfo) {
     } else {
         const label = field.detectedLabel || field.name || '';
         slug = slugify(label);
+    }
+
+    if (slug.length > MAX_SLUG_LEN) {
+        slug = simplifySlug(slug);
     }
 
     let acroFormPropuesto = (mainPrefix + subPrefix + slug).replace(/_+/g, '_').replace(/^_|_$/g, '');
