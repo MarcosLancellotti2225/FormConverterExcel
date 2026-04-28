@@ -199,6 +199,152 @@ async function run() {
         assert.strictEqual(issues[0].field, 'b');
     });
 
+    console.log('\n── section-detector ─────────────────────');
+    const sectionDetector = require('../src/matrix-editor/section-detector');
+    const sd = sectionDetector._internal;
+
+    test('slugify: "Primer Apellido" → "primer_apellido"', () => {
+        assert.strictEqual(sd.slugify('Primer Apellido'), 'primer_apellido');
+    });
+
+    test('slugify strips accents and punctuation', () => {
+        assert.strictEqual(sd.slugify('N° de Identificación:'), 'n_de_identificacion');
+    });
+
+    test('looksLikeHeading: "DATOS DEL SOLICITANTE" is heading', () => {
+        assert.ok(sd.looksLikeHeading('DATOS DEL SOLICITANTE'));
+    });
+
+    test('looksLikeHeading: "Primer Apellido" is NOT heading', () => {
+        assert.ok(!sd.looksLikeHeading('Primer Apellido'));
+    });
+
+    test('matchSectionWhitelist: "DATOS DEL SOLICITANTE" → asegurado_', () => {
+        const m = sd.matchSectionWhitelist('DATOS DEL SOLICITANTE');
+        assert.ok(m);
+        assert.strictEqual(m.prefix, 'asegurado_');
+    });
+
+    test('matchSectionWhitelist: "BENEFICIARIO 1" → beneficiario_, repeatable', () => {
+        const m = sd.matchSectionWhitelist('BENEFICIARIO 1');
+        assert.ok(m);
+        assert.strictEqual(m.prefix, 'beneficiario_');
+        assert.strictEqual(m.repeatable, true);
+    });
+
+    test('matchSubHeadingWhitelist: "Tipo de Identificación:" → tipo_id_', () => {
+        const m = sd.matchSubHeadingWhitelist('Tipo de Identificación:');
+        assert.ok(m);
+        assert.strictEqual(m.prefix, 'tipo_id_');
+        assert.strictEqual(m.group, 'tipo_identificacion');
+    });
+
+    test('matchSubHeadingWhitelist: "Sexo:" → sexo_', () => {
+        const m = sd.matchSubHeadingWhitelist('Sexo:');
+        assert.ok(m);
+        assert.strictEqual(m.prefix, 'sexo_');
+    });
+
+    test('matchSubHeadingWhitelist: unknown returns null', () => {
+        assert.strictEqual(sd.matchSubHeadingWhitelist('Otro Campo:'), null);
+    });
+
+    test('identifyDatePart: "Día"/"Mes"/"Año" → dia/mes/ano', () => {
+        assert.strictEqual(sd.identifyDatePart('Día'), 'dia');
+        assert.strictEqual(sd.identifyDatePart('Mes'), 'mes');
+        assert.strictEqual(sd.identifyDatePart('Año'), 'ano');
+        assert.strictEqual(sd.identifyDatePart('Año:'), 'ano');
+    });
+
+    test('identifyDatePart: non-date returns null', () => {
+        assert.strictEqual(sd.identifyDatePart('Lugar'), null);
+    });
+
+    test('groupIntoTriplets: 3 same-row date fields → 1 triplet', () => {
+        const cands = [
+            { field: { rect: { x: 100, y: 500, width: 30, height: 12 } }, part: 'dia' },
+            { field: { rect: { x: 140, y: 500, width: 30, height: 12 } }, part: 'mes' },
+            { field: { rect: { x: 180, y: 500, width: 40, height: 12 } }, part: 'ano' },
+        ];
+        const trips = sd.groupIntoTriplets(cands);
+        assert.strictEqual(trips.length, 1);
+        assert.strictEqual(trips[0].length, 3);
+    });
+
+    test('groupIntoTriplets: two date triplets in different rows → 2 triplets', () => {
+        const cands = [
+            { field: { rect: { x: 100, y: 700, width: 30, height: 12 } }, part: 'dia' },
+            { field: { rect: { x: 140, y: 700, width: 30, height: 12 } }, part: 'mes' },
+            { field: { rect: { x: 180, y: 700, width: 40, height: 12 } }, part: 'ano' },
+            { field: { rect: { x: 100, y: 500, width: 30, height: 12 } }, part: 'dia' },
+            { field: { rect: { x: 140, y: 500, width: 30, height: 12 } }, part: 'mes' },
+            { field: { rect: { x: 180, y: 500, width: 40, height: 12 } }, part: 'ano' },
+        ];
+        const trips = sd.groupIntoTriplets(cands);
+        assert.strictEqual(trips.length, 2);
+    });
+
+    test('detectSections: assigns section by heading above field', () => {
+        const textItems = [
+            { str: 'DATOS DEL SOLICITANTE', x: 50, y: 700, width: 200, height: 14, page: 0 },
+            { str: 'Sexo:', x: 50, y: 600, width: 30, height: 10, page: 0 },
+        ];
+        const fields = [
+            { name: 'CheckMasc', type: 'checkbox', rect: { x: 100, y: 580, width: 10, height: 10 }, page: 0, detectedLabel: 'Masculino' },
+            { name: 'CheckFem',  type: 'checkbox', rect: { x: 200, y: 580, width: 10, height: 10 }, page: 0, detectedLabel: 'Femenino' },
+        ];
+        const { headings, subHeadings } = sectionDetector.detectSections(textItems, fields);
+        assert.strictEqual(headings.length, 1);
+        assert.strictEqual(headings[0].prefix, 'asegurado_');
+        assert.strictEqual(subHeadings.length, 1);
+        assert.strictEqual(subHeadings[0].prefix, 'sexo_');
+
+        const assignment = sectionDetector.assignSectionToField(fields[0], headings, subHeadings);
+        assert.strictEqual(assignment.sectionPrefix, 'asegurado_');
+        assert.strictEqual(assignment.subHeadingPrefix, 'sexo_');
+        assert.strictEqual(assignment.group, 'sexo');
+    });
+
+    test('detectDateGroups: solicitud date triplet → fecha_ prefix', () => {
+        const textItems = [
+            { str: 'LUGAR Y FECHA DE SOLICITUD', x: 50, y: 700, width: 250, height: 14, page: 0 },
+            { str: 'Día', x: 100, y: 580, width: 20, height: 10, page: 0 },
+            { str: 'Mes', x: 140, y: 580, width: 20, height: 10, page: 0 },
+            { str: 'Año', x: 180, y: 580, width: 20, height: 10, page: 0 },
+        ];
+        const fields = [
+            { name: 'DiaSol', type: 'text', rect: { x: 100, y: 560, width: 30, height: 12 }, page: 0, detectedLabel: 'Día' },
+            { name: 'MesSol', type: 'text', rect: { x: 140, y: 560, width: 30, height: 12 }, page: 0, detectedLabel: 'Mes' },
+            { name: 'AnoSol', type: 'text', rect: { x: 180, y: 560, width: 40, height: 12 }, page: 0, detectedLabel: 'Año' },
+        ];
+        const { headings } = sectionDetector.detectSections(textItems, fields);
+        const dateMap = sectionDetector.detectDateGroups(fields, headings, textItems);
+        assert.strictEqual(dateMap.size, 3);
+        assert.strictEqual(dateMap.get('DiaSol').subHeadingPrefix, 'fecha_');
+        assert.strictEqual(dateMap.get('DiaSol').part, 'dia');
+        assert.strictEqual(dateMap.get('AnoSol').part, 'ano');
+    });
+
+    test('detectDateGroups: nacimiento under Datos del Solicitante → fecha_nacimiento_', () => {
+        const textItems = [
+            { str: 'DATOS DEL SOLICITANTE', x: 50, y: 750, width: 200, height: 14, page: 0 },
+            { str: 'Fecha de Nacimiento:', x: 50, y: 620, width: 120, height: 10, page: 0 },
+            { str: 'Día', x: 100, y: 580, width: 20, height: 10, page: 0 },
+            { str: 'Mes', x: 140, y: 580, width: 20, height: 10, page: 0 },
+            { str: 'Año', x: 180, y: 580, width: 20, height: 10, page: 0 },
+        ];
+        const fields = [
+            { name: 'DiaNac', type: 'text', rect: { x: 100, y: 560, width: 30, height: 12 }, page: 0, detectedLabel: 'Día' },
+            { name: 'MesNac', type: 'text', rect: { x: 140, y: 560, width: 30, height: 12 }, page: 0, detectedLabel: 'Mes' },
+            { name: 'AnoNac', type: 'text', rect: { x: 180, y: 560, width: 40, height: 12 }, page: 0, detectedLabel: 'Año' },
+        ];
+        const { headings } = sectionDetector.detectSections(textItems, fields);
+        const dateMap = sectionDetector.detectDateGroups(fields, headings, textItems);
+        assert.strictEqual(dateMap.size, 3);
+        assert.strictEqual(dateMap.get('DiaNac').subHeadingPrefix, 'fecha_nacimiento_');
+        assert.strictEqual(dateMap.get('DiaNac').groupKey, 'fecha_nacimiento');
+    });
+
     console.log('\n── end-to-end pipeline ──────────────────');
     const inputsDir = path.join(ROOT, 'inputs');
     const hasMatrix = fs.existsSync(path.join(inputsDir, 'Matriz_Formularios_VidaColectiva_Secciones.xlsx'));
