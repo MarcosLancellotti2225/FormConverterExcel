@@ -16,6 +16,9 @@
         initConvertPdfFlow();
         initPdfToHtmlFlow();
         initMatrixEditorFlow();
+
+        // Procesar Formulario INS is the only visible mode — auto-enter it.
+        selectMode('matrix-editor');
     }
 
     function wireModeSelector() {
@@ -716,6 +719,7 @@
                 el.textContent = '';
             }
             $('#btnMtxAnalyze').disabled = !mtxState.file;
+            refreshMtxProcessButton();
         });
         $('#mtxPdfInput').addEventListener('change', function(e) {
             mtxState.pdfFiles = Array.from(e.target.files || []);
@@ -729,6 +733,7 @@
                 slot.classList.remove('loaded');
                 el.textContent = '';
             }
+            refreshMtxProcessButton();
         });
         $('#mtxCatalogosInput').addEventListener('change', function(e) {
             mtxState.catalogosFile = e.target.files[0] || null;
@@ -743,6 +748,7 @@
                 el.textContent = '';
             }
         });
+        $('#btnMtxProcess').addEventListener('click', runMtxProcess);
         $('#btnMtxAnalyze').addEventListener('click', runMtxAnalyze);
         $('#btnMtxSplitAll').addEventListener('click', mtxSplitAll);
         $('#btnMtxDerivePdf').addEventListener('click', mtxDerivePdf);
@@ -750,7 +756,77 @@
         $('#btnMtxAcceptAll').addEventListener('click', mtxAcceptAll);
         $('#btnMtxReset').addEventListener('click', mtxReset);
         $('#btnMtxExport').addEventListener('click', mtxExport);
-        $('#btnMtxExportByForm').addEventListener('click', mtxExportByForm);
+    }
+
+    function refreshMtxProcessButton() {
+        var hasMatrix = !!mtxState.file;
+        var hasPdf = mtxState.pdfFiles && mtxState.pdfFiles.length > 0;
+        $('#btnMtxProcess').disabled = !(hasMatrix && hasPdf);
+    }
+
+    async function runMtxProcess() {
+        var statusEl = $('#mtxProcessStatus');
+        var summaryEl = $('#mtxProcessSummary');
+        statusEl.className = 'status active';
+        summaryEl.hidden = true;
+
+        if (!mtxState.file) {
+            statusEl.className = 'status active warning';
+            statusEl.textContent = '⚠ Cargá la matriz del cliente';
+            return;
+        }
+        if (!mtxState.pdfFiles || mtxState.pdfFiles.length === 0) {
+            statusEl.className = 'status active warning';
+            statusEl.textContent = '⚠ Cargá al menos un PDF';
+            return;
+        }
+
+        statusEl.textContent = '⟳ Procesando ' + mtxState.pdfFiles.length + ' PDF(s)...';
+
+        try {
+            var result = await InsPipelineBundle.runProcessFormulario({
+                matrixFile: mtxState.file,
+                pdfFiles: mtxState.pdfFiles,
+                catalogsFile: mtxState.catalogosFile
+            });
+
+            InsPipelineBundle.downloadBlob(result.zipBlob, result.zipFilename);
+
+            var lines = [];
+            for (var i = 0; i < result.formularios.length; i++) {
+                var f = result.formularios[i];
+                lines.push(f.code + ': ' + f.stats.matchedToMatrix + '/' + f.stats.pdfFieldCount + ' matched, ' +
+                    f.stats.prefilledCount + ' prefilled, ' + f.stats.sinCatalogo + ' sin catálogo' +
+                    (f.stats.renameErrors && f.stats.renameErrors.length ? ', ' + f.stats.renameErrors.length + ' rename errors' : ''));
+            }
+
+            var warningMsg = '';
+            if (result.warnings && result.warnings.length) {
+                warningMsg = ' · ' + result.warnings.map(function(w) { return w.message; }).join(' · ');
+            }
+
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ Generado ' + result.zipFilename + warningMsg;
+
+            summaryEl.innerHTML = result.formularios.map(function(f) {
+                var s = f.stats;
+                return '<div class="stat"><span class="stat-n">' + s.matchedToMatrix + '/' + s.pdfFieldCount + '</span>' +
+                       '<span class="stat-l">' + escapeHtml(f.code) + ' matched</span></div>' +
+                       '<div class="stat"><span class="stat-n">' + s.prefilledCount + '</span>' +
+                       '<span class="stat-l">' + escapeHtml(f.code) + ' prefilled</span></div>' +
+                       '<div class="stat"><span class="stat-n">' + s.unmatched + '</span>' +
+                       '<span class="stat-l">' + escapeHtml(f.code) + ' unmatched</span></div>' +
+                       '<div class="stat"><span class="stat-n">' + s.sinCatalogo + '</span>' +
+                       '<span class="stat-l">' + escapeHtml(f.code) + ' sin catálogo</span></div>' +
+                       '<div class="stat"><span class="stat-n">' + s.pathsSinIndice + '</span>' +
+                       '<span class="stat-l">' + escapeHtml(f.code) + ' paths sin índice</span></div>';
+            }).join('');
+            summaryEl.hidden = false;
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
     }
 
     async function runMtxAnalyze() {
@@ -1050,41 +1126,6 @@
         InsPipelineBundle.downloadBlob(blob, name);
         $('#mtxExportStatus').className = 'status active success';
         $('#mtxExportStatus').textContent = '✓ Descargando ' + name;
-    }
-
-    async function mtxExportByForm() {
-        var statusEl = $('#mtxExportStatus');
-        statusEl.className = 'status active';
-        statusEl.textContent = '⟳ Generando mapeo por formulario...';
-
-        try {
-            if (!mtxState.pdfFiles || mtxState.pdfFiles.length === 0) {
-                statusEl.className = 'status active warning';
-                statusEl.textContent = '⚠ Cargá al menos un PDF para generar el mapeo';
-                return;
-            }
-
-            InsPipelineBundle.matrixDeriveFormulario(mtxState.rows);
-
-            if (mtxState.catalogosFile && !mtxState.catalogos) {
-                mtxState.catalogos = await InsPipelineBundle.matrixParseCatalogos(mtxState.catalogosFile);
-            }
-
-            var result = await InsPipelineBundle.matrixExportPerFormularioZip(
-                mtxState.rows, mtxState.pdfFiles, mtxState.catalogos
-            );
-
-            var blob = result.xlsxBlob || result.zipBlob;
-            InsPipelineBundle.downloadBlob(blob, result.filename);
-
-            var details = result.summary.map(function(s) { return s.code + ' (' + s.rowCount + ' campos)'; }).join(', ');
-            statusEl.className = 'status active success';
-            statusEl.textContent = '✓ Descargando ' + result.filename + ': ' + details;
-        } catch (err) {
-            console.error(err);
-            statusEl.className = 'status active error';
-            statusEl.textContent = '✗ ' + err.message;
-        }
     }
 
     function reanalyze(rows) {
