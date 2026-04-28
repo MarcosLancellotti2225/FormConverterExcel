@@ -38,11 +38,11 @@ function identifyPdfCode(pdfFileName) {
 
 function filenameFor(code, fallbackName) {
     const form = FORMULARIOS.find(f => f.code === code);
-    if (form) return 'Mapeo_' + form.code + '_' + form.filenameTag + '.xlsx';
+    if (form) return 'Matriz_' + form.code + '_' + form.filenameTag + '.xlsx';
     const safe = String(fallbackName || 'desconocido')
         .replace(/\.pdf$/i, '')
         .replace(/[^A-Za-z0-9_-]+/g, '_');
-    return 'Mapeo_' + safe + '.xlsx';
+    return 'Matriz_' + safe + '.xlsx';
 }
 
 function buildWorkbook(rows, code, catalogos) {

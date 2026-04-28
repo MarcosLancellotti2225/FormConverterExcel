@@ -733,22 +733,22 @@ async function run() {
         assert.strictEqual(exportMod.identifyPdfCode('OtroFormulario.pdf'), null);
     });
 
-    test('filenameFor: 1009052 → Mapeo_1009052_Vida_Colectiva.xlsx', () => {
-        assert.strictEqual(exportMod.filenameFor('1009052'), 'Mapeo_1009052_Vida_Colectiva.xlsx');
+    test('filenameFor: 1009052 → Matriz_1009052_Vida_Colectiva.xlsx', () => {
+        assert.strictEqual(exportMod.filenameFor('1009052'), 'Matriz_1009052_Vida_Colectiva.xlsx');
     });
 
-    test('filenameFor: D0306 → Mapeo_D0306_Vida_Universal_Plus.xlsx', () => {
-        assert.strictEqual(exportMod.filenameFor('D0306'), 'Mapeo_D0306_Vida_Universal_Plus.xlsx');
+    test('filenameFor: D0306 → Matriz_D0306_Vida_Universal_Plus.xlsx', () => {
+        assert.strictEqual(exportMod.filenameFor('D0306'), 'Matriz_D0306_Vida_Universal_Plus.xlsx');
     });
 
-    test('filenameFor: D0309 → Mapeo_D0309_Proteccion_Crediticia.xlsx', () => {
-        assert.strictEqual(exportMod.filenameFor('D0309'), 'Mapeo_D0309_Proteccion_Crediticia.xlsx');
+    test('filenameFor: D0309 → Matriz_D0309_Proteccion_Crediticia.xlsx', () => {
+        assert.strictEqual(exportMod.filenameFor('D0309'), 'Matriz_D0309_Proteccion_Crediticia.xlsx');
     });
 
     test('filenameFor: unknown code falls back to sanitized PDF name', () => {
         assert.strictEqual(
             exportMod.filenameFor(null, 'Custom_Form.pdf'),
-            'Mapeo_Custom_Form.xlsx'
+            'Matriz_Custom_Form.xlsx'
         );
     });
 
