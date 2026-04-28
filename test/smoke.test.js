@@ -488,6 +488,153 @@ async function run() {
         assert.strictEqual(rows[1].etiquetaPublico, 'Nombre (Beneficiario 2)');
     });
 
+    console.log('\n── build-pdf-rows ───────────────────────');
+    const { _internal: bpr } = require('../src/matrix-editor/build-pdf-rows');
+
+    test('appliesToFormulario: "Todos" applies to any code', () => {
+        assert.strictEqual(bpr.appliesToFormulario('Todos', '1009052'), true);
+        assert.strictEqual(bpr.appliesToFormulario('TODOS', 'D0306'), true);
+    });
+
+    test('appliesToFormulario: empty applies to any code', () => {
+        assert.strictEqual(bpr.appliesToFormulario('', '1009052'), true);
+    });
+
+    test('appliesToFormulario: "Vida Colectiva" matches 1009052 only', () => {
+        assert.strictEqual(bpr.appliesToFormulario('Vida Colectiva', '1009052'), true);
+        assert.strictEqual(bpr.appliesToFormulario('Vida Colectiva', 'D0306'), false);
+    });
+
+    test('appliesToFormulario: "Crediticia" matches D0309', () => {
+        assert.strictEqual(bpr.appliesToFormulario('Protección Crediticia', 'D0309'), true);
+    });
+
+    test('mapFormato: Fecha → fecha', () => {
+        assert.strictEqual(bpr.mapFormato('Fecha'), 'fecha');
+    });
+
+    test('mapFormato: Numérico → numérico', () => {
+        assert.strictEqual(bpr.mapFormato('Numérico'), 'numérico');
+    });
+
+    test('mapFormato: Combo → empty (no format applies)', () => {
+        assert.strictEqual(bpr.mapFormato('Combo'), '');
+    });
+
+    test('normalizeYesNo: Sí variants → Sí', () => {
+        assert.strictEqual(bpr.normalizeYesNo('SI'), 'Sí');
+        assert.strictEqual(bpr.normalizeYesNo('si'), 'Sí');
+        assert.strictEqual(bpr.normalizeYesNo('Sí'), 'Sí');
+    });
+
+    test('normalizeYesNo: NO → No', () => {
+        assert.strictEqual(bpr.normalizeYesNo('NO'), 'No');
+        assert.strictEqual(bpr.normalizeYesNo('no'), 'No');
+    });
+
+    test('parseConditionalText: trigger pattern', () => {
+        const r = bpr.parseConditionalText('Si se selecciona Otro se debe habilitar el campo Especificar', '');
+        assert.ok(r.includes('Otro'));
+        assert.ok(r.includes('mostrar'));
+    });
+
+    test('parseConditionalText: no rule → empty', () => {
+        assert.strictEqual(bpr.parseConditionalText('', ''), '');
+    });
+
+    test('inferSectionFromPath: datosAsegurado → DATOS DEL SOLICITANTE', () => {
+        assert.strictEqual(bpr.inferSectionFromPath('datosAsegurado.primerApellido'), 'DATOS DEL SOLICITANTE');
+    });
+
+    test('inferSectionFromPath: unknown root → empty', () => {
+        assert.strictEqual(bpr.inferSectionFromPath('weirdRoot.field'), '');
+    });
+
+    test('buildMatrixIndex: filters by formulario', () => {
+        const rows = [
+            { 'Formulario a visualizar': 'Vida Colectiva', 'Nombre del campo en formulario': 'Cédula', 'Nombre en PDF': 'Text1' },
+            { 'Formulario a visualizar': 'Vida Universal', 'Nombre del campo en formulario': 'Otro', 'Nombre en PDF': 'Text2' },
+            { 'Formulario a visualizar': 'Todos', 'Nombre del campo en formulario': 'Lugar', 'Nombre en PDF': 'Text3' },
+        ];
+        const idx = bpr.buildMatrixIndex(rows, '1009052');
+        assert.strictEqual(idx.length, 2);
+        assert.strictEqual(idx[0].row['Nombre del campo en formulario'], 'Cédula');
+        assert.strictEqual(idx[1].row['Nombre del campo en formulario'], 'Lugar');
+    });
+
+    test('matchMatrixRow: exact label match', () => {
+        const rows = [
+            { 'Formulario a visualizar': 'Todos', 'Nombre del campo en formulario': 'Primer Apellido', 'Nombre en PDF': 'Text1' },
+        ];
+        const idx = bpr.buildMatrixIndex(rows, '1009052');
+        const used = new Set();
+        const im = { field: { name: 'Text1', detectedLabel: 'Primer Apellido' } };
+        const matched = bpr.matchMatrixRow(im, idx, used);
+        assert.ok(matched);
+        assert.strictEqual(matched['Nombre del campo en formulario'], 'Primer Apellido');
+        assert.strictEqual(used.size, 1);
+    });
+
+    test('matchMatrixRow: same field cannot be matched twice', () => {
+        const rows = [
+            { 'Formulario a visualizar': 'Todos', 'Nombre del campo en formulario': 'Cédula', 'Nombre en PDF': 'Check1' },
+        ];
+        const idx = bpr.buildMatrixIndex(rows, '1009052');
+        const used = new Set();
+        const im = { field: { name: 'Check1', detectedLabel: 'Cédula' } };
+        assert.ok(bpr.matchMatrixRow(im, idx, used));
+        assert.strictEqual(bpr.matchMatrixRow(im, idx, used), null);
+    });
+
+    test('extractFromMatrix: parses validation, formato, jsonPath', () => {
+        const matrixRow = {
+            'Nombre del Campo en Json': 'datosAsegurado.numeroIdentificacion, datosAsegurado.tipoIdentificacion',
+            'Regla': '16 caracteres, sólo números',
+            'Observaciones': '',
+            'Tipo de dato': 'Numérico',
+            'Obligatorio': 'SI',
+        };
+        const e = bpr.extractFromMatrix(matrixRow, null, []);
+        assert.strictEqual(e.pathPrincipal, 'datosAsegurado.numeroIdentificacion');
+        assert.ok(e.pathsSecundarios.includes('tipoIdentificacion'));
+        assert.strictEqual(e.maxLength, '16');
+        assert.ok(e.patron.includes('\\d'));
+        assert.strictEqual(e.formato, 'numérico');
+        assert.strictEqual(e.obligatorio, 'Sí');
+    });
+
+    test('collectPrefilledMatrixRows: only "no se llena en PDF" rows', () => {
+        const rows = [
+            { 'Formulario a visualizar': 'Todos', 'Nombre en PDF': 'Text1', 'Nombre del campo en formulario': 'Lugar', 'Nombre del Campo en Json': 'datosGenerales.lugar' },
+            { 'Formulario a visualizar': 'Todos', 'Nombre en PDF': 'No se llena en PDF', 'Nombre del campo en formulario': 'Código Tomador', 'Nombre del Campo en Json': 'datosTomador.codigo' },
+            { 'Formulario a visualizar': 'Todos', 'Nombre en PDF': 'N/A', 'Nombre del campo en formulario': 'IdSolicitud', 'Nombre del Campo en Json': 'datosGenerales.idSolicitud' },
+        ];
+        const used = new Set([0]);
+        const pf = bpr.collectPrefilledMatrixRows(rows, '1009052', used, null);
+        assert.strictEqual(pf.length, 2);
+        assert.strictEqual(pf[0].label, 'Código Tomador');
+        assert.strictEqual(pf[1].label, 'IdSolicitud');
+    });
+
+    test('interleavePrefilled: inserts prefilled row when section ends', () => {
+        const pdfRows = [
+            [1, 'DATOS DEL SOLICITANTE', 'Text1', 'asegurado_lugar', 'Lugar', 'asegurado_lugar', 'Tx', '', 1, '', '', 'No', '', '', '', '', '', '', '', ''],
+            [2, 'BENEFICIARIO 1',         'Text2', 'beneficiario_1_nombre', 'Nombre', 'beneficiario_1_nombre', 'Tx', '', 1, '', '', 'No', '', '', '', '', '', '', '', ''],
+        ];
+        const prefilled = [
+            { sectionPdf: 'DATOS DEL SOLICITANTE', label: 'Código', tipoDatoMatriz: 'Texto',
+              enrich: { pathPrincipal: 'datosAsegurado.codigo', pathsSecundarios: '', obligatorio: 'No', maxLength: '', patron: '', formato: '', condicional: '', catalogo: '', tipoDatoMatriz: 'Texto', reglaOriginal: '' } },
+        ];
+        const out = bpr.interleavePrefilled(pdfRows, prefilled);
+        assert.strictEqual(out.length, 3);
+        assert.strictEqual(out[0][1], 'DATOS DEL SOLICITANTE');
+        assert.strictEqual(out[1][1], 'DATOS DEL SOLICITANTE');
+        assert.strictEqual(out[1][11], 'Sí');                  // pre-rellenado
+        assert.strictEqual(out[1][2], '');                      // AcroForm Actual vacío
+        assert.strictEqual(out[2][1], 'BENEFICIARIO 1');
+        assert.deepStrictEqual([out[0][0], out[1][0], out[2][0]], [1, 2, 3]);
+    });
+
     console.log('\n── end-to-end pipeline ──────────────────');
     const inputsDir = path.join(ROOT, 'inputs');
     const hasMatrix = fs.existsSync(path.join(inputsDir, 'Matriz_Formularios_VidaColectiva_Secciones.xlsx'));
