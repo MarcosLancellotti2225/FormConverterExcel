@@ -953,6 +953,32 @@ async function run() {
         assert.strictEqual(r.sheetName, 'Tipo Identificación');
     });
 
+    console.log('\n── process-formulario ───────────────────');
+    const procMod = require('../src/matrix-editor/process-formulario');
+
+    test('todayYYYYMMDD: 8-digit string', () => {
+        const s = procMod.todayYYYYMMDD();
+        assert.match(s, /^\d{8}$/);
+    });
+
+    test('sanitize: strips .pdf and special chars', () => {
+        assert.strictEqual(procMod.sanitize('Algun Form (v2).pdf'), 'Algun_Form_v2_');
+    });
+
+    test('runProcessFormulario: rejects empty pdfEntries', () => {
+        return procMod.runProcessFormulario([], [], null).then(
+            () => { throw new Error('should have rejected'); },
+            err => { assert.match(err.message, /al menos un PDF/i); }
+        );
+    });
+
+    test('runProcessFormulario: rejects empty matrixRows', () => {
+        return procMod.runProcessFormulario([], [{ name: 'x.pdf', bytes: new Uint8Array(0) }], null).then(
+            () => { throw new Error('should have rejected'); },
+            err => { assert.match(err.message, /matriz/i); }
+        );
+    });
+
     console.log('\n── end-to-end pipeline ──────────────────');
     const inputsDir = path.join(ROOT, 'inputs');
     const hasMatrix = fs.existsSync(path.join(inputsDir, 'Matriz_Formularios_VidaColectiva_Secciones.xlsx'));
