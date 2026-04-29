@@ -21,6 +21,7 @@ const ALLOWED = new Set([
     '/app.js',
     '/bundle.js',
     '/styles.css',
+    '/src/pdf-converter-v2/ui/styles.css',
     '/favicon.ico',
     '/pdf.worker.min.mjs'
 ]);

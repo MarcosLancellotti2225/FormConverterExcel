@@ -92218,7 +92218,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         mes: ["mes"],
         ano: ["ano", "a\xF1o"]
       };
-      var HEADING_MIN_LEN = 8;
+      var HEADING_MIN_LEN = 5;
       var HEADING_UPPER_RATIO = 0.7;
       var SUBHEADING_MAX_LEN = 40;
       var SUBHEADING_CHECKBOX_Y_TOLERANCE = 6;
@@ -92265,7 +92265,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           const text = item.str.trim();
           if (!text) continue;
           const wl = matchSectionWhitelist(text);
-          if (wl && (looksLikeHeading(text) || /^[A-ZÁÉÍÓÚÑÜ\s\d./-]+$/.test(text))) {
+          if (wl && (looksLikeHeading(text) || /^[A-ZÁÉÍÓÚÑÜ\s\d./-]+$/.test(text) || text.length >= 4)) {
             const beneficiarioN = wl.repeatable ? extractBeneficiarioNumber(text) : null;
             headings.push({
               text,
@@ -92281,7 +92281,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             });
             continue;
           }
-          if (text.endsWith(":") && text.length <= SUBHEADING_MAX_LEN) {
+          if (text.length <= SUBHEADING_MAX_LEN) {
             const sw = matchSubHeadingWhitelist(text);
             if (sw) {
               subHeadings.push({
@@ -92297,7 +92297,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
               });
               continue;
             }
-            if (fields && hasCheckboxesAlignedBelow(item, fields)) {
+            if (text.endsWith(":") && fields && hasCheckboxesAlignedBelow(item, fields)) {
               console.warn(
                 `[section-detector] Sub-heading no en whitelist: "${text}" (page ${item.page + 1}). Considerar agregar a SUBHEADING_WHITELIST. Aplicando prefijo vac\xEDo.`
               );
@@ -92346,7 +92346,8 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           if (subCandidates.length > 0) {
             const closest = subCandidates[0];
             const distToField = closest.y - (field.rect.y + field.rect.height);
-            if (distToField <= 60) subHeading = closest;
+            const maxDist = closest.source === "whitelist" ? 25 : 60;
+            if (distToField <= maxDist) subHeading = closest;
           }
         }
         if (!section) {
@@ -92506,6 +92507,8 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       var slugify = detectorInternal.slugify;
       var normalize = detectorInternal.normalize;
       var ROW_REGEX = /Row\s*(\d+)$/i;
+      var SLUG_STOP_WORDS = /* @__PURE__ */ new Set(["y", "de", "del", "la", "el", "los", "las", "en", "con", "que", "se", "por", "para", "una", "un", "al", "su", "u", "o", "completo", "completa"]);
+      var MAX_SLUG_LEN = 30;
       var GROUP_LABEL_ES = {
         fecha_solicitud: "Solicitud",
         fecha_nacimiento: "Nacimiento",
@@ -92515,6 +92518,12 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         sexo: "Sexo",
         calidad: "Calidad"
       };
+      function simplifySlug(slug) {
+        const parts = slug.split("_").filter((p) => !SLUG_STOP_WORDS.has(p));
+        const simplified = parts.join("_");
+        if (simplified.length <= MAX_SLUG_LEN) return simplified;
+        return parts.slice(0, 3).join("_");
+      }
       function detectRepeatableRow(fieldName, sectionInfo) {
         const m = String(fieldName || "").match(ROW_REGEX);
         if (!m) return null;
@@ -92562,6 +92571,9 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         } else {
           const label = field.detectedLabel || field.name || "";
           slug = slugify(label);
+        }
+        if (slug.length > MAX_SLUG_LEN) {
+          slug = simplifySlug(slug);
         }
         let acroFormPropuesto = (mainPrefix + subPrefix + slug).replace(/_+/g, "_").replace(/^_|_$/g, "");
         if (!acroFormPropuesto) {
@@ -92838,6 +92850,28 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         "alfanum\xE9rico": "alfanum\xE9rico",
         "texto": "alfanum\xE9rico"
       };
+      var NOISE_MIN_LEN = 35;
+      var NOISE_CONNECTORS = /_(y|de|del|la|el|que|con|en|los|las|para|una|un|se|por)_/;
+      var NOISE_PHRASES = [
+        "exprese_claramente",
+        "nombre_completo_y_el_cargo",
+        "desempena_dentro",
+        "persona_juridica",
+        "datos_personales",
+        "declaro_que",
+        "acepto_que",
+        "autorizo_a"
+      ];
+      function isNoiseField(proposedName) {
+        if (!proposedName) return false;
+        if (proposedName.length < NOISE_MIN_LEN) return false;
+        const connectorMatches = (proposedName.match(NOISE_CONNECTORS) || []).length;
+        if (connectorMatches >= 2) return true;
+        for (const phrase of NOISE_PHRASES) {
+          if (proposedName.includes(phrase)) return true;
+        }
+        return false;
+      }
       var FORMULARIO_KEYWORDS = {
         "1009052": ["vida colectiva", "colectiva"],
         "D0306": ["vida universal", "universal"],
@@ -92867,12 +92901,14 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             _sectionPrefix: derivePrefixForRow(named.acroFormPropuesto, sectionInfo)
           });
         }
-        resolveCollisions(intermediates);
-        addContextIfDuplicate(intermediates);
+        const filtered = intermediates.filter((im) => !isNoiseField(im.acroFormPropuesto));
+        resolveCollisions(filtered);
+        addContextIfDuplicate(filtered);
         const matrixIndex = buildMatrixIndex(matrixRows, formularioCode);
         const usedMatrixIdx = /* @__PURE__ */ new Set();
         const summary = {
-          pdfFieldCount: intermediates.length,
+          pdfFieldCount: filtered.length,
+          noiseFiltered: intermediates.length - filtered.length,
           matchedToMatrix: 0,
           unmatched: 0,
           prefilledCount: 0,
@@ -92881,8 +92917,8 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         };
         const pdfRows = [];
         const renameMapping = [];
-        for (let i = 0; i < intermediates.length; i++) {
-          const im = intermediates[i];
+        for (let i = 0; i < filtered.length; i++) {
+          const im = filtered[i];
           const matrixRow = matchMatrixRow(im, matrixIndex, usedMatrixIdx);
           let enrich;
           if (matrixRow) {
@@ -92916,10 +92952,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             renameMapping.push({ originalName: im.field.name, newName: im.acroFormPropuesto });
           }
         }
-        const prefilled = collectPrefilledMatrixRows(matrixRows, formularioCode, usedMatrixIdx, catalogos);
-        summary.prefilledCount = prefilled.length;
-        const finalRows = interleavePrefilled(pdfRows, prefilled);
-        return { rows: finalRows, summary, renameMapping };
+        return { rows: pdfRows, summary, renameMapping };
       }
       function derivePrefixForRow(acroFormPropuesto, sectionInfo) {
         if (!acroFormPropuesto) return sectionInfo ? sectionInfo.sectionPrefix || "" : "";
@@ -92954,7 +92987,15 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const labelN = normalize(intermediate.field.detectedLabel || "");
         const fieldNameN = normalize(intermediate.field.name);
         if (!labelN && !fieldNameN) return null;
+        const sectionN = normalize(intermediate._sectionName || "");
         if (labelN) {
+          const exactInSection = matrixIndex.find(
+            (m) => !usedSet.has(m.rowIndex) && m.labelN === labelN && pathMatchesSection(m.row, sectionN)
+          );
+          if (exactInSection) {
+            usedSet.add(exactInSection.rowIndex);
+            return exactInSection.row;
+          }
           const exact = matrixIndex.find((m) => !usedSet.has(m.rowIndex) && m.labelN === labelN);
           if (exact) {
             usedSet.add(exact.rowIndex);
@@ -92978,6 +93019,22 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           }
         }
         return null;
+      }
+      function pathMatchesSection(matrixRow, sectionN) {
+        if (!sectionN) return false;
+        const path = normalize(matrixRow["Nombre del Campo en Json"] || "");
+        if (!path) return false;
+        if (sectionN.includes("solicitante") || sectionN.includes("asegurado")) {
+          return path.includes("asegurado") || path.includes("solicitante");
+        }
+        if (sectionN.includes("beneficiario")) return path.includes("beneficiario");
+        if (sectionN.includes("tomador") || sectionN.includes("firma")) {
+          return path.includes("tomador") || path.includes("firma");
+        }
+        if (sectionN.includes("poliza")) return path.includes("poliza");
+        if (sectionN.includes("vigencia")) return path.includes("vigencia");
+        if (sectionN.includes("notificacion")) return path.includes("notificacion");
+        return false;
       }
       function extractFromMatrix(matrixRow, catalogos, allRows, intermediate) {
         const jsonPath = matrixRow["Nombre del Campo en Json"] || "";
@@ -93257,6 +93314,8 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           resolveCatalogo,
           derivePrefixForRow,
           isCatalogExpected,
+          isNoiseField,
+          pathMatchesSection,
           collectPrefilledMatrixRows,
           interleavePrefilled,
           inferSectionFromPath
@@ -93761,6 +93820,1131 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     }
   });
 
+  // src/pdf-converter-v2/lib/excel-reader.js
+  var require_excel_reader = __commonJS({
+    "src/pdf-converter-v2/lib/excel-reader.js"(exports, module) {
+      "use strict";
+      var XLSX = require_xlsx();
+      var EXPECTED_HEADERS = [
+        "#",
+        "Secci\xF3n del PDF",
+        "AcroForm Actual",
+        "AcroForm Propuesto",
+        "Etiqueta para el p\xFAblico",
+        "Nombre interno (sourceName)",
+        "Tipo",
+        "Grupo",
+        "P\xE1gina",
+        "Path JSON principal",
+        "Paths secundarios",
+        "Pre-rellenado",
+        "Obligatorio",
+        "MaxLength",
+        "Patr\xF3n regex",
+        "Formato",
+        "Visibilidad condicional",
+        "Cat\xE1logo (nombre)",
+        "Opciones formato Lovable (JSON)",
+        "Tipo de dato (matriz)",
+        "Regla original",
+        "Hoja del Excel cat\xE1logo"
+      ];
+      function readMappingExcel(excelBytes) {
+        const wb = XLSX.read(excelBytes, { type: "array" });
+        const sheetName = wb.SheetNames[0];
+        const ws = wb.Sheets[sheetName];
+        const raw = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        if (!raw.length) {
+          throw new Error("El Excel de mapeo est\xE1 vac\xEDo");
+        }
+        const headerRow = raw[0];
+        const warnings = validateHeaders(headerRow);
+        const rows = [];
+        for (let i = 1; i < raw.length; i++) {
+          const r = raw[i];
+          if (!r || !r[2]) continue;
+          const optionsRaw = String(r[18] || "").trim();
+          let optionsParsed = null;
+          if (optionsRaw) {
+            try {
+              optionsParsed = JSON.parse(optionsRaw);
+            } catch {
+              warnings.push({
+                type: "invalid_options_json",
+                row: i + 1,
+                field: r[2],
+                reason: "No se pudo parsear JSON de opciones"
+              });
+            }
+          }
+          rows.push({
+            rowNum: r[0] || i,
+            seccionPdf: String(r[1] || "").trim(),
+            acroFormActual: String(r[2] || "").trim(),
+            acroFormPropuesto: String(r[3] || "").trim(),
+            etiqueta: String(r[4] || "").trim(),
+            sourceName: String(r[5] || "").trim(),
+            tipo: String(r[6] || "").trim(),
+            grupo: String(r[7] || "").trim(),
+            pagina: r[8] != null ? Number(r[8]) : null,
+            pathPrincipal: String(r[9] || "").trim(),
+            pathsSecundarios: String(r[10] || "").trim(),
+            preRellenado: normalizeYesNo(r[11]),
+            obligatorio: normalizeYesNo(r[12]),
+            maxLength: r[13] != null ? Number(r[13]) || null : null,
+            patron: String(r[14] || "").trim(),
+            formato: String(r[15] || "").trim(),
+            visibilidadCondicional: String(r[16] || "").trim(),
+            catalogoNombre: String(r[17] || "").trim(),
+            opcionesLovable: optionsParsed,
+            opcionesRaw: optionsRaw,
+            tipoDatoMatriz: String(r[19] || "").trim(),
+            reglaOriginal: String(r[20] || "").trim(),
+            hojaExcelCatalogo: String(r[21] || "").trim()
+          });
+        }
+        return { rows, warnings, sheetName };
+      }
+      function validateHeaders(headerRow) {
+        const warnings = [];
+        if (!headerRow || headerRow.length < 20) {
+          warnings.push({
+            type: "missing_columns",
+            reason: `Se esperaban 22 columnas, se encontraron ${headerRow ? headerRow.length : 0}`
+          });
+          return warnings;
+        }
+        for (let i = 0; i < EXPECTED_HEADERS.length; i++) {
+          const expected = EXPECTED_HEADERS[i];
+          const actual = String(headerRow[i] || "").trim();
+          if (actual !== expected && actual.toLowerCase() !== expected.toLowerCase()) {
+            warnings.push({
+              type: "header_mismatch",
+              column: i + 1,
+              expected,
+              actual
+            });
+          }
+        }
+        return warnings;
+      }
+      function normalizeYesNo(val) {
+        const s = String(val || "").trim().toLowerCase();
+        if (s === "s\xED" || s === "si" || s === "yes" || s === "s") return true;
+        if (s === "no" || s === "n") return false;
+        return null;
+      }
+      function buildRenameMapping(rows) {
+        const mapping = [];
+        for (const row of rows) {
+          if (!row.acroFormActual || !row.acroFormPropuesto) continue;
+          if (row.acroFormActual === row.acroFormPropuesto) continue;
+          mapping.push({
+            oldName: row.acroFormActual,
+            newName: row.acroFormPropuesto
+          });
+        }
+        return mapping;
+      }
+      module.exports = {
+        readMappingExcel,
+        buildRenameMapping,
+        EXPECTED_HEADERS,
+        _internal: { validateHeaders, normalizeYesNo }
+      };
+    }
+  });
+
+  // src/pdf-converter-v2/lib/pdf-renamer.js
+  var require_pdf_renamer = __commonJS({
+    "src/pdf-converter-v2/lib/pdf-renamer.js"(exports, module) {
+      "use strict";
+      var { PDFDocument, PDFName, PDFHexString, PDFString, PDFArray } = require_cjs();
+      var DIRTY_VALUES = /* @__PURE__ */ new Set([
+        "undefined",
+        "undefine",
+        "NOTIFICACIONES",
+        "null",
+        "NaN"
+      ]);
+      async function renamePdf(pdfBytes, renameMapping) {
+        const doc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+        const context = doc.context;
+        const warnings = [];
+        const nameMap = /* @__PURE__ */ new Map();
+        for (const { oldName, newName } of renameMapping) {
+          nameMap.set(oldName, newName);
+        }
+        const acroFormRef = doc.catalog.get(PDFName.of("AcroForm"));
+        if (!acroFormRef) {
+          warnings.push({ type: "no_acroform", reason: "PDF has no AcroForm" });
+          return { pdfBytes: await doc.save(), warnings, renamedCount: 0, summary: {} };
+        }
+        const acroForm = context.lookup(acroFormRef);
+        const fieldsRef = acroForm.get(PDFName.of("Fields"));
+        const fieldsArray = fieldsRef ? context.lookup(fieldsRef) : null;
+        if (!fieldsArray) {
+          warnings.push({ type: "no_fields", reason: "AcroForm has no Fields array" });
+          return { pdfBytes: await doc.save(), warnings, renamedCount: 0, summary: {} };
+        }
+        const leaves = [];
+        collectLeaves(fieldsArray, context, "", leaves);
+        let renamedCount = 0;
+        const renamedFields = [];
+        const newRootFields = PDFArray.withContext(context);
+        for (const leaf of leaves) {
+          const fullName = leaf.fullName;
+          const newName = nameMap.get(fullName);
+          if (newName) {
+            leaf.dict.set(PDFName.of("T"), PDFHexString.fromText(newName));
+            leaf.dict.delete(PDFName.of("Parent"));
+            ensureFieldType(leaf.dict, context);
+            cleanDirtyValues(leaf.dict, fullName, context);
+            let ref = context.getObjectRef(leaf.dict);
+            if (!ref) ref = context.register(leaf.dict);
+            newRootFields.push(ref);
+            renamedCount++;
+            renamedFields.push({ oldName: fullName, newName });
+          } else {
+            leaf.dict.set(PDFName.of("T"), PDFHexString.fromText(fullName));
+            leaf.dict.delete(PDFName.of("Parent"));
+            ensureFieldType(leaf.dict, context);
+            cleanDirtyValues(leaf.dict, fullName, context);
+            let ref = context.getObjectRef(leaf.dict);
+            if (!ref) ref = context.register(leaf.dict);
+            newRootFields.push(ref);
+            if (nameMap.size > 0) {
+              warnings.push({
+                type: "field_not_in_mapping",
+                field: fullName,
+                reason: `AcroForm "${fullName}" no est\xE1 en el Excel \u2014 queda con su nombre original`
+              });
+            }
+          }
+        }
+        acroForm.set(PDFName.of("Fields"), newRootFields);
+        const leafNames = new Set(leaves.map((l) => l.fullName));
+        for (const [oldName, newName] of nameMap) {
+          if (!leafNames.has(oldName)) {
+            warnings.push({
+              type: "rename_failed",
+              field: oldName,
+              reason: `AcroForm "${oldName}" del Excel no existe en el PDF`
+            });
+          }
+        }
+        const savedBytes = await doc.save({ updateFieldAppearances: false });
+        const verifyResult = await verifyRenamedPdf(savedBytes, renamedFields);
+        for (const err of verifyResult.errors) {
+          warnings.push({
+            type: "verify_missing",
+            field: err.newName,
+            reason: `Verificaci\xF3n: "${err.newName}" no encontrado en el PDF renombrado`
+          });
+        }
+        return {
+          pdfBytes: savedBytes,
+          warnings,
+          renamedCount,
+          summary: {
+            totalLeaves: leaves.length,
+            renamed: renamedCount,
+            unchanged: leaves.length - renamedCount,
+            verified: verifyResult.found,
+            verifyErrors: verifyResult.errors.length
+          }
+        };
+      }
+      function collectLeaves(fieldsArray, context, parentName, result) {
+        if (!fieldsArray || typeof fieldsArray.size !== "function") return;
+        for (let i = 0; i < fieldsArray.size(); i++) {
+          const ref = fieldsArray.get(i);
+          const dict = context.lookup(ref);
+          if (!dict || typeof dict.get !== "function") continue;
+          const tVal = dict.get(PDFName.of("T"));
+          const partialName = tVal ? readStringValue(tVal) : "";
+          const fullName = parentName ? parentName + "." + partialName : partialName;
+          const kidsRef = dict.get(PDFName.of("Kids"));
+          if (kidsRef) {
+            const kids = context.lookup(kidsRef);
+            if (kids && typeof kids.size === "function" && kids.size() > 0) {
+              const firstKid = context.lookup(kids.get(0));
+              const firstKidHasT = firstKid && firstKid.get && firstKid.get(PDFName.of("T"));
+              if (firstKidHasT) {
+                collectLeaves(kids, context, fullName, result);
+                continue;
+              }
+            }
+          }
+          collectInherited(dict, context);
+          result.push({ dict, fullName, ref });
+        }
+      }
+      function collectInherited(dict, context) {
+        const INHERITABLE = ["FT", "Ff", "V", "DV", "DA", "DR", "Q"];
+        let parentRef = dict.get(PDFName.of("Parent"));
+        while (parentRef) {
+          const parent = context.lookup(parentRef);
+          if (!parent || typeof parent.get !== "function") break;
+          for (const key of INHERITABLE) {
+            const pdfKey = PDFName.of(key);
+            if (dict.get(pdfKey) === void 0) {
+              const val = parent.get(pdfKey);
+              if (val !== void 0) dict.set(pdfKey, val);
+            }
+          }
+          parentRef = parent.get(PDFName.of("Parent"));
+        }
+      }
+      function ensureFieldType(dict, context) {
+        if (dict.get(PDFName.of("FT"))) return;
+        const kidsRef = dict.get(PDFName.of("Kids"));
+        if (kidsRef) {
+          const kids = context.lookup(kidsRef);
+          if (kids && typeof kids.size === "function") {
+            for (let i = 0; i < kids.size(); i++) {
+              const kid = context.lookup(kids.get(i));
+              if (kid && kid.get) {
+                const asVal = kid.get(PDFName.of("AS"));
+                if (asVal) {
+                  dict.set(PDFName.of("FT"), PDFName.of("Btn"));
+                  return;
+                }
+              }
+            }
+          }
+        }
+        dict.set(PDFName.of("FT"), PDFName.of("Tx"));
+      }
+      function cleanDirtyValues(dict, oldName, context) {
+        const keysToCheck = ["V", "DV", "TU", "TM"];
+        for (const key of keysToCheck) {
+          const pdfKey = PDFName.of(key);
+          const val = dict.get(pdfKey);
+          if (!val) continue;
+          const strVal = readStringValue(val);
+          if (isDirtyValue(strVal, oldName)) {
+            dict.delete(pdfKey);
+          }
+        }
+      }
+      function isDirtyValue(strVal, oldName) {
+        if (!strVal) return false;
+        const trimmed = strVal.trim();
+        if (!trimmed) return false;
+        if (DIRTY_VALUES.has(trimmed)) return true;
+        if (trimmed === oldName) return true;
+        if (/^Text\d|^Check\s*Box|^Combo\s*Box|^Radio\s*Button/i.test(trimmed)) return true;
+        return false;
+      }
+      function readStringValue(val) {
+        if (!val) return "";
+        if (typeof val === "string") return val;
+        if (typeof val.decodeText === "function") return val.decodeText();
+        if (typeof val.asString === "function") return val.asString();
+        if (val instanceof PDFHexString) return val.decodeText();
+        if (val instanceof PDFString) return val.decodeText();
+        return String(val);
+      }
+      async function verifyRenamedPdf(pdfBytes, renamedFields) {
+        try {
+          const doc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+          const form = doc.getForm();
+          const fieldNames = new Set(form.getFields().map((f) => f.getName()));
+          const found = [];
+          const errors = [];
+          for (const { oldName, newName } of renamedFields) {
+            if (fieldNames.has(newName)) {
+              found.push(newName);
+            } else {
+              errors.push({ oldName, newName });
+            }
+          }
+          return { found, errors };
+        } catch (err) {
+          return {
+            found: [],
+            errors: [{ oldName: "*", newName: "*", reason: "Verification failed: " + err.message }]
+          };
+        }
+      }
+      module.exports = {
+        renamePdf,
+        _internal: { collectLeaves, cleanDirtyValues, isDirtyValue, readStringValue, verifyRenamedPdf }
+      };
+    }
+  });
+
+  // src/pdf-converter-v2/lib/catalogos.js
+  var require_catalogos = __commonJS({
+    "src/pdf-converter-v2/lib/catalogos.js"(exports, module) {
+      "use strict";
+      var CAT_TIPO_FORMULARIO = [
+        { value: "GMC01", label: "Gastos M\xE9dicos Abreviado" },
+        { value: "GMC02", label: "Gastos M\xE9dicos Enrolamiento" },
+        { value: "GMC03", label: "Gastos M\xE9dicos Completo" },
+        { value: "VCA01", label: "Vida Colectiva - Asegurado" },
+        { value: "VUA01", label: "Vida Universal Plus Colectivo - Asegurado" },
+        { value: "PCA01", label: "Protecci\xF3n Crediticia Colectivo - Asegurado" },
+        { value: "GMT01", label: "Gastos M\xE9dicos - Tomador" },
+        { value: "VCT01", label: "Vida Colectiva - Tomador" },
+        { value: "VUT01", label: "Vida Universal Plus Colectivo - Tomador" },
+        { value: "PCT01", label: "Protecci\xF3n Crediticia Colectivo - Tomador" }
+      ];
+      var CAT_TIPO_TRAMITE = [
+        { value: "EMI", label: "Nuevo Seguro" },
+        { value: "VAR", label: "Cambios en tu Seguro" },
+        { value: "CAN", label: "Dar de Baja tu Seguro" }
+      ];
+      var CAT_TIPO_PERSONA = [
+        { value: "ASG", label: "Asegurado Directo" },
+        { value: "DME", label: "Dependiente Menor de Edad" },
+        { value: "DMA", label: "Dependiente Mayor de Edad" },
+        { value: "ASN", label: "Asegurado Nominal" },
+        { value: "BNF", label: "Beneficiario" },
+        { value: "TOM", label: "Tomador de Seguro" }
+      ];
+      var CAT_TIPO_IDENTIFICACION = [
+        { value: "0", label: "C\xE9dula F\xEDsica Nacional" },
+        { value: "2", label: "C\xE9dula Jur\xEDdica Gobierno Central" },
+        { value: "3", label: "C\xE9dula Persona Jur\xEDdica Nacional" },
+        { value: "4", label: "C\xE9dula Instituci\xF3n Aut\xF3noma" },
+        { value: "6", label: "Documento \xDAnico (DIMEX)" },
+        { value: "7", label: "C\xE9dula Jur\xEDdica de Empresas extranjeras" },
+        { value: "9", label: "Pasaporte" },
+        { value: "12", label: "C\xE9dulas de Cuerpos diplom\xE1ticos" }
+      ];
+      var CAT_MONEDA = [
+        { value: "CRC", label: "Colones" },
+        { value: "USD", label: "D\xF3lares" }
+      ];
+      var CAT_ESTADO_CIVIL = [
+        { value: "1", label: "Soltero (a)" },
+        { value: "2", label: "Casado (a)" },
+        { value: "3", label: "Separaci\xF3n judicial" },
+        { value: "4", label: "Divorciado (a)" },
+        { value: "5", label: "Viudo (a)" },
+        { value: "6", label: "C\xE9libe" },
+        { value: "7", label: "Reconciliaci\xF3n judicial" },
+        { value: "8", label: "Anulado" },
+        { value: "9", label: "Uni\xF3n libre" }
+      ];
+      var CAT_GENERO = [
+        { value: "M", label: "Masculino" },
+        { value: "F", label: "Femenino" }
+      ];
+      var CAT_PARENTESCO = [
+        { value: "Madre", label: "Madre" },
+        { value: "Padre", label: "Padre" },
+        { value: "Hijo (a)", label: "Hijo (a)" },
+        { value: "Hermano (a)", label: "Hermano (a)" },
+        { value: "C\xF3nyuge", label: "C\xF3nyuge" },
+        { value: "Otro", label: "Otro" }
+      ];
+      var CAT_NOTIFICACION = [
+        { value: "Correo electr\xF3nico", label: "Correo electr\xF3nico" },
+        { value: "Domicilio f\xEDsico", label: "Domicilio f\xEDsico" },
+        { value: "Otros", label: "Otros" }
+      ];
+      var CAT_CALIDAD_DEUDOR = [
+        { value: "DEU", label: "Deudor" },
+        { value: "COD", label: "Codeudor" }
+      ];
+      var ALL_CATALOGS = {
+        tipo_formulario: CAT_TIPO_FORMULARIO,
+        tipo_tramite: CAT_TIPO_TRAMITE,
+        tipo_persona: CAT_TIPO_PERSONA,
+        tipo_identificacion: CAT_TIPO_IDENTIFICACION,
+        moneda: CAT_MONEDA,
+        estado_civil: CAT_ESTADO_CIVIL,
+        genero: CAT_GENERO,
+        parentesco: CAT_PARENTESCO,
+        notificacion: CAT_NOTIFICACION,
+        calidad_deudor: CAT_CALIDAD_DEUDOR
+      };
+      function resolveCatalog(catalogoNombre, grupo) {
+        if (!catalogoNombre && !grupo) return null;
+        const norm = (s) => String(s || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+        const cn = norm(catalogoNombre);
+        const gn = norm(grupo);
+        if (cn.includes("tipo identificacion") || cn.includes("tipo de identificacion") || gn === "tipo_identificacion") return CAT_TIPO_IDENTIFICACION;
+        if (cn.includes("parentesco") || gn === "parentesco") return CAT_PARENTESCO;
+        if (cn.includes("sexo") || cn.includes("genero") || cn.includes("g\xE9nero") || gn === "sexo") return CAT_GENERO;
+        if (cn.includes("notificacion") || cn.includes("medio de notificacion") || gn === "notificacion") return CAT_NOTIFICACION;
+        if (cn.includes("moneda") || gn === "moneda") return CAT_MONEDA;
+        if (cn.includes("estado civil") || gn === "estado_civil") return CAT_ESTADO_CIVIL;
+        if (cn.includes("tipo persona") || cn.includes("tipo de persona") || gn === "tipo_persona") return CAT_TIPO_PERSONA;
+        if (cn.includes("tipo formulario") || cn.includes("tipo de formulario") || gn === "tipo_formulario") return CAT_TIPO_FORMULARIO;
+        if (cn.includes("tipo tramite") || cn.includes("tipo de tramite") || cn.includes("tipo de tr\xE1mite") || gn === "tipo_tramite") return CAT_TIPO_TRAMITE;
+        if (cn.includes("calidad") || cn.includes("deudor") || gn === "calidad" || gn === "calidad_deudor") return CAT_CALIDAD_DEUDOR;
+        return null;
+      }
+      module.exports = {
+        CAT_TIPO_FORMULARIO,
+        CAT_TIPO_TRAMITE,
+        CAT_TIPO_PERSONA,
+        CAT_TIPO_IDENTIFICACION,
+        CAT_MONEDA,
+        CAT_ESTADO_CIVIL,
+        CAT_GENERO,
+        CAT_PARENTESCO,
+        CAT_NOTIFICACION,
+        CAT_CALIDAD_DEUDOR,
+        ALL_CATALOGS,
+        resolveCatalog
+      };
+    }
+  });
+
+  // src/pdf-converter-v2/lib/precharged-lists.js
+  var require_precharged_lists = __commonJS({
+    "src/pdf-converter-v2/lib/precharged-lists.js"(exports, module) {
+      "use strict";
+      var DIAS = Array.from({ length: 31 }, (_, i) => ({
+        value: String(i + 1),
+        label: String(i + 1),
+        pdfValue: String(i + 1).padStart(2, "0")
+      }));
+      var MESES = [
+        { value: "1", label: "Enero", pdfValue: "Ene" },
+        { value: "2", label: "Febrero", pdfValue: "Feb" },
+        { value: "3", label: "Marzo", pdfValue: "Mar" },
+        { value: "4", label: "Abril", pdfValue: "Abr" },
+        { value: "5", label: "Mayo", pdfValue: "May" },
+        { value: "6", label: "Junio", pdfValue: "Jun" },
+        { value: "7", label: "Julio", pdfValue: "Jul" },
+        { value: "8", label: "Agosto", pdfValue: "Ago" },
+        { value: "9", label: "Septiembre", pdfValue: "Set" },
+        { value: "10", label: "Octubre", pdfValue: "Oct" },
+        { value: "11", label: "Noviembre", pdfValue: "Nov" },
+        { value: "12", label: "Diciembre", pdfValue: "Dic" }
+      ];
+      var YEAR_START = 2024;
+      var YEAR_END = 2080;
+      var ANIOS = Array.from({ length: YEAR_END - YEAR_START + 1 }, (_, i) => ({
+        value: String(YEAR_START + i),
+        label: String(YEAR_START + i),
+        pdfValue: String(YEAR_START + i)
+      }));
+      function getDateOptions(sourceName) {
+        if (!sourceName) return null;
+        const sn = sourceName.toLowerCase();
+        if (sn.endsWith("_dia") || sn.endsWith("_dia_")) return DIAS;
+        if (sn.endsWith("_mes") || sn.endsWith("_mes_")) return MESES;
+        if (sn.endsWith("_ano") || sn.endsWith("_ano_")) return ANIOS;
+        return null;
+      }
+      module.exports = { DIAS, MESES, ANIOS, getDateOptions };
+    }
+  });
+
+  // src/pdf-converter-v2/lib/encabezado-section.js
+  var require_encabezado_section = __commonJS({
+    "src/pdf-converter-v2/lib/encabezado-section.js"(exports, module) {
+      "use strict";
+      var { CAT_TIPO_FORMULARIO, CAT_TIPO_TRAMITE } = require_catalogos();
+      var NEVER_VISIBLE = '{"logic":"and","conditions":[{"fieldId":"field_NEVER_EXISTS","operator":"not_empty"}]}';
+      var ENCABEZADO_FIELDS = [
+        {
+          sourceName: "encabezado_codigoTipoFormulario",
+          label: "Tipo de Formulario",
+          type: "select",
+          prefillKey: "encabezado.codigoTipoFormulario",
+          options: CAT_TIPO_FORMULARIO
+        },
+        {
+          sourceName: "encabezado_descripcionTipoFormulario",
+          label: "Descripci\xF3n Tipo Formulario",
+          type: "text",
+          prefillKey: "encabezado.descripcionTipoFormulario",
+          options: null
+        },
+        {
+          sourceName: "encabezado_codigoTipoTramite",
+          label: "Tipo de Tr\xE1mite",
+          type: "select",
+          prefillKey: "encabezado.codigoTipoTramite",
+          options: CAT_TIPO_TRAMITE
+        },
+        {
+          sourceName: "encabezado_descripcionTipoTramite",
+          label: "Descripci\xF3n Tipo Tr\xE1mite",
+          type: "text",
+          prefillKey: "encabezado.descripcionTipoTramite",
+          options: null
+        },
+        {
+          sourceName: "encabezado_identificadorTransaccionInterno",
+          label: "Identificador de Transacci\xF3n",
+          type: "text",
+          prefillKey: "encabezado.identificadorTransaccionInterno",
+          options: null
+        },
+        {
+          sourceName: "encabezado_correoElectronico",
+          label: "Correo Electr\xF3nico",
+          type: "text",
+          prefillKey: "encabezado.correoElectronico",
+          options: null
+        },
+        {
+          sourceName: "encabezado_codigoProducto",
+          label: "C\xF3digo de Producto",
+          type: "text",
+          prefillKey: "encabezado.codigoProducto",
+          options: null
+        },
+        {
+          sourceName: "encabezado_descripcionProducto",
+          label: "Descripci\xF3n del Producto",
+          type: "text",
+          prefillKey: "encabezado.descripcionProducto",
+          options: null
+        },
+        {
+          sourceName: "encabezado_nombreCompletoCliente",
+          label: "Nombre Completo del Cliente",
+          type: "text",
+          prefillKey: "encabezado.nombreCompletoCliente",
+          options: null
+        },
+        {
+          sourceName: "encabezado_identificadorArchivo",
+          label: "Identificador de Archivo",
+          type: "text",
+          prefillKey: "encabezado.identificadorArchivo",
+          options: null
+        }
+      ];
+      function buildEncabezadoSection() {
+        const fields = ENCABEZADO_FIELDS.map((def, idx) => ({
+          id: "field_" + def.sourceName,
+          type: def.type,
+          label: def.label,
+          required: true,
+          readOnly: true,
+          defaultValue: null,
+          order: idx + 1,
+          options: def.options || [],
+          sourceMeta: {
+            sourceName: def.sourceName,
+            page: null,
+            nativeType: null,
+            rect: { X: 0, Y: 0, Width: 0, Height: 0 }
+          },
+          prefillKey: def.prefillKey,
+          prefillMode: "mandatory",
+          salidaJSON: def.prefillKey,
+          jsonOutputPath: def.prefillKey,
+          conditionalVisibility: null,
+          helpText: null,
+          placeholder: null
+        }));
+        return {
+          id: "section_encabezado",
+          title: "Encabezado (oculto)",
+          description: null,
+          instructions: "Esta secci\xF3n NO se muestra al usuario. Contiene los datos del encabezado que vienen del INS y deben devolverse tal cual.",
+          conditionalVisibility: NEVER_VISIBLE,
+          order: 1,
+          fields
+        };
+      }
+      module.exports = { buildEncabezadoSection, ENCABEZADO_FIELDS, NEVER_VISIBLE };
+    }
+  });
+
+  // src/pdf-converter-v2/lib/prefill-mode-rules.js
+  var require_prefill_mode_rules = __commonJS({
+    "src/pdf-converter-v2/lib/prefill-mode-rules.js"(exports, module) {
+      "use strict";
+      var MANDATORY_PATH_PREFIXES = [
+        "encabezado.",
+        "polizaMadre.",
+        "intermediario."
+      ];
+      var MANDATORY_ASEGURADO_FIELDS = /* @__PURE__ */ new Set([
+        "primer_apellido",
+        "segundo_apellido",
+        "nombre_completo",
+        "numero_identificacion",
+        "fecha_nac_dia",
+        "fecha_nac_mes",
+        "fecha_nac_ano"
+      ]);
+      var MANDATORY_ASEGURADO_GROUPS = /* @__PURE__ */ new Set([
+        "tipo_identificacion",
+        "sexo"
+      ]);
+      var MANDATORY_PREFIXES = /* @__PURE__ */ new Set([
+        "vigencia_",
+        "tomador_"
+      ]);
+      var OPTIONAL_PREFIXES = /* @__PURE__ */ new Set([
+        "beneficiario_",
+        "solicitud_",
+        "monto_",
+        "notificacion_"
+      ]);
+      function determinePrefillMode(sourceName, pathPrincipal, grupo) {
+        if (!pathPrincipal && !sourceName) return "optional";
+        const path = String(pathPrincipal || "").toLowerCase();
+        for (const prefix of MANDATORY_PATH_PREFIXES) {
+          if (path.startsWith(prefix)) return "mandatory";
+        }
+        const sn = String(sourceName || "").toLowerCase();
+        if (sn.startsWith("asegurado_")) {
+          const suffix = sn.replace("asegurado_", "");
+          if (MANDATORY_ASEGURADO_FIELDS.has(suffix)) return "mandatory";
+          const g = String(grupo || "").toLowerCase();
+          if (MANDATORY_ASEGURADO_GROUPS.has(g)) return "mandatory";
+          if (suffix.startsWith("tipo_id_")) return "mandatory";
+          if (suffix.startsWith("sexo_")) return "mandatory";
+          if (suffix.startsWith("fecha_nac_")) return "mandatory";
+          return "optional";
+        }
+        for (const prefix of MANDATORY_PREFIXES) {
+          if (sn.startsWith(prefix)) return "mandatory";
+        }
+        for (const prefix of OPTIONAL_PREFIXES) {
+          if (sn.startsWith(prefix)) return "optional";
+        }
+        if (sn.startsWith("poliza_")) return "mandatory";
+        return "optional";
+      }
+      module.exports = { determinePrefillMode };
+    }
+  });
+
+  // src/pdf-converter-v2/lib/help-texts.js
+  var require_help_texts = __commonJS({
+    "src/pdf-converter-v2/lib/help-texts.js"(exports, module) {
+      "use strict";
+      var HELP_TEXTS = {
+        solicitud_lugar: "Indique la ciudad o localidad donde se realiza la solicitud.",
+        solicitud_fecha_dia: "D\xEDa de la fecha de solicitud.",
+        solicitud_fecha_mes: "Mes de la fecha de solicitud.",
+        solicitud_fecha_ano: "A\xF1o de la fecha de solicitud.",
+        poliza_nombre_tomador: "Nombre completo del tomador de la p\xF3liza (persona o empresa).",
+        poliza_numero: "N\xFAmero de p\xF3liza asignado por el INS.",
+        asegurado_primer_apellido: "Primer apellido del asegurado seg\xFAn documento de identidad.",
+        asegurado_segundo_apellido: "Segundo apellido del asegurado seg\xFAn documento de identidad.",
+        asegurado_nombre_completo: "Nombre(s) de pila del asegurado.",
+        asegurado_tipo_id_cedula: "Seleccione si el tipo de identificaci\xF3n es C\xE9dula.",
+        asegurado_tipo_id_dimex: "Seleccione si el tipo de identificaci\xF3n es DIMEX.",
+        asegurado_tipo_id_didi: "Seleccione si el tipo de identificaci\xF3n es DIDI.",
+        asegurado_tipo_id_pasaporte: "Seleccione si el tipo de identificaci\xF3n es Pasaporte.",
+        asegurado_tipo_id_otro: "Seleccione si el tipo de identificaci\xF3n es otro no listado.",
+        asegurado_tipo_id_otro_texto: 'Especifique el tipo de identificaci\xF3n si eligi\xF3 "Otro".',
+        asegurado_numero_identificacion: "N\xFAmero del documento de identificaci\xF3n.",
+        asegurado_profesion_ocupacion: "Profesi\xF3n u ocupaci\xF3n actual del asegurado.",
+        asegurado_fecha_nac_dia: "D\xEDa de nacimiento del asegurado.",
+        asegurado_fecha_nac_mes: "Mes de nacimiento del asegurado.",
+        asegurado_fecha_nac_ano: "A\xF1o de nacimiento del asegurado.",
+        asegurado_sexo_masculino: "Seleccione si el sexo es Masculino.",
+        asegurado_sexo_femenino: "Seleccione si el sexo es Femenino.",
+        asegurado_pais: "Pa\xEDs de residencia del asegurado.",
+        asegurado_provincia: "Provincia de residencia dentro de Costa Rica.",
+        asegurado_canton: "Cant\xF3n de residencia dentro de la provincia.",
+        asegurado_distrito: "Distrito de residencia dentro del cant\xF3n.",
+        asegurado_direccion_exacta: "Direcci\xF3n f\xEDsica completa para correspondencia.",
+        asegurado_telefono_movil: "N\xFAmero de tel\xE9fono celular del asegurado.",
+        asegurado_correo: "Correo electr\xF3nico para comunicaciones del seguro.",
+        monto_asegurado: "Monto del capital asegurado en la moneda seleccionada.",
+        vigencia_desde: "Fecha de inicio de vigencia de la p\xF3liza.",
+        vigencia_hasta: "Fecha de fin de vigencia de la p\xF3liza.",
+        medio_notificacion: "Medio preferido para recibir notificaciones del INS.",
+        tomador_nombre_cargo: "Nombre completo y cargo del representante legal o tomador."
+      };
+      function addBeneficiarioHelpTexts() {
+        for (let n = 1; n <= 10; n++) {
+          const p = "beneficiario_" + n + "_";
+          HELP_TEXTS[p + "numero"] = "N\xFAmero consecutivo del beneficiario.";
+          HELP_TEXTS[p + "nombre"] = "Nombre completo del beneficiario " + n + ".";
+          HELP_TEXTS[p + "tipo_id"] = "Tipo de identificaci\xF3n del beneficiario " + n + ".";
+          HELP_TEXTS[p + "numero_id"] = "N\xFAmero de identificaci\xF3n del beneficiario " + n + ".";
+          HELP_TEXTS[p + "parentesco"] = "Parentesco del beneficiario " + n + " con el asegurado.";
+          HELP_TEXTS[p + "porcentaje"] = "Porcentaje de participaci\xF3n del beneficiario " + n + ". La suma de todos debe ser 100%.";
+        }
+      }
+      addBeneficiarioHelpTexts();
+      function getHelpText(sourceName) {
+        if (!sourceName) return null;
+        return HELP_TEXTS[sourceName] || null;
+      }
+      module.exports = { getHelpText, HELP_TEXTS };
+    }
+  });
+
+  // src/pdf-converter-v2/lib/json-enricher.js
+  var require_json_enricher = __commonJS({
+    "src/pdf-converter-v2/lib/json-enricher.js"(exports, module) {
+      "use strict";
+      var { resolveCatalog } = require_catalogos();
+      var { getDateOptions } = require_precharged_lists();
+      var { buildEncabezadoSection, NEVER_VISIBLE } = require_encabezado_section();
+      var { determinePrefillMode } = require_prefill_mode_rules();
+      var { getHelpText } = require_help_texts();
+      function buildEnrichedJson(excelRows) {
+        const warnings = [];
+        const sectionGroups = groupBySection(excelRows);
+        const sections = [];
+        let sectionOrder = 2;
+        const encabezado = buildEncabezadoSection();
+        sections.push(encabezado);
+        const allFields = [];
+        for (const [sectionTitle, rows] of sectionGroups) {
+          const sectionId = buildSectionId(sectionTitle);
+          const conditionalVis = buildSectionConditionalVisibility(sectionTitle);
+          const fields = [];
+          for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            const field = buildField(row, i + 1, warnings);
+            fields.push(field);
+            allFields.push({ field, row });
+          }
+          sections.push({
+            id: sectionId,
+            title: sectionTitle || "Sin Secci\xF3n",
+            description: null,
+            instructions: null,
+            conditionalVisibility: conditionalVis,
+            order: sectionOrder++,
+            fields
+          });
+        }
+        wireRadioGroups(allFields);
+        const json = {
+          sections,
+          validationRules: [],
+          prefillMappings: [],
+          version: 1
+        };
+        const stats = computeStats(sections);
+        return { json, warnings, stats };
+      }
+      function groupBySection(rows) {
+        const map = /* @__PURE__ */ new Map();
+        for (const row of rows) {
+          const section = row.seccionPdf || "Sin Secci\xF3n";
+          if (!map.has(section)) map.set(section, []);
+          map.get(section).push(row);
+        }
+        return map;
+      }
+      function buildSectionId(title) {
+        if (!title) return "section_sin_seccion";
+        const slug = title.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
+        return "section_" + (slug || "sin_seccion");
+      }
+      function buildSectionConditionalVisibility(title) {
+        if (!title) return null;
+        const normalized = title.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+        const m = normalized.match(/beneficiario\s*(\d+)/);
+        if (m) {
+          const n = parseInt(m[1], 10);
+          if (n >= 2) {
+            const prevField = "field_beneficiario_" + (n - 1) + "_nombre";
+            return JSON.stringify({
+              logic: "and",
+              conditions: [{ fieldId: prevField, operator: "not_empty" }]
+            });
+          }
+        }
+        return null;
+      }
+      function buildField(row, order, warnings) {
+        const sourceName = row.sourceName || row.acroFormPropuesto || "";
+        const fieldType = resolveFieldType(row);
+        const options = resolveOptions(row, fieldType, sourceName, warnings);
+        const prefillMode = determinePrefillMode(sourceName, row.pathPrincipal, row.grupo);
+        const helpText = getHelpText(sourceName);
+        const defaultValue = resolveDefaultValue(sourceName);
+        const readOnly = resolveReadOnly(sourceName);
+        const conditionalVis = resolveFieldConditionalVisibility(row);
+        const field = {
+          id: "field_" + sourceName,
+          type: fieldType,
+          label: row.etiqueta || sourceName,
+          required: row.obligatorio === true,
+          readOnly,
+          defaultValue,
+          order,
+          options: options || [],
+          sourceMeta: {
+            sourceName,
+            page: row.pagina || null,
+            nativeType: row.tipo === "Tx" ? "Text" : row.tipo === "Btn" ? "Button" : row.tipo,
+            rect: { X: 0, Y: 0, Width: 0, Height: 0 }
+          },
+          prefillKey: row.pathPrincipal || null,
+          prefillMode,
+          salidaJSON: row.pathPrincipal || null,
+          jsonOutputPath: row.pathPrincipal || null,
+          conditionalVisibility: conditionalVis,
+          helpText,
+          placeholder: null
+        };
+        if (row.maxLength && fieldType !== "select" && fieldType !== "radio" && fieldType !== "checkbox") {
+          field.maxLength = row.maxLength;
+        }
+        if (row.patron && sourceName !== "solicitud_lugar") {
+          field.validationPattern = row.patron;
+        }
+        if (row.pathsSecundarios) {
+          field.pathsSecundarios = row.pathsSecundarios;
+        }
+        return field;
+      }
+      function resolveFieldType(row) {
+        const formato = String(row.formato || "").toLowerCase();
+        if (formato === "fecha") return "date";
+        if (formato === "num\xE9rico" || formato === "numerico") return "number";
+        const sn = String(row.sourceName || "").toLowerCase();
+        if (sn.endsWith("_dia") || sn.endsWith("_mes") || sn.endsWith("_ano")) return "select";
+        const tipo = String(row.tipo || "").trim();
+        const grupo = String(row.grupo || "").trim();
+        if (tipo === "Btn" && grupo) return "radio";
+        if (tipo === "Btn") return "checkbox";
+        if (row.catalogoNombre || row.opcionesLovable && row.opcionesLovable.length > 0) {
+          return "select";
+        }
+        return "text";
+      }
+      function resolveOptions(row, fieldType, sourceName, warnings) {
+        const dateOpts = getDateOptions(sourceName);
+        if (dateOpts) {
+          return dateOpts.map((o) => ({ value: o.value, label: o.label }));
+        }
+        if (row.opcionesLovable && Array.isArray(row.opcionesLovable) && row.opcionesLovable.length > 0) {
+          return row.opcionesLovable;
+        }
+        if (row.catalogoNombre) {
+          const catalog = resolveCatalog(row.catalogoNombre, row.grupo);
+          if (catalog) return catalog;
+          if (fieldType === "select") {
+            warnings.push({
+              type: "catalog_not_found",
+              field: sourceName,
+              catalog: row.catalogoNombre,
+              reason: `Cat\xE1logo "${row.catalogoNombre}" no encontrado \u2014 field queda como text`
+            });
+          }
+        }
+        return null;
+      }
+      function resolveDefaultValue(sourceName) {
+        if (!sourceName) return null;
+        const m = sourceName.match(/^beneficiario_(\d+)_numero$/);
+        if (m) return parseInt(m[1], 10);
+        return null;
+      }
+      function resolveReadOnly(sourceName) {
+        if (!sourceName) return false;
+        return /^beneficiario_\d+_numero$/.test(sourceName);
+      }
+      function resolveFieldConditionalVisibility(row) {
+        if (!row.visibilidadCondicional) return null;
+        return row.visibilidadCondicional;
+      }
+      function wireRadioGroups(allFields) {
+        const groups = /* @__PURE__ */ new Map();
+        for (const { field, row } of allFields) {
+          if (field.type !== "radio" || !row.grupo) continue;
+          const key = row.seccionPdf + "::" + row.grupo;
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(field);
+        }
+        for (const [, members] of groups) {
+          if (members.length < 2) continue;
+          for (const field of members) {
+            field.radioGroupFields = members.filter((m) => m.id !== field.id).map((m) => m.id);
+          }
+        }
+      }
+      function computeStats(sections) {
+        let totalFields = 0;
+        let withRequired = 0;
+        let withOptions = 0;
+        let withPrefill = 0;
+        let withConditional = 0;
+        let withHelpText = 0;
+        let mandatory = 0;
+        let optional = 0;
+        let hidden = 0;
+        const types = {};
+        for (const section of sections) {
+          for (const field of section.fields) {
+            totalFields++;
+            if (field.required) withRequired++;
+            if (field.options && field.options.length > 0) withOptions++;
+            if (field.prefillKey) withPrefill++;
+            if (field.conditionalVisibility) withConditional++;
+            if (field.helpText) withHelpText++;
+            if (field.prefillMode === "mandatory") mandatory++;
+            if (field.prefillMode === "optional") optional++;
+            if (field.readOnly && section.conditionalVisibility === NEVER_VISIBLE) hidden++;
+            types[field.type] = (types[field.type] || 0) + 1;
+          }
+        }
+        return {
+          totalSections: sections.length,
+          totalFields,
+          withRequired,
+          withOptions,
+          withPrefill,
+          withConditional,
+          withHelpText,
+          mandatory,
+          optional,
+          hidden,
+          types
+        };
+      }
+      module.exports = {
+        buildEnrichedJson,
+        _internal: {
+          groupBySection,
+          buildSectionId,
+          buildSectionConditionalVisibility,
+          buildField,
+          resolveFieldType,
+          resolveOptions,
+          resolveDefaultValue,
+          wireRadioGroups,
+          computeStats
+        }
+      };
+    }
+  });
+
+  // src/pdf-converter-v2/index.js
+  var require_pdf_converter_v2 = __commonJS({
+    "src/pdf-converter-v2/index.js"(exports, module) {
+      "use strict";
+      var JSZip = require_jszip_min();
+      var { readMappingExcel, buildRenameMapping } = require_excel_reader();
+      var { renamePdf } = require_pdf_renamer();
+      var { buildEnrichedJson } = require_json_enricher();
+      var FORMULARIO_CODES = {
+        "1009052": { name: "Vida_Colectiva", tag: "VCA" },
+        "D0306": { name: "Vida_Universal", tag: "VUA" },
+        "D0309": { name: "Proteccion_Crediticia", tag: "PCA" }
+      };
+      async function convertPdf(pdfBytes, excelBytes, options) {
+        const opts = options || {};
+        const allWarnings = [];
+        const { rows: excelRows, warnings: excelWarnings } = readMappingExcel(excelBytes);
+        allWarnings.push(...excelWarnings);
+        if (!excelRows.length) {
+          throw new Error("El Excel de mapeo no tiene filas de datos");
+        }
+        const renameMapping = buildRenameMapping(excelRows);
+        const {
+          pdfBytes: renamedPdfBytes,
+          warnings: renameWarnings,
+          renamedCount,
+          summary: renameSummary
+        } = await renamePdf(pdfBytes, renameMapping);
+        allWarnings.push(...renameWarnings);
+        const {
+          json: enrichedJson,
+          warnings: jsonWarnings,
+          stats: jsonStats
+        } = buildEnrichedJson(excelRows);
+        allWarnings.push(...jsonWarnings);
+        const code = opts.formularioCode || detectFormularioCode(excelRows);
+        const formInfo = FORMULARIO_CODES[code] || { name: code || "Formulario", tag: "" };
+        const baseName = code ? code + "_" + formInfo.name : "Formulario";
+        const zip = new JSZip();
+        zip.file(baseName + "_renamed.pdf", renamedPdfBytes);
+        zip.file(
+          "form-definition-" + (code || "formulario") + "_enriched.json",
+          JSON.stringify(enrichedJson, null, 2)
+        );
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        const zipFilename = baseName + ".zip";
+        return {
+          zipBlob,
+          zipFilename,
+          renamedPdfBytes,
+          enrichedJson,
+          warnings: allWarnings,
+          stats: {
+            excelRows: excelRows.length,
+            renamedCount,
+            renameSummary,
+            json: jsonStats
+          }
+        };
+      }
+      function detectFormularioCode(rows) {
+        for (const row of rows) {
+          const actual = row.acroFormActual || "";
+          if (/Text3\.\d+\.\d+/.test(actual) || /Check\s*Box4/.test(actual)) {
+            return "1009052";
+          }
+        }
+        return null;
+      }
+      module.exports = { convertPdf, FORMULARIO_CODES };
+    }
+  });
+
+  // src/pdf-converter-v2/ui/pdf-preview.js
+  var require_pdf_preview = __commonJS({
+    "src/pdf-converter-v2/ui/pdf-preview.js"(exports, module) {
+      "use strict";
+      async function renderPdfPreview(pdfBytes, container, pdfjsLib) {
+        container.innerHTML = "";
+        const webWorker = new Worker("pdf.worker.min.mjs", { type: "module" });
+        const pdfWorker = new pdfjsLib.PDFWorker({ port: webWorker });
+        let doc;
+        try {
+          doc = await pdfjsLib.getDocument({ data: pdfBytes.slice(), worker: pdfWorker }).promise;
+        } catch (err) {
+          container.innerHTML = '<div class="v2-preview-placeholder">Error al cargar PDF: ' + escapeHtml(err.message) + "</div>";
+          webWorker.terminate();
+          return { destroy: function() {
+          } };
+        }
+        const numPages = doc.numPages;
+        for (let p = 1; p <= numPages; p++) {
+          const page = await doc.getPage(p);
+          const baseViewport = page.getViewport({ scale: 1 });
+          const containerWidth = container.clientWidth - 48;
+          const scale = Math.max(containerWidth / baseViewport.width, 1);
+          const viewport = page.getViewport({ scale });
+          const pageDiv = document.createElement("div");
+          pageDiv.className = "v2-page";
+          pageDiv.style.width = Math.floor(viewport.width) + "px";
+          var label = document.createElement("div");
+          label.className = "v2-page-label";
+          label.textContent = "P\xE1gina " + p + " de " + numPages;
+          pageDiv.appendChild(label);
+          var canvas = document.createElement("canvas");
+          canvas.width = Math.floor(viewport.width);
+          canvas.height = Math.floor(viewport.height);
+          pageDiv.appendChild(canvas);
+          await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+          container.appendChild(pageDiv);
+        }
+        return {
+          numPages,
+          destroy: function() {
+            pdfWorker.destroy();
+            webWorker.terminate();
+            container.innerHTML = "";
+          }
+        };
+      }
+      function escapeHtml(s) {
+        return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      }
+      module.exports = { renderPdfPreview };
+    }
+  });
+
   // src/browser.js
   var require_browser = __commonJS({
     "src/browser.js"(exports, module) {
@@ -94126,10 +95310,24 @@ ${pagesHtml}</body>
         }
         return matrixEditor.crossMatrixWithPdfs(rows, pdfEntries);
       }
-      if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario };
+      async function runConvertPdfV2(inputs) {
+        const { pdfFile, excelFile, formularioCode } = inputs;
+        if (!pdfFile) throw new Error("Carg\xE1 el PDF original");
+        if (!excelFile) throw new Error("Carg\xE1 el Excel de mapeo (22 columnas)");
+        const pdfBytes = await fileToUint8Array(pdfFile);
+        const excelBytes = await fileToUint8Array(excelFile);
+        const { convertPdf } = require_pdf_converter_v2();
+        return convertPdf(pdfBytes, excelBytes, { formularioCode });
       }
-      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario };
+      function renderPdfPreviewV2(pdfBytes, container) {
+        const pdfjsLib = (init_pdf(), __toCommonJS(pdf_exports));
+        const { renderPdfPreview } = require_pdf_preview();
+        return renderPdfPreview(pdfBytes, container, pdfjsLib);
+      }
+      if (typeof window !== "undefined") {
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2 };
+      }
+      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2 };
     }
   });
   return require_browser();

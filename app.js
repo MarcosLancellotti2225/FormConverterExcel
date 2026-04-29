@@ -14,6 +14,7 @@
         wireBackButton();
         initEnrichJsonFlow();
         initConvertPdfFlow();
+        initConvertPdfV2Flow();
         initPdfToHtmlFlow();
         initMatrixEditorFlow();
 
@@ -39,6 +40,7 @@
         currentMode = mode;
         $('#modeSelector').hidden = !!mode;
         $('#convertPdfFlow').hidden = mode !== 'convert-pdf';
+        $('#convertPdfV2Flow').hidden = mode !== 'convert-pdf-v2';
         $('#pdfToHtmlFlow').hidden = mode !== 'pdf-to-html';
         $('#enrichJsonFlow').hidden = mode !== 'enrich-json';
         $('#matrixEditorFlow').hidden = mode !== 'matrix-editor';
@@ -609,6 +611,169 @@
         var blob = new Blob([JSON.stringify(debug, null, 2)], { type: 'application/json' });
         var name = (convState.pdf ? convState.pdf.name.replace(/\.pdf$/i, '') : 'convert') + '_debug.json';
         InsPipelineBundle.downloadBlob(blob, name);
+    }
+
+    // ==================== CONVERT PDF V2 FLOW ====================
+
+    var v2State = {
+        pdf: null,
+        excel: null,
+        pdfBytes: null,
+        preview: null,
+        result: null
+    };
+
+    function initConvertPdfV2Flow() {
+        $('#v2PdfInput').addEventListener('change', function(e) {
+            v2State.pdf = e.target.files[0] || null;
+            var el = $('#v2PdfStatus');
+            if (v2State.pdf) {
+                el.textContent = '✓ ' + v2State.pdf.name + ' (' + formatSize(v2State.pdf.size) + ')';
+                loadV2PdfPreview();
+            } else {
+                el.textContent = '';
+                clearV2Preview();
+            }
+            refreshV2ProcessButton();
+        });
+        $('#v2ExcelInput').addEventListener('change', function(e) {
+            v2State.excel = e.target.files[0] || null;
+            var el = $('#v2ExcelStatus');
+            if (v2State.excel) {
+                el.textContent = '✓ ' + v2State.excel.name + ' (' + formatSize(v2State.excel.size) + ')';
+            } else {
+                el.textContent = '';
+            }
+            refreshV2ProcessButton();
+        });
+        $('#btnV2Process').addEventListener('click', runV2Process);
+        $('#btnV2Download').addEventListener('click', downloadV2Zip);
+        $('#v2WarningsToggle').addEventListener('click', function() {
+            var panel = $('#v2WarningsPanel');
+            panel.hidden = !panel.hidden;
+            this.textContent = panel.hidden ? '▼ Warnings' : '▲ Warnings';
+        });
+    }
+
+    function refreshV2ProcessButton() {
+        $('#btnV2Process').disabled = !(v2State.pdf && v2State.excel);
+    }
+
+    async function loadV2PdfPreview() {
+        if (!v2State.pdf) return;
+        var container = $('#v2PreviewContainer');
+        container.innerHTML = '<div class="v2-preview-placeholder">Cargando preview...</div>';
+
+        try {
+            var ab = await v2State.pdf.arrayBuffer();
+            v2State.pdfBytes = new Uint8Array(ab);
+            if (v2State.preview) v2State.preview.destroy();
+            v2State.preview = await InsPipelineBundle.renderPdfPreviewV2(v2State.pdfBytes, container);
+            $('#v2PageInfo').textContent = v2State.preview.numPages + ' página' + (v2State.preview.numPages > 1 ? 's' : '');
+        } catch (err) {
+            container.innerHTML = '<div class="v2-preview-placeholder">Error: ' + escapeHtml(err.message) + '</div>';
+        }
+    }
+
+    function clearV2Preview() {
+        if (v2State.preview) {
+            v2State.preview.destroy();
+            v2State.preview = null;
+        }
+        $('#v2PreviewContainer').innerHTML = '<div class="v2-preview-placeholder">Cargá un PDF para ver el preview</div>';
+        $('#v2PageInfo').textContent = '';
+    }
+
+    function validateV2Inputs() {
+        var errors = [];
+        if (!v2State.pdf) errors.push('Falta el PDF original.');
+        else if (!/\.pdf$/i.test(v2State.pdf.name)) errors.push('El archivo "' + v2State.pdf.name + '" no es un PDF.');
+        if (!v2State.excel) errors.push('Falta el Excel de mapeo.');
+        else if (!/\.xlsx?$/i.test(v2State.excel.name)) errors.push('El archivo "' + v2State.excel.name + '" no es un Excel (.xlsx/.xls).');
+        return errors;
+    }
+
+    async function runV2Process() {
+        var resultEl = $('#v2ResultInfo');
+        var inputErrors = validateV2Inputs();
+        if (inputErrors.length) {
+            resultEl.className = 'v2-result-info error';
+            resultEl.textContent = '✗ ' + inputErrors.join(' ');
+            return;
+        }
+
+        resultEl.className = 'v2-result-info processing';
+        resultEl.textContent = '⟳ Leyendo Excel y validando columnas...';
+        $('#btnV2Process').disabled = true;
+
+        try {
+            var t0 = performance.now();
+            var result = await InsPipelineBundle.runConvertPdfV2({
+                pdfFile: v2State.pdf,
+                excelFile: v2State.excel
+            });
+            var t1 = performance.now();
+
+            v2State.result = result;
+
+            resultEl.className = 'v2-result-info';
+            var jsonStats = result.stats.json || {};
+            resultEl.textContent = '✓ ' + result.stats.renamedCount + '/' + result.stats.excelRows +
+                ' AcroForm renombrados · ' + (jsonStats.totalFields || 0) + ' fields en ' +
+                (jsonStats.totalSections || '?') + ' secciones · ' +
+                Math.round(t1 - t0) + 'ms';
+
+            $('#btnV2Download').disabled = false;
+
+            if (result.renamedPdfBytes) {
+                var container = $('#v2PreviewContainer');
+                if (v2State.preview) v2State.preview.destroy();
+                v2State.preview = await InsPipelineBundle.renderPdfPreviewV2(result.renamedPdfBytes, container);
+                $('#v2PageInfo').textContent = v2State.preview.numPages + ' página' + (v2State.preview.numPages > 1 ? 's' : '') + ' (renombrado)';
+            }
+
+            renderV2Warnings(result.warnings);
+        } catch (err) {
+            console.error(err);
+            resultEl.className = 'v2-result-info error';
+            resultEl.textContent = '✗ ' + err.message;
+        }
+
+        refreshV2ProcessButton();
+    }
+
+    function renderV2Warnings(warnings) {
+        var toggle = $('#v2WarningsToggle');
+        var panel = $('#v2WarningsPanel');
+        if (!warnings || !warnings.length) {
+            toggle.hidden = true;
+            panel.hidden = true;
+            return;
+        }
+
+        toggle.hidden = false;
+        toggle.textContent = '▼ ' + warnings.length + ' warning' + (warnings.length > 1 ? 's' : '');
+
+        var groups = {};
+        warnings.forEach(function(w) {
+            var key = w.type || 'other';
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(w);
+        });
+
+        var lines = [];
+        Object.keys(groups).forEach(function(type) {
+            lines.push('── ' + type + ' (' + groups[type].length + ') ──');
+            groups[type].forEach(function(w) {
+                lines.push('  ' + (w.field || '') + (w.field ? ' — ' : '') + (w.reason || w.message || ''));
+            });
+        });
+        panel.textContent = lines.join('\n');
+    }
+
+    function downloadV2Zip() {
+        if (!v2State.result) return;
+        InsPipelineBundle.downloadBlob(v2State.result.zipBlob, v2State.result.zipFilename);
     }
 
     // ==================== PDF TO HTML FLOW ====================

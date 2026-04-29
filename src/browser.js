@@ -425,8 +425,26 @@ async function matrixCrossWithPdfs(rows, pdfFiles) {
     return matrixEditor.crossMatrixWithPdfs(rows, pdfEntries);
 }
 
-if (typeof window !== 'undefined') {
-    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario };
+async function runConvertPdfV2(inputs) {
+    const { pdfFile, excelFile, formularioCode } = inputs;
+    if (!pdfFile) throw new Error('Cargá el PDF original');
+    if (!excelFile) throw new Error('Cargá el Excel de mapeo (22 columnas)');
+
+    const pdfBytes = await fileToUint8Array(pdfFile);
+    const excelBytes = await fileToUint8Array(excelFile);
+
+    const { convertPdf } = require('./pdf-converter-v2/index');
+    return convertPdf(pdfBytes, excelBytes, { formularioCode });
 }
 
-module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario };
+function renderPdfPreviewV2(pdfBytes, container) {
+    const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.mjs');
+    const { renderPdfPreview } = require('./pdf-converter-v2/ui/pdf-preview');
+    return renderPdfPreview(pdfBytes, container, pdfjsLib);
+}
+
+if (typeof window !== 'undefined') {
+    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2 };
+}
+
+module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2 };
