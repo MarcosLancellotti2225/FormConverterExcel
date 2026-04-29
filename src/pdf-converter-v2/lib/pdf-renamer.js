@@ -85,6 +85,17 @@ async function renamePdf(pdfBytes, renameMapping) {
 
     acroForm.set(PDFName.of('Fields'), newRootFields);
 
+    const leafNames = new Set(leaves.map(l => l.fullName));
+    for (const [oldName, newName] of nameMap) {
+        if (!leafNames.has(oldName)) {
+            warnings.push({
+                type: 'rename_failed',
+                field: oldName,
+                reason: `AcroForm "${oldName}" del Excel no existe en el PDF`,
+            });
+        }
+    }
+
     const savedBytes = await doc.save({ updateFieldAppearances: false });
 
     const verifyResult = await verifyRenamedPdf(savedBytes, renamedFields);
