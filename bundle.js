@@ -94047,6 +94047,8 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           warnings,
           renamedCount,
           renamedFields,
+          pdfLeaves: leaves.map((l) => l.fullName),
+          intendedMapping: Array.from(nameMap, ([o, n]) => ({ oldName: o, newName: n })),
           summary: {
             totalLeaves: leaves.length,
             renamed: renamedCount,
@@ -94846,6 +94848,8 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           warnings: renameWarnings,
           renamedCount,
           renamedFields,
+          pdfLeaves,
+          intendedMapping,
           summary: renameSummary
         } = await renamePdf(pdfBytes, renameMapping);
         allWarnings.push(...renameWarnings);
@@ -94872,6 +94876,8 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           renamedPdfBytes,
           enrichedJson,
           renamedFields: renamedFields || [],
+          pdfLeaves: pdfLeaves || [],
+          intendedMapping: intendedMapping || [],
           warnings: allWarnings,
           stats: {
             excelRows: excelRows.length,

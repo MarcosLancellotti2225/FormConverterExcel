@@ -226,6 +226,36 @@
     color: #28a745;
 }
 
+.v2-rename-table .v2-col-status {
+    font-family: inherit;
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+.v2-rename-table .v2-status-ok {
+    color: #28a745;
+}
+
+.v2-rename-table .v2-status-no-match {
+    color: #dc3545;
+}
+
+.v2-rename-table .v2-status-orphan {
+    color: #fd7e14;
+}
+
+.v2-rename-table tr.v2-row-ok td {
+    background: #f0fff0;
+}
+
+.v2-rename-table tr.v2-row-no-match td {
+    background: #fff5f5;
+}
+
+.v2-rename-table tr.v2-row-orphan td {
+    background: #fff8e1;
+}
+
 /* ── Status bar ── */
 .v2-status-bar {
     display: flex;

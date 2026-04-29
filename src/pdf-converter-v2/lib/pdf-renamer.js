@@ -112,6 +112,8 @@ async function renamePdf(pdfBytes, renameMapping) {
         warnings,
         renamedCount,
         renamedFields,
+        pdfLeaves: leaves.map(l => l.fullName),
+        intendedMapping: Array.from(nameMap, ([o, n]) => ({ oldName: o, newName: n })),
         summary: {
             totalLeaves: leaves.length,
             renamed: renamedCount,

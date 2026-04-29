@@ -742,7 +742,7 @@
                 $('#v2PageInfo').textContent = v2State.preview.numPages + ' página' + (v2State.preview.numPages > 1 ? 's' : '') + ' (renombrado)';
             }
 
-            renderV2RenameTable(result.renamedFields || []);
+            renderV2RenameTable(result);
             renderV2Warnings(result.warnings);
         } catch (err) {
             console.error(err);
@@ -753,28 +753,65 @@
         refreshV2ProcessButton();
     }
 
-    function renderV2RenameTable(fields) {
+    function renderV2RenameTable(result) {
         var panel = $('#v2RenameTablePanel');
         var tbody = $('#v2RenameTableBody');
         var countEl = $('#v2RenameCount');
 
-        if (!fields || !fields.length) {
+        var renamedFields = result.renamedFields || [];
+        var intendedMapping = result.intendedMapping || [];
+        var pdfLeaves = result.pdfLeaves || [];
+
+        if (!intendedMapping.length && !pdfLeaves.length) {
             panel.hidden = true;
             return;
         }
 
+        var renamedSet = new Set(renamedFields.map(function(f) { return f.oldName; }));
+        var mappedOldNames = new Set(intendedMapping.map(function(f) { return f.oldName; }));
+
+        var rows = [];
+
+        for (var i = 0; i < intendedMapping.length; i++) {
+            var m = intendedMapping[i];
+            var matched = renamedSet.has(m.oldName);
+            rows.push({
+                pdfName: m.oldName,
+                newName: m.newName,
+                status: matched ? 'ok' : 'no-match',
+                statusLabel: matched ? '✓ Renombrado' : '✗ No encontrado en PDF',
+            });
+        }
+
+        for (var j = 0; j < pdfLeaves.length; j++) {
+            var leaf = pdfLeaves[j];
+            if (!mappedOldNames.has(leaf)) {
+                rows.push({
+                    pdfName: leaf,
+                    newName: '',
+                    status: 'orphan',
+                    statusLabel: '⚠ Sin mapeo en Excel',
+                });
+            }
+        }
+
         panel.hidden = false;
-        countEl.textContent = fields.length + ' campo' + (fields.length > 1 ? 's' : '');
+        var okCount = rows.filter(function(r) { return r.status === 'ok'; }).length;
+        var failCount = rows.filter(function(r) { return r.status === 'no-match'; }).length;
+        var orphanCount = rows.filter(function(r) { return r.status === 'orphan'; }).length;
+        countEl.textContent = okCount + ' renombrados · ' + failCount + ' sin match · ' + orphanCount + ' huérfanos';
 
         tbody.innerHTML = '';
-        for (var i = 0; i < fields.length; i++) {
-            var f = fields[i];
+        for (var k = 0; k < rows.length; k++) {
+            var r = rows[k];
             var tr = document.createElement('tr');
+            tr.className = 'v2-row-' + r.status;
             tr.innerHTML =
-                '<td class="v2-col-num">' + (i + 1) + '</td>' +
-                '<td class="v2-col-old">' + escapeHtml(f.oldName) + '</td>' +
-                '<td class="v2-col-arrow">→</td>' +
-                '<td class="v2-col-new">' + escapeHtml(f.newName) + '</td>';
+                '<td class="v2-col-num">' + (k + 1) + '</td>' +
+                '<td class="v2-col-old">' + escapeHtml(r.pdfName) + '</td>' +
+                '<td class="v2-col-arrow">' + (r.newName ? '→' : '') + '</td>' +
+                '<td class="v2-col-new">' + escapeHtml(r.newName) + '</td>' +
+                '<td class="v2-col-status v2-status-' + r.status + '">' + r.statusLabel + '</td>';
             tbody.appendChild(tr);
         }
     }
