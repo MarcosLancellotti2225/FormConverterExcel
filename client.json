@@ -1,0 +1,64 @@
+{
+  "encabezado": {
+    "codigoTipoFormulario": "GMC01",
+    "descripcionTipoFormulario": "Gastos médicos abreviado",
+    "codigoTipoTramite": "EMI",
+    "descripcionTipoTramite": "Nuevo Seguro",
+    "identificadorTransaccionInterno": "INS_SP_P14_VUC04_I_20260226_01_0002345_A_3_003101855649",
+    "correoElectronico": "cliente@example.com",
+    "codigoProducto": "673",
+    "descripcionProducto": "Gastos médicos colectivo regional",
+    "nombreCompletoCliente": "María Del Carmen Gutierrez",
+    "identificadorArchivo": "GMC01_2026_001.pdf"
+  },
+  "datosFormulario": {
+    "lugar": "San José",
+    "fechaCreacion": "2026-04-26",
+    "intermediario": {
+      "codigo": "1100340",
+      "identificacion": "102220333",
+      "correoElectronico": "correo@dominio.com",
+      "codigoTipoIdentificacion": "0",
+      "nombreCompleto": "José Perez"
+    },
+    "polizaMadre": {
+      "numeroPoliza": "0101GFL0000001",
+      "vigenciaDesde": "2026-01-01",
+      "vigenciaHasta": "2027-01-01",
+      "codigoMoneda": "CRC",
+      "descripcionFormaPago": "Mensual",
+      "nombreTomador": "Empresa S.A.",
+      "identificacionTomador": "102220333",
+      "codigoTipoIdentificacionTomador": 0,
+      "descripcionTipoIdentificacionTomador": "Física Nacional"
+    },
+    "personas": [
+      {
+        "codigoTipo": "ASG",
+        "descripcionTipo": "Asegurado directo",
+        "codigoTipoIdentificacion": "0",
+        "numeroIdentificacion": "111111111",
+        "correoElectronico": "jperez@example.com",
+        "nombreCompleto": "Juan Carlos Perez Hidalgo",
+        "primerApellido": "Perez",
+        "segundoApellido": "Hidalgo",
+        "primerNombre": "Juan",
+        "segundoNombre": "Carlos",
+        "fechaNacimiento": "1980-01-01",
+        "edad": 44,
+        "codigoEstadoCivil": "1",
+        "descripcionEstadoCivil": "Soltero",
+        "codigoGenero": "M",
+        "peso": 84,
+        "estatura": "1.80",
+        "telefonoMovil": "85963246",
+        "direccion": {
+          "codigoProvincia": 1,
+          "codigoCanton": 2,
+          "codigoDistrito": 10,
+          "direccionExacta": "Av. 2 Calle 3 Casa 4"
+        }
+      }
+    ]
+  }
+}

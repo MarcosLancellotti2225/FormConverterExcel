@@ -1,0 +1,3813 @@
+{
+  "sections": [
+    {
+      "id": "section_encabezado",
+      "title": "Encabezado (oculto)",
+      "description": null,
+      "instructions": "Esta sección NO se muestra al usuario. Contiene los datos del encabezado que vienen del INS y deben devolverse tal cual.",
+      "conditionalVisibility": "{\"logic\": \"and\", \"conditions\": [{\"fieldId\": \"field_NEVER_EXISTS\", \"operator\": \"not_empty\"}]}",
+      "order": 1,
+      "fields": [
+        {
+          "id": "field_encabezado_codigoTipoFormulario",
+          "type": "select",
+          "label": "Código Tipo Formulario",
+          "required": false,
+          "readOnly": true,
+          "defaultValue": null,
+          "order": 1,
+          "options": [
+            {
+              "value": "GMC01",
+              "label": "Gastos Médicos Abreviado"
+            },
+            {
+              "value": "GMC02",
+              "label": "Gastos Médicos Enrolamiento"
+            },
+            {
+              "value": "GMC03",
+              "label": "Gastos Médicos Completo"
+            },
+            {
+              "value": "VCA01",
+              "label": "Vida Colectiva - Asegurado"
+            },
+            {
+              "value": "VUA01",
+              "label": "Vida Universal Plus Colectivo - Asegurado"
+            },
+            {
+              "value": "PCA01",
+              "label": "Protección Crediticia Colectivo - Asegurado"
+            },
+            {
+              "value": "GMT01",
+              "label": "Gastos Médicos - Tomador"
+            },
+            {
+              "value": "VCT01",
+              "label": "Vida Colectiva - Tomador"
+            },
+            {
+              "value": "VUT01",
+              "label": "Vida Universal Plus Colectivo - Tomador"
+            },
+            {
+              "value": "PCT01",
+              "label": "Protección Crediticia Colectivo - Tomador"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "encabezado_codigoTipoFormulario",
+            "page": 0,
+            "nativeType": "Hidden",
+            "rect": {
+              "X": 0,
+              "Y": 0,
+              "Width": 0,
+              "Height": 0
+            }
+          },
+          "prefillKey": "encabezado.codigoTipoFormulario",
+          "prefillMode": "mandatory",
+          "salidaJSON": "encabezado.codigoTipoFormulario",
+          "jsonOutputPath": "encabezado.codigoTipoFormulario",
+          "conditionalVisibility": null,
+          "helpText": "Campo del sistema — viene del INS y vuelve tal cual"
+        },
+        {
+          "id": "field_encabezado_descripcionTipoFormulario",
+          "type": "text",
+          "label": "Descripción Tipo Formulario",
+          "required": false,
+          "readOnly": true,
+          "defaultValue": null,
+          "order": 2,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "encabezado_descripcionTipoFormulario",
+            "page": 0,
+            "nativeType": "Hidden",
+            "rect": {
+              "X": 0,
+              "Y": 0,
+              "Width": 0,
+              "Height": 0
+            }
+          },
+          "prefillKey": "encabezado.descripcionTipoFormulario",
+          "prefillMode": "mandatory",
+          "salidaJSON": "encabezado.descripcionTipoFormulario",
+          "jsonOutputPath": "encabezado.descripcionTipoFormulario",
+          "conditionalVisibility": null,
+          "helpText": "Campo del sistema — viene del INS y vuelve tal cual"
+        },
+        {
+          "id": "field_encabezado_codigoTipoTramite",
+          "type": "select",
+          "label": "Código Tipo Trámite",
+          "required": false,
+          "readOnly": true,
+          "defaultValue": null,
+          "order": 3,
+          "options": [
+            {
+              "value": "EMI",
+              "label": "Nuevo Seguro"
+            },
+            {
+              "value": "VAR",
+              "label": "Cambios en tu Seguro"
+            },
+            {
+              "value": "CAN",
+              "label": "Dar de Baja tu Seguro"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "encabezado_codigoTipoTramite",
+            "page": 0,
+            "nativeType": "Hidden",
+            "rect": {
+              "X": 0,
+              "Y": 0,
+              "Width": 0,
+              "Height": 0
+            }
+          },
+          "prefillKey": "encabezado.codigoTipoTramite",
+          "prefillMode": "mandatory",
+          "salidaJSON": "encabezado.codigoTipoTramite",
+          "jsonOutputPath": "encabezado.codigoTipoTramite",
+          "conditionalVisibility": null,
+          "helpText": "Campo del sistema — viene del INS y vuelve tal cual"
+        },
+        {
+          "id": "field_encabezado_descripcionTipoTramite",
+          "type": "text",
+          "label": "Descripción Tipo Trámite",
+          "required": false,
+          "readOnly": true,
+          "defaultValue": null,
+          "order": 4,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "encabezado_descripcionTipoTramite",
+            "page": 0,
+            "nativeType": "Hidden",
+            "rect": {
+              "X": 0,
+              "Y": 0,
+              "Width": 0,
+              "Height": 0
+            }
+          },
+          "prefillKey": "encabezado.descripcionTipoTramite",
+          "prefillMode": "mandatory",
+          "salidaJSON": "encabezado.descripcionTipoTramite",
+          "jsonOutputPath": "encabezado.descripcionTipoTramite",
+          "conditionalVisibility": null,
+          "helpText": "Campo del sistema — viene del INS y vuelve tal cual"
+        },
+        {
+          "id": "field_encabezado_identificadorTransaccionInterno",
+          "type": "text",
+          "label": "Identificador Transacción Interno",
+          "required": false,
+          "readOnly": true,
+          "defaultValue": null,
+          "order": 5,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "encabezado_identificadorTransaccionInterno",
+            "page": 0,
+            "nativeType": "Hidden",
+            "rect": {
+              "X": 0,
+              "Y": 0,
+              "Width": 0,
+              "Height": 0
+            }
+          },
+          "prefillKey": "encabezado.identificadorTransaccionInterno",
+          "prefillMode": "mandatory",
+          "salidaJSON": "encabezado.identificadorTransaccionInterno",
+          "jsonOutputPath": "encabezado.identificadorTransaccionInterno",
+          "conditionalVisibility": null,
+          "helpText": "Campo del sistema — viene del INS y vuelve tal cual"
+        },
+        {
+          "id": "field_encabezado_correoElectronico",
+          "type": "text",
+          "label": "Correo Electrónico (Encabezado)",
+          "required": false,
+          "readOnly": true,
+          "defaultValue": null,
+          "order": 6,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "encabezado_correoElectronico",
+            "page": 0,
+            "nativeType": "Hidden",
+            "rect": {
+              "X": 0,
+              "Y": 0,
+              "Width": 0,
+              "Height": 0
+            }
+          },
+          "prefillKey": "encabezado.correoElectronico",
+          "prefillMode": "mandatory",
+          "salidaJSON": "encabezado.correoElectronico",
+          "jsonOutputPath": "encabezado.correoElectronico",
+          "conditionalVisibility": null,
+          "helpText": "Campo del sistema — viene del INS y vuelve tal cual"
+        },
+        {
+          "id": "field_encabezado_codigoProducto",
+          "type": "text",
+          "label": "Código Producto",
+          "required": false,
+          "readOnly": true,
+          "defaultValue": null,
+          "order": 7,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "encabezado_codigoProducto",
+            "page": 0,
+            "nativeType": "Hidden",
+            "rect": {
+              "X": 0,
+              "Y": 0,
+              "Width": 0,
+              "Height": 0
+            }
+          },
+          "prefillKey": "encabezado.codigoProducto",
+          "prefillMode": "mandatory",
+          "salidaJSON": "encabezado.codigoProducto",
+          "jsonOutputPath": "encabezado.codigoProducto",
+          "conditionalVisibility": null,
+          "helpText": "Campo del sistema — viene del INS y vuelve tal cual"
+        },
+        {
+          "id": "field_encabezado_descripcionProducto",
+          "type": "text",
+          "label": "Descripción Producto",
+          "required": false,
+          "readOnly": true,
+          "defaultValue": null,
+          "order": 8,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "encabezado_descripcionProducto",
+            "page": 0,
+            "nativeType": "Hidden",
+            "rect": {
+              "X": 0,
+              "Y": 0,
+              "Width": 0,
+              "Height": 0
+            }
+          },
+          "prefillKey": "encabezado.descripcionProducto",
+          "prefillMode": "mandatory",
+          "salidaJSON": "encabezado.descripcionProducto",
+          "jsonOutputPath": "encabezado.descripcionProducto",
+          "conditionalVisibility": null,
+          "helpText": "Campo del sistema — viene del INS y vuelve tal cual"
+        },
+        {
+          "id": "field_encabezado_nombreCompletoCliente",
+          "type": "text",
+          "label": "Nombre Completo Cliente",
+          "required": false,
+          "readOnly": true,
+          "defaultValue": null,
+          "order": 9,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "encabezado_nombreCompletoCliente",
+            "page": 0,
+            "nativeType": "Hidden",
+            "rect": {
+              "X": 0,
+              "Y": 0,
+              "Width": 0,
+              "Height": 0
+            }
+          },
+          "prefillKey": "encabezado.nombreCompletoCliente",
+          "prefillMode": "mandatory",
+          "salidaJSON": "encabezado.nombreCompletoCliente",
+          "jsonOutputPath": "encabezado.nombreCompletoCliente",
+          "conditionalVisibility": null,
+          "helpText": "Campo del sistema — viene del INS y vuelve tal cual"
+        },
+        {
+          "id": "field_encabezado_identificadorArchivo",
+          "type": "text",
+          "label": "Identificador Archivo",
+          "required": false,
+          "readOnly": true,
+          "defaultValue": null,
+          "order": 10,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "encabezado_identificadorArchivo",
+            "page": 0,
+            "nativeType": "Hidden",
+            "rect": {
+              "X": 0,
+              "Y": 0,
+              "Width": 0,
+              "Height": 0
+            }
+          },
+          "prefillKey": "encabezado.identificadorArchivo",
+          "prefillMode": "mandatory",
+          "salidaJSON": "encabezado.identificadorArchivo",
+          "jsonOutputPath": "encabezado.identificadorArchivo",
+          "conditionalVisibility": null,
+          "helpText": "Campo del sistema — viene del INS y vuelve tal cual"
+        }
+      ]
+    },
+    {
+      "id": "section_solicitud_lugar_fecha",
+      "title": "Lugar y Fecha de Solicitud",
+      "description": null,
+      "instructions": null,
+      "conditionalVisibility": null,
+      "order": 2,
+      "fields": [
+        {
+          "id": "field_solicitud_lugar",
+          "type": "text",
+          "label": "Lugar",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 1,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "solicitud_lugar",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 62.8361,
+              "Y": 666.219,
+              "Width": 518.7489,
+              "Height": 15.184999999999945
+            }
+          },
+          "prefillKey": "datosFormulario.lugar",
+          "prefillMode": "optional",
+          "placeholder": "Lugar",
+          "salidaJSON": "datosFormulario.lugar",
+          "jsonOutputPath": "datosFormulario.lugar",
+          "conditionalVisibility": null,
+          "helpText": "Indique la ciudad o localidad donde firma la solicitud"
+        },
+        {
+          "id": "field_solicitud_fecha_dia",
+          "type": "select",
+          "label": "Día (Solicitud)",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 2,
+          "options": [
+            {
+              "label": "1",
+              "pdfValue": "01",
+              "jsonValue": "1"
+            },
+            {
+              "label": "2",
+              "pdfValue": "02",
+              "jsonValue": "2"
+            },
+            {
+              "label": "3",
+              "pdfValue": "03",
+              "jsonValue": "3"
+            },
+            {
+              "label": "4",
+              "pdfValue": "04",
+              "jsonValue": "4"
+            },
+            {
+              "label": "5",
+              "pdfValue": "05",
+              "jsonValue": "5"
+            },
+            {
+              "label": "6",
+              "pdfValue": "06",
+              "jsonValue": "6"
+            },
+            {
+              "label": "7",
+              "pdfValue": "07",
+              "jsonValue": "7"
+            },
+            {
+              "label": "8",
+              "pdfValue": "08",
+              "jsonValue": "8"
+            },
+            {
+              "label": "9",
+              "pdfValue": "09",
+              "jsonValue": "9"
+            },
+            {
+              "label": "10",
+              "pdfValue": "10",
+              "jsonValue": "10"
+            },
+            {
+              "label": "11",
+              "pdfValue": "11",
+              "jsonValue": "11"
+            },
+            {
+              "label": "12",
+              "pdfValue": "12",
+              "jsonValue": "12"
+            },
+            {
+              "label": "13",
+              "pdfValue": "13",
+              "jsonValue": "13"
+            },
+            {
+              "label": "14",
+              "pdfValue": "14",
+              "jsonValue": "14"
+            },
+            {
+              "label": "15",
+              "pdfValue": "15",
+              "jsonValue": "15"
+            },
+            {
+              "label": "16",
+              "pdfValue": "16",
+              "jsonValue": "16"
+            },
+            {
+              "label": "17",
+              "pdfValue": "17",
+              "jsonValue": "17"
+            },
+            {
+              "label": "18",
+              "pdfValue": "18",
+              "jsonValue": "18"
+            },
+            {
+              "label": "19",
+              "pdfValue": "19",
+              "jsonValue": "19"
+            },
+            {
+              "label": "20",
+              "pdfValue": "20",
+              "jsonValue": "20"
+            },
+            {
+              "label": "21",
+              "pdfValue": "21",
+              "jsonValue": "21"
+            },
+            {
+              "label": "22",
+              "pdfValue": "22",
+              "jsonValue": "22"
+            },
+            {
+              "label": "23",
+              "pdfValue": "23",
+              "jsonValue": "23"
+            },
+            {
+              "label": "24",
+              "pdfValue": "24",
+              "jsonValue": "24"
+            },
+            {
+              "label": "25",
+              "pdfValue": "25",
+              "jsonValue": "25"
+            },
+            {
+              "label": "26",
+              "pdfValue": "26",
+              "jsonValue": "26"
+            },
+            {
+              "label": "27",
+              "pdfValue": "27",
+              "jsonValue": "27"
+            },
+            {
+              "label": "28",
+              "pdfValue": "28",
+              "jsonValue": "28"
+            },
+            {
+              "label": "29",
+              "pdfValue": "29",
+              "jsonValue": "29"
+            },
+            {
+              "label": "30",
+              "pdfValue": "30",
+              "jsonValue": "30"
+            },
+            {
+              "label": "31",
+              "pdfValue": "31",
+              "jsonValue": "31"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "solicitud_fecha_dia",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 84.7617,
+              "Y": 643.772,
+              "Width": 146.4903,
+              "Height": 15.185999999999922
+            }
+          },
+          "prefillKey": "datosFormulario.fechaCreacion",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.fechaCreacion",
+          "jsonOutputPath": "datosFormulario.fechaCreacion",
+          "conditionalVisibility": null,
+          "helpText": "Día del mes en que firma la solicitud"
+        },
+        {
+          "id": "field_solicitud_fecha_mes",
+          "type": "select",
+          "label": "Mes (Solicitud)",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 3,
+          "options": [
+            {
+              "label": "Enero",
+              "pdfValue": "Ene",
+              "jsonValue": "1"
+            },
+            {
+              "label": "Febrero",
+              "pdfValue": "Feb",
+              "jsonValue": "2"
+            },
+            {
+              "label": "Marzo",
+              "pdfValue": "Mar",
+              "jsonValue": "3"
+            },
+            {
+              "label": "Abril",
+              "pdfValue": "Abr",
+              "jsonValue": "4"
+            },
+            {
+              "label": "Mayo",
+              "pdfValue": "May",
+              "jsonValue": "5"
+            },
+            {
+              "label": "Junio",
+              "pdfValue": "Jun",
+              "jsonValue": "6"
+            },
+            {
+              "label": "Julio",
+              "pdfValue": "Jul",
+              "jsonValue": "7"
+            },
+            {
+              "label": "Agosto",
+              "pdfValue": "Ago",
+              "jsonValue": "8"
+            },
+            {
+              "label": "Septiembre",
+              "pdfValue": "Sep",
+              "jsonValue": "9"
+            },
+            {
+              "label": "Octubre",
+              "pdfValue": "Oct",
+              "jsonValue": "10"
+            },
+            {
+              "label": "Noviembre",
+              "pdfValue": "Nov",
+              "jsonValue": "11"
+            },
+            {
+              "label": "Diciembre",
+              "pdfValue": "Dic",
+              "jsonValue": "12"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "solicitud_fecha_mes",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 434.617,
+              "Y": 643.953,
+              "Width": 146.48999999999995,
+              "Height": 15.186000000000035
+            }
+          },
+          "prefillKey": "datosFormulario.fechaCreacion",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.fechaCreacion",
+          "jsonOutputPath": "datosFormulario.fechaCreacion",
+          "conditionalVisibility": null,
+          "helpText": "Mes en que firma la solicitud"
+        },
+        {
+          "id": "field_solicitud_fecha_ano",
+          "type": "select",
+          "label": "Año (Solicitud)",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 4,
+          "options": [
+            {
+              "label": "2024",
+              "pdfValue": "2024",
+              "jsonValue": "2024"
+            },
+            {
+              "label": "2025",
+              "pdfValue": "2025",
+              "jsonValue": "2025"
+            },
+            {
+              "label": "2026",
+              "pdfValue": "2026",
+              "jsonValue": "2026"
+            },
+            {
+              "label": "2027",
+              "pdfValue": "2027",
+              "jsonValue": "2027"
+            },
+            {
+              "label": "2028",
+              "pdfValue": "2028",
+              "jsonValue": "2028"
+            },
+            {
+              "label": "2029",
+              "pdfValue": "2029",
+              "jsonValue": "2029"
+            },
+            {
+              "label": "2030",
+              "pdfValue": "2030",
+              "jsonValue": "2030"
+            },
+            {
+              "label": "2031",
+              "pdfValue": "2031",
+              "jsonValue": "2031"
+            },
+            {
+              "label": "2032",
+              "pdfValue": "2032",
+              "jsonValue": "2032"
+            },
+            {
+              "label": "2033",
+              "pdfValue": "2033",
+              "jsonValue": "2033"
+            },
+            {
+              "label": "2034",
+              "pdfValue": "2034",
+              "jsonValue": "2034"
+            },
+            {
+              "label": "2035",
+              "pdfValue": "2035",
+              "jsonValue": "2035"
+            },
+            {
+              "label": "2036",
+              "pdfValue": "2036",
+              "jsonValue": "2036"
+            },
+            {
+              "label": "2037",
+              "pdfValue": "2037",
+              "jsonValue": "2037"
+            },
+            {
+              "label": "2038",
+              "pdfValue": "2038",
+              "jsonValue": "2038"
+            },
+            {
+              "label": "2039",
+              "pdfValue": "2039",
+              "jsonValue": "2039"
+            },
+            {
+              "label": "2040",
+              "pdfValue": "2040",
+              "jsonValue": "2040"
+            },
+            {
+              "label": "2041",
+              "pdfValue": "2041",
+              "jsonValue": "2041"
+            },
+            {
+              "label": "2042",
+              "pdfValue": "2042",
+              "jsonValue": "2042"
+            },
+            {
+              "label": "2043",
+              "pdfValue": "2043",
+              "jsonValue": "2043"
+            },
+            {
+              "label": "2044",
+              "pdfValue": "2044",
+              "jsonValue": "2044"
+            },
+            {
+              "label": "2045",
+              "pdfValue": "2045",
+              "jsonValue": "2045"
+            },
+            {
+              "label": "2046",
+              "pdfValue": "2046",
+              "jsonValue": "2046"
+            },
+            {
+              "label": "2047",
+              "pdfValue": "2047",
+              "jsonValue": "2047"
+            },
+            {
+              "label": "2048",
+              "pdfValue": "2048",
+              "jsonValue": "2048"
+            },
+            {
+              "label": "2049",
+              "pdfValue": "2049",
+              "jsonValue": "2049"
+            },
+            {
+              "label": "2050",
+              "pdfValue": "2050",
+              "jsonValue": "2050"
+            },
+            {
+              "label": "2051",
+              "pdfValue": "2051",
+              "jsonValue": "2051"
+            },
+            {
+              "label": "2052",
+              "pdfValue": "2052",
+              "jsonValue": "2052"
+            },
+            {
+              "label": "2053",
+              "pdfValue": "2053",
+              "jsonValue": "2053"
+            },
+            {
+              "label": "2054",
+              "pdfValue": "2054",
+              "jsonValue": "2054"
+            },
+            {
+              "label": "2055",
+              "pdfValue": "2055",
+              "jsonValue": "2055"
+            },
+            {
+              "label": "2056",
+              "pdfValue": "2056",
+              "jsonValue": "2056"
+            },
+            {
+              "label": "2057",
+              "pdfValue": "2057",
+              "jsonValue": "2057"
+            },
+            {
+              "label": "2058",
+              "pdfValue": "2058",
+              "jsonValue": "2058"
+            },
+            {
+              "label": "2059",
+              "pdfValue": "2059",
+              "jsonValue": "2059"
+            },
+            {
+              "label": "2060",
+              "pdfValue": "2060",
+              "jsonValue": "2060"
+            },
+            {
+              "label": "2061",
+              "pdfValue": "2061",
+              "jsonValue": "2061"
+            },
+            {
+              "label": "2062",
+              "pdfValue": "2062",
+              "jsonValue": "2062"
+            },
+            {
+              "label": "2063",
+              "pdfValue": "2063",
+              "jsonValue": "2063"
+            },
+            {
+              "label": "2064",
+              "pdfValue": "2064",
+              "jsonValue": "2064"
+            },
+            {
+              "label": "2065",
+              "pdfValue": "2065",
+              "jsonValue": "2065"
+            },
+            {
+              "label": "2066",
+              "pdfValue": "2066",
+              "jsonValue": "2066"
+            },
+            {
+              "label": "2067",
+              "pdfValue": "2067",
+              "jsonValue": "2067"
+            },
+            {
+              "label": "2068",
+              "pdfValue": "2068",
+              "jsonValue": "2068"
+            },
+            {
+              "label": "2069",
+              "pdfValue": "2069",
+              "jsonValue": "2069"
+            },
+            {
+              "label": "2070",
+              "pdfValue": "2070",
+              "jsonValue": "2070"
+            },
+            {
+              "label": "2071",
+              "pdfValue": "2071",
+              "jsonValue": "2071"
+            },
+            {
+              "label": "2072",
+              "pdfValue": "2072",
+              "jsonValue": "2072"
+            },
+            {
+              "label": "2073",
+              "pdfValue": "2073",
+              "jsonValue": "2073"
+            },
+            {
+              "label": "2074",
+              "pdfValue": "2074",
+              "jsonValue": "2074"
+            },
+            {
+              "label": "2075",
+              "pdfValue": "2075",
+              "jsonValue": "2075"
+            },
+            {
+              "label": "2076",
+              "pdfValue": "2076",
+              "jsonValue": "2076"
+            },
+            {
+              "label": "2077",
+              "pdfValue": "2077",
+              "jsonValue": "2077"
+            },
+            {
+              "label": "2078",
+              "pdfValue": "2078",
+              "jsonValue": "2078"
+            },
+            {
+              "label": "2079",
+              "pdfValue": "2079",
+              "jsonValue": "2079"
+            },
+            {
+              "label": "2080",
+              "pdfValue": "2080",
+              "jsonValue": "2080"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "solicitud_fecha_ano",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 259.723,
+              "Y": 643.879,
+              "Width": 145.06099999999998,
+              "Height": 15.186000000000035
+            }
+          },
+          "prefillKey": "datosFormulario.fechaCreacion",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.fechaCreacion",
+          "jsonOutputPath": "datosFormulario.fechaCreacion",
+          "conditionalVisibility": null,
+          "helpText": "Año en que firma la solicitud"
+        }
+      ]
+    },
+    {
+      "id": "section_datos_poliza",
+      "title": "Datos de la Póliza",
+      "description": null,
+      "instructions": null,
+      "conditionalVisibility": null,
+      "order": 3,
+      "fields": [
+        {
+          "id": "field_poliza_nombre_tomador",
+          "type": "text",
+          "label": "Nombre del Tomador",
+          "required": false,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 1,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "poliza_nombre_tomador",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 149.142,
+              "Y": 603.078,
+              "Width": 433.906,
+              "Height": 15.18500000000006
+            }
+          },
+          "prefillKey": "datosFormulario.polizaMadre.nombreTomador",
+          "prefillMode": "mandatory",
+          "salidaJSON": "datosFormulario.polizaMadre.nombreTomador",
+          "jsonOutputPath": "datosFormulario.polizaMadre.nombreTomador",
+          "conditionalVisibility": null,
+          "helpText": "Nombre completo del tomador de seguro"
+        },
+        {
+          "id": "field_poliza_numero",
+          "type": "text",
+          "label": "Número de Póliza",
+          "required": false,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 2,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "poliza_numero",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 97.4094,
+              "Y": 581.098,
+              "Width": 208.93059999999997,
+              "Height": 15.186000000000035
+            }
+          },
+          "prefillKey": "datosFormulario.polizaMadre.numeroPoliza",
+          "prefillMode": "mandatory",
+          "salidaJSON": "datosFormulario.polizaMadre.numeroPoliza",
+          "jsonOutputPath": "datosFormulario.polizaMadre.numeroPoliza",
+          "conditionalVisibility": null,
+          "helpText": "Número de póliza otorgado por el INS"
+        }
+      ]
+    },
+    {
+      "id": "section_datos_solicitante",
+      "title": "Datos del Solicitante",
+      "description": null,
+      "instructions": null,
+      "conditionalVisibility": null,
+      "order": 4,
+      "fields": [
+        {
+          "id": "field_asegurado_primer_apellido",
+          "type": "text",
+          "label": "Primer Apellido",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 1,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "asegurado_primer_apellido",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 87.7322,
+              "Y": 540.929,
+              "Width": 117.41479999999999,
+              "Height": 15.186000000000035
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].primerApellido",
+          "prefillMode": "mandatory",
+          "salidaJSON": "datosFormulario.personas[0].primerApellido",
+          "jsonOutputPath": "datosFormulario.personas[0].primerApellido",
+          "conditionalVisibility": null,
+          "helpText": "Primer apellido tal como aparece en su documento de identidad"
+        },
+        {
+          "id": "field_asegurado_segundo_apellido",
+          "type": "text",
+          "label": "Segundo Apellido",
+          "required": false,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 2,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "asegurado_segundo_apellido",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 278.509,
+              "Y": 540.327,
+              "Width": 112.582,
+              "Height": 15.381999999999948
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].segundoApellido",
+          "prefillMode": "mandatory",
+          "salidaJSON": "datosFormulario.personas[0].segundoApellido",
+          "jsonOutputPath": "datosFormulario.personas[0].segundoApellido",
+          "conditionalVisibility": null,
+          "helpText": "Segundo apellido tal como aparece en su documento de identidad"
+        },
+        {
+          "id": "field_asegurado_nombre_completo",
+          "type": "text",
+          "label": "Nombre Completo",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 3,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "asegurado_nombre_completo",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 471.955,
+              "Y": 540.126,
+              "Width": 110.26600000000002,
+              "Height": 15.18500000000006
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].nombreCompleto",
+          "prefillMode": "mandatory",
+          "salidaJSON": "datosFormulario.personas[0].nombreCompleto",
+          "jsonOutputPath": "datosFormulario.personas[0].nombreCompleto",
+          "conditionalVisibility": null,
+          "helpText": "Nombre completo del asegurado"
+        },
+        {
+          "id": "field_asegurado_tipo_id_cedula",
+          "type": "radio",
+          "label": "Cédula",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 4,
+          "options": [
+            {
+              "value": "0",
+              "label": "Cédula Física Nacional"
+            },
+            {
+              "value": "2",
+              "label": "Cédula Jurídica Gobierno Central"
+            },
+            {
+              "value": "3",
+              "label": "Cédula Persona Jurídica Nacional"
+            },
+            {
+              "value": "4",
+              "label": "Cédula Institución Autónoma"
+            },
+            {
+              "value": "5",
+              "label": "DIMEX"
+            },
+            {
+              "value": "6",
+              "label": "DIDI"
+            },
+            {
+              "value": "7",
+              "label": "Pasaporte"
+            },
+            {
+              "value": "8",
+              "label": "Otro"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "asegurado_tipo_id_cedula",
+            "page": 1,
+            "nativeType": "Checkbox",
+            "rect": {
+              "X": 112.254,
+              "Y": 521.918,
+              "Width": 10.554999999999993,
+              "Height": 10.308999999999969
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].codigoTipoIdentificacion",
+          "prefillMode": "mandatory",
+          "radioGroupFields": [
+            "field_asegurado_tipo_id_otro",
+            "field_asegurado_tipo_id_dimex",
+            "field_asegurado_tipo_id_pasaporte",
+            "field_asegurado_tipo_id_didi"
+          ],
+          "salidaJSON": "datosFormulario.personas[0].codigoTipoIdentificacion",
+          "jsonOutputPath": "datosFormulario.personas[0].codigoTipoIdentificacion",
+          "conditionalVisibility": null,
+          "helpText": "Cédula de identidad de Costa Rica"
+        },
+        {
+          "id": "field_asegurado_tipo_id_dimex",
+          "type": "radio",
+          "label": "DIMEX",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 5,
+          "options": [
+            {
+              "value": "0",
+              "label": "Cédula Física Nacional"
+            },
+            {
+              "value": "2",
+              "label": "Cédula Jurídica Gobierno Central"
+            },
+            {
+              "value": "3",
+              "label": "Cédula Persona Jurídica Nacional"
+            },
+            {
+              "value": "4",
+              "label": "Cédula Institución Autónoma"
+            },
+            {
+              "value": "5",
+              "label": "DIMEX"
+            },
+            {
+              "value": "6",
+              "label": "DIDI"
+            },
+            {
+              "value": "7",
+              "label": "Pasaporte"
+            },
+            {
+              "value": "8",
+              "label": "Otro"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "asegurado_tipo_id_dimex",
+            "page": 1,
+            "nativeType": "Checkbox",
+            "rect": {
+              "X": 232.636,
+              "Y": 521.918,
+              "Width": 10.555000000000007,
+              "Height": 10.308999999999969
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].codigoTipoIdentificacion",
+          "prefillMode": "mandatory",
+          "radioGroupFields": [
+            "field_asegurado_tipo_id_cedula",
+            "field_asegurado_tipo_id_otro",
+            "field_asegurado_tipo_id_pasaporte",
+            "field_asegurado_tipo_id_didi"
+          ],
+          "salidaJSON": "datosFormulario.personas[0].codigoTipoIdentificacion",
+          "jsonOutputPath": "datosFormulario.personas[0].codigoTipoIdentificacion",
+          "conditionalVisibility": null,
+          "helpText": "Documento de Identidad Migratorio para Extranjeros"
+        },
+        {
+          "id": "field_asegurado_tipo_id_didi",
+          "type": "radio",
+          "label": "DIDI",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 6,
+          "options": [
+            {
+              "value": "0",
+              "label": "Cédula Física Nacional"
+            },
+            {
+              "value": "2",
+              "label": "Cédula Jurídica Gobierno Central"
+            },
+            {
+              "value": "3",
+              "label": "Cédula Persona Jurídica Nacional"
+            },
+            {
+              "value": "4",
+              "label": "Cédula Institución Autónoma"
+            },
+            {
+              "value": "5",
+              "label": "DIMEX"
+            },
+            {
+              "value": "6",
+              "label": "DIDI"
+            },
+            {
+              "value": "7",
+              "label": "Pasaporte"
+            },
+            {
+              "value": "8",
+              "label": "Otro"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "asegurado_tipo_id_didi",
+            "page": 1,
+            "nativeType": "Checkbox",
+            "rect": {
+              "X": 287.019,
+              "Y": 521.918,
+              "Width": 10.553999999999974,
+              "Height": 10.308999999999969
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].codigoTipoIdentificacion",
+          "prefillMode": "mandatory",
+          "radioGroupFields": [
+            "field_asegurado_tipo_id_cedula",
+            "field_asegurado_tipo_id_otro",
+            "field_asegurado_tipo_id_dimex",
+            "field_asegurado_tipo_id_pasaporte"
+          ],
+          "salidaJSON": "datosFormulario.personas[0].codigoTipoIdentificacion",
+          "jsonOutputPath": "datosFormulario.personas[0].codigoTipoIdentificacion",
+          "conditionalVisibility": null,
+          "helpText": "Documento de Identidad para Diplomáticos"
+        },
+        {
+          "id": "field_asegurado_tipo_id_pasaporte",
+          "type": "radio",
+          "label": "Pasaporte",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 7,
+          "options": [
+            {
+              "value": "0",
+              "label": "Cédula Física Nacional"
+            },
+            {
+              "value": "2",
+              "label": "Cédula Jurídica Gobierno Central"
+            },
+            {
+              "value": "3",
+              "label": "Cédula Persona Jurídica Nacional"
+            },
+            {
+              "value": "4",
+              "label": "Cédula Institución Autónoma"
+            },
+            {
+              "value": "5",
+              "label": "DIMEX"
+            },
+            {
+              "value": "6",
+              "label": "DIDI"
+            },
+            {
+              "value": "7",
+              "label": "Pasaporte"
+            },
+            {
+              "value": "8",
+              "label": "Otro"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "asegurado_tipo_id_pasaporte",
+            "page": 1,
+            "nativeType": "Checkbox",
+            "rect": {
+              "X": 198.737,
+              "Y": 521.864,
+              "Width": 10.554000000000002,
+              "Height": 10.307999999999993
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].codigoTipoIdentificacion",
+          "prefillMode": "mandatory",
+          "radioGroupFields": [
+            "field_asegurado_tipo_id_cedula",
+            "field_asegurado_tipo_id_otro",
+            "field_asegurado_tipo_id_dimex",
+            "field_asegurado_tipo_id_didi"
+          ],
+          "salidaJSON": "datosFormulario.personas[0].codigoTipoIdentificacion",
+          "jsonOutputPath": "datosFormulario.personas[0].codigoTipoIdentificacion",
+          "conditionalVisibility": null,
+          "helpText": "Pasaporte vigente"
+        },
+        {
+          "id": "field_asegurado_tipo_id_otro",
+          "type": "radio",
+          "label": "Otro",
+          "required": false,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 8,
+          "options": [
+            {
+              "value": "0",
+              "label": "Cédula Física Nacional"
+            },
+            {
+              "value": "2",
+              "label": "Cédula Jurídica Gobierno Central"
+            },
+            {
+              "value": "3",
+              "label": "Cédula Persona Jurídica Nacional"
+            },
+            {
+              "value": "4",
+              "label": "Cédula Institución Autónoma"
+            },
+            {
+              "value": "5",
+              "label": "DIMEX"
+            },
+            {
+              "value": "6",
+              "label": "DIDI"
+            },
+            {
+              "value": "7",
+              "label": "Pasaporte"
+            },
+            {
+              "value": "8",
+              "label": "Otro"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "asegurado_tipo_id_otro",
+            "page": 1,
+            "nativeType": "Checkbox",
+            "rect": {
+              "X": 155.693,
+              "Y": 521.843,
+              "Width": 10.554999999999978,
+              "Height": 10.309000000000083
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].codigoTipoIdentificacion",
+          "prefillMode": "mandatory",
+          "radioGroupFields": [
+            "field_asegurado_tipo_id_cedula",
+            "field_asegurado_tipo_id_dimex",
+            "field_asegurado_tipo_id_pasaporte",
+            "field_asegurado_tipo_id_didi"
+          ],
+          "salidaJSON": "datosFormulario.personas[0].codigoTipoIdentificacion",
+          "jsonOutputPath": "datosFormulario.personas[0].codigoTipoIdentificacion",
+          "conditionalVisibility": null,
+          "helpText": "Cualquier otro tipo de documento"
+        },
+        {
+          "id": "field_asegurado_tipo_id_otro_texto",
+          "type": "text",
+          "label": "Otro (especificar)",
+          "required": false,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 9,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "asegurado_tipo_id_otro_texto",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 481.677,
+              "Y": 515.415,
+              "Width": 101.10199999999998,
+              "Height": 15.18500000000006
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].detalleOtroTipoIdentificacion",
+          "prefillMode": "optional",
+          "helpText": "Solo si seleccionó \"Otro\" — especifique el tipo",
+          "salidaJSON": "datosFormulario.personas[0].detalleOtroTipoIdentificacion",
+          "jsonOutputPath": "datosFormulario.personas[0].detalleOtroTipoIdentificacion",
+          "conditionalVisibility": null
+        },
+        {
+          "id": "field_asegurado_numero_identificacion",
+          "type": "text",
+          "label": "N° Identificación",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 10,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "asegurado_numero_identificacion",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 321.054,
+              "Y": 514.8,
+              "Width": 69.709,
+              "Height": 15.382000000000062
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].numeroIdentificacion",
+          "prefillMode": "mandatory",
+          "salidaJSON": "datosFormulario.personas[0].numeroIdentificacion",
+          "jsonOutputPath": "datosFormulario.personas[0].numeroIdentificacion",
+          "conditionalVisibility": null,
+          "helpText": "Número del documento seleccionado"
+        },
+        {
+          "id": "field_asegurado_profesion_ocupacion",
+          "type": "text",
+          "label": "Profesión u Ocupación",
+          "required": false,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 11,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "asegurado_profesion_ocupacion",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 92.3508,
+              "Y": 492.388,
+              "Width": 127.9012,
+              "Height": 15.186000000000035
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].profesion",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[0].profesion",
+          "jsonOutputPath": "datosFormulario.personas[0].profesion",
+          "conditionalVisibility": null,
+          "helpText": "Profesión u ocupación actual"
+        },
+        {
+          "id": "field_asegurado_fecha_nacimiento_dia",
+          "type": "select",
+          "label": "Día (Nacimiento)",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 12,
+          "options": [
+            {
+              "label": "1",
+              "pdfValue": "01",
+              "jsonValue": "1"
+            },
+            {
+              "label": "2",
+              "pdfValue": "02",
+              "jsonValue": "2"
+            },
+            {
+              "label": "3",
+              "pdfValue": "03",
+              "jsonValue": "3"
+            },
+            {
+              "label": "4",
+              "pdfValue": "04",
+              "jsonValue": "4"
+            },
+            {
+              "label": "5",
+              "pdfValue": "05",
+              "jsonValue": "5"
+            },
+            {
+              "label": "6",
+              "pdfValue": "06",
+              "jsonValue": "6"
+            },
+            {
+              "label": "7",
+              "pdfValue": "07",
+              "jsonValue": "7"
+            },
+            {
+              "label": "8",
+              "pdfValue": "08",
+              "jsonValue": "8"
+            },
+            {
+              "label": "9",
+              "pdfValue": "09",
+              "jsonValue": "9"
+            },
+            {
+              "label": "10",
+              "pdfValue": "10",
+              "jsonValue": "10"
+            },
+            {
+              "label": "11",
+              "pdfValue": "11",
+              "jsonValue": "11"
+            },
+            {
+              "label": "12",
+              "pdfValue": "12",
+              "jsonValue": "12"
+            },
+            {
+              "label": "13",
+              "pdfValue": "13",
+              "jsonValue": "13"
+            },
+            {
+              "label": "14",
+              "pdfValue": "14",
+              "jsonValue": "14"
+            },
+            {
+              "label": "15",
+              "pdfValue": "15",
+              "jsonValue": "15"
+            },
+            {
+              "label": "16",
+              "pdfValue": "16",
+              "jsonValue": "16"
+            },
+            {
+              "label": "17",
+              "pdfValue": "17",
+              "jsonValue": "17"
+            },
+            {
+              "label": "18",
+              "pdfValue": "18",
+              "jsonValue": "18"
+            },
+            {
+              "label": "19",
+              "pdfValue": "19",
+              "jsonValue": "19"
+            },
+            {
+              "label": "20",
+              "pdfValue": "20",
+              "jsonValue": "20"
+            },
+            {
+              "label": "21",
+              "pdfValue": "21",
+              "jsonValue": "21"
+            },
+            {
+              "label": "22",
+              "pdfValue": "22",
+              "jsonValue": "22"
+            },
+            {
+              "label": "23",
+              "pdfValue": "23",
+              "jsonValue": "23"
+            },
+            {
+              "label": "24",
+              "pdfValue": "24",
+              "jsonValue": "24"
+            },
+            {
+              "label": "25",
+              "pdfValue": "25",
+              "jsonValue": "25"
+            },
+            {
+              "label": "26",
+              "pdfValue": "26",
+              "jsonValue": "26"
+            },
+            {
+              "label": "27",
+              "pdfValue": "27",
+              "jsonValue": "27"
+            },
+            {
+              "label": "28",
+              "pdfValue": "28",
+              "jsonValue": "28"
+            },
+            {
+              "label": "29",
+              "pdfValue": "29",
+              "jsonValue": "29"
+            },
+            {
+              "label": "30",
+              "pdfValue": "30",
+              "jsonValue": "30"
+            },
+            {
+              "label": "31",
+              "pdfValue": "31",
+              "jsonValue": "31"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "asegurado_fecha_nacimiento_dia",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 353.025,
+              "Y": 485.211,
+              "Width": 23.04000000000002,
+              "Height": 13.658000000000015
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].fechaNacimiento",
+          "prefillMode": "mandatory",
+          "salidaJSON": "datosFormulario.personas[0].fechaNacimiento",
+          "jsonOutputPath": "datosFormulario.personas[0].fechaNacimiento",
+          "conditionalVisibility": null,
+          "helpText": "Día del mes de nacimiento"
+        },
+        {
+          "id": "field_asegurado_fecha_nacimiento_mes",
+          "type": "select",
+          "label": "Mes (Nacimiento)",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 13,
+          "options": [
+            {
+              "label": "Enero",
+              "pdfValue": "Ene",
+              "jsonValue": "1"
+            },
+            {
+              "label": "Febrero",
+              "pdfValue": "Feb",
+              "jsonValue": "2"
+            },
+            {
+              "label": "Marzo",
+              "pdfValue": "Mar",
+              "jsonValue": "3"
+            },
+            {
+              "label": "Abril",
+              "pdfValue": "Abr",
+              "jsonValue": "4"
+            },
+            {
+              "label": "Mayo",
+              "pdfValue": "May",
+              "jsonValue": "5"
+            },
+            {
+              "label": "Junio",
+              "pdfValue": "Jun",
+              "jsonValue": "6"
+            },
+            {
+              "label": "Julio",
+              "pdfValue": "Jul",
+              "jsonValue": "7"
+            },
+            {
+              "label": "Agosto",
+              "pdfValue": "Ago",
+              "jsonValue": "8"
+            },
+            {
+              "label": "Septiembre",
+              "pdfValue": "Sep",
+              "jsonValue": "9"
+            },
+            {
+              "label": "Octubre",
+              "pdfValue": "Oct",
+              "jsonValue": "10"
+            },
+            {
+              "label": "Noviembre",
+              "pdfValue": "Nov",
+              "jsonValue": "11"
+            },
+            {
+              "label": "Diciembre",
+              "pdfValue": "Dic",
+              "jsonValue": "12"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "asegurado_fecha_nacimiento_mes",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 388.684,
+              "Y": 485.14,
+              "Width": 32.57299999999998,
+              "Height": 13.87700000000001
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].fechaNacimiento",
+          "prefillMode": "mandatory",
+          "salidaJSON": "datosFormulario.personas[0].fechaNacimiento",
+          "jsonOutputPath": "datosFormulario.personas[0].fechaNacimiento",
+          "conditionalVisibility": null,
+          "helpText": "Mes de nacimiento"
+        },
+        {
+          "id": "field_asegurado_fecha_nacimiento_ano",
+          "type": "select",
+          "label": "Año (Nacimiento)",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 14,
+          "options": [
+            {
+              "label": "2024",
+              "pdfValue": "2024",
+              "jsonValue": "2024"
+            },
+            {
+              "label": "2025",
+              "pdfValue": "2025",
+              "jsonValue": "2025"
+            },
+            {
+              "label": "2026",
+              "pdfValue": "2026",
+              "jsonValue": "2026"
+            },
+            {
+              "label": "2027",
+              "pdfValue": "2027",
+              "jsonValue": "2027"
+            },
+            {
+              "label": "2028",
+              "pdfValue": "2028",
+              "jsonValue": "2028"
+            },
+            {
+              "label": "2029",
+              "pdfValue": "2029",
+              "jsonValue": "2029"
+            },
+            {
+              "label": "2030",
+              "pdfValue": "2030",
+              "jsonValue": "2030"
+            },
+            {
+              "label": "2031",
+              "pdfValue": "2031",
+              "jsonValue": "2031"
+            },
+            {
+              "label": "2032",
+              "pdfValue": "2032",
+              "jsonValue": "2032"
+            },
+            {
+              "label": "2033",
+              "pdfValue": "2033",
+              "jsonValue": "2033"
+            },
+            {
+              "label": "2034",
+              "pdfValue": "2034",
+              "jsonValue": "2034"
+            },
+            {
+              "label": "2035",
+              "pdfValue": "2035",
+              "jsonValue": "2035"
+            },
+            {
+              "label": "2036",
+              "pdfValue": "2036",
+              "jsonValue": "2036"
+            },
+            {
+              "label": "2037",
+              "pdfValue": "2037",
+              "jsonValue": "2037"
+            },
+            {
+              "label": "2038",
+              "pdfValue": "2038",
+              "jsonValue": "2038"
+            },
+            {
+              "label": "2039",
+              "pdfValue": "2039",
+              "jsonValue": "2039"
+            },
+            {
+              "label": "2040",
+              "pdfValue": "2040",
+              "jsonValue": "2040"
+            },
+            {
+              "label": "2041",
+              "pdfValue": "2041",
+              "jsonValue": "2041"
+            },
+            {
+              "label": "2042",
+              "pdfValue": "2042",
+              "jsonValue": "2042"
+            },
+            {
+              "label": "2043",
+              "pdfValue": "2043",
+              "jsonValue": "2043"
+            },
+            {
+              "label": "2044",
+              "pdfValue": "2044",
+              "jsonValue": "2044"
+            },
+            {
+              "label": "2045",
+              "pdfValue": "2045",
+              "jsonValue": "2045"
+            },
+            {
+              "label": "2046",
+              "pdfValue": "2046",
+              "jsonValue": "2046"
+            },
+            {
+              "label": "2047",
+              "pdfValue": "2047",
+              "jsonValue": "2047"
+            },
+            {
+              "label": "2048",
+              "pdfValue": "2048",
+              "jsonValue": "2048"
+            },
+            {
+              "label": "2049",
+              "pdfValue": "2049",
+              "jsonValue": "2049"
+            },
+            {
+              "label": "2050",
+              "pdfValue": "2050",
+              "jsonValue": "2050"
+            },
+            {
+              "label": "2051",
+              "pdfValue": "2051",
+              "jsonValue": "2051"
+            },
+            {
+              "label": "2052",
+              "pdfValue": "2052",
+              "jsonValue": "2052"
+            },
+            {
+              "label": "2053",
+              "pdfValue": "2053",
+              "jsonValue": "2053"
+            },
+            {
+              "label": "2054",
+              "pdfValue": "2054",
+              "jsonValue": "2054"
+            },
+            {
+              "label": "2055",
+              "pdfValue": "2055",
+              "jsonValue": "2055"
+            },
+            {
+              "label": "2056",
+              "pdfValue": "2056",
+              "jsonValue": "2056"
+            },
+            {
+              "label": "2057",
+              "pdfValue": "2057",
+              "jsonValue": "2057"
+            },
+            {
+              "label": "2058",
+              "pdfValue": "2058",
+              "jsonValue": "2058"
+            },
+            {
+              "label": "2059",
+              "pdfValue": "2059",
+              "jsonValue": "2059"
+            },
+            {
+              "label": "2060",
+              "pdfValue": "2060",
+              "jsonValue": "2060"
+            },
+            {
+              "label": "2061",
+              "pdfValue": "2061",
+              "jsonValue": "2061"
+            },
+            {
+              "label": "2062",
+              "pdfValue": "2062",
+              "jsonValue": "2062"
+            },
+            {
+              "label": "2063",
+              "pdfValue": "2063",
+              "jsonValue": "2063"
+            },
+            {
+              "label": "2064",
+              "pdfValue": "2064",
+              "jsonValue": "2064"
+            },
+            {
+              "label": "2065",
+              "pdfValue": "2065",
+              "jsonValue": "2065"
+            },
+            {
+              "label": "2066",
+              "pdfValue": "2066",
+              "jsonValue": "2066"
+            },
+            {
+              "label": "2067",
+              "pdfValue": "2067",
+              "jsonValue": "2067"
+            },
+            {
+              "label": "2068",
+              "pdfValue": "2068",
+              "jsonValue": "2068"
+            },
+            {
+              "label": "2069",
+              "pdfValue": "2069",
+              "jsonValue": "2069"
+            },
+            {
+              "label": "2070",
+              "pdfValue": "2070",
+              "jsonValue": "2070"
+            },
+            {
+              "label": "2071",
+              "pdfValue": "2071",
+              "jsonValue": "2071"
+            },
+            {
+              "label": "2072",
+              "pdfValue": "2072",
+              "jsonValue": "2072"
+            },
+            {
+              "label": "2073",
+              "pdfValue": "2073",
+              "jsonValue": "2073"
+            },
+            {
+              "label": "2074",
+              "pdfValue": "2074",
+              "jsonValue": "2074"
+            },
+            {
+              "label": "2075",
+              "pdfValue": "2075",
+              "jsonValue": "2075"
+            },
+            {
+              "label": "2076",
+              "pdfValue": "2076",
+              "jsonValue": "2076"
+            },
+            {
+              "label": "2077",
+              "pdfValue": "2077",
+              "jsonValue": "2077"
+            },
+            {
+              "label": "2078",
+              "pdfValue": "2078",
+              "jsonValue": "2078"
+            },
+            {
+              "label": "2079",
+              "pdfValue": "2079",
+              "jsonValue": "2079"
+            },
+            {
+              "label": "2080",
+              "pdfValue": "2080",
+              "jsonValue": "2080"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "asegurado_fecha_nacimiento_ano",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 312.443,
+              "Y": 484.379,
+              "Width": 23.04000000000002,
+              "Height": 14.748999999999967
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].fechaNacimiento",
+          "prefillMode": "mandatory",
+          "salidaJSON": "datosFormulario.personas[0].fechaNacimiento",
+          "jsonOutputPath": "datosFormulario.personas[0].fechaNacimiento",
+          "conditionalVisibility": null,
+          "helpText": "Año de nacimiento"
+        },
+        {
+          "id": "field_asegurado_sexo_masculino",
+          "type": "radio",
+          "label": "Masculino",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 15,
+          "options": [
+            {
+              "value": "M",
+              "label": "Masculino"
+            },
+            {
+              "value": "F",
+              "label": "Femenino"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "asegurado_sexo_masculino",
+            "page": 1,
+            "nativeType": "Checkbox",
+            "rect": {
+              "X": 521.155,
+              "Y": 491.209,
+              "Width": 10.555000000000064,
+              "Height": 10.308999999999969
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].codigoGenero",
+          "prefillMode": "mandatory",
+          "radioGroupFields": [
+            "field_asegurado_sexo_femenino"
+          ],
+          "salidaJSON": "datosFormulario.personas[0].codigoGenero",
+          "jsonOutputPath": "datosFormulario.personas[0].codigoGenero",
+          "conditionalVisibility": null,
+          "helpText": "Marque si su sexo es masculino"
+        },
+        {
+          "id": "field_asegurado_sexo_femenino",
+          "type": "radio",
+          "label": "Femenino",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 16,
+          "options": [
+            {
+              "value": "M",
+              "label": "Masculino"
+            },
+            {
+              "value": "F",
+              "label": "Femenino"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "asegurado_sexo_femenino",
+            "page": 1,
+            "nativeType": "Checkbox",
+            "rect": {
+              "X": 463.732,
+              "Y": 491.073,
+              "Width": 10.55499999999995,
+              "Height": 10.309000000000026
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].codigoGenero",
+          "prefillMode": "mandatory",
+          "radioGroupFields": [
+            "field_asegurado_sexo_masculino"
+          ],
+          "salidaJSON": "datosFormulario.personas[0].codigoGenero",
+          "jsonOutputPath": "datosFormulario.personas[0].codigoGenero",
+          "conditionalVisibility": null,
+          "helpText": "Marque si su sexo es femenino"
+        },
+        {
+          "id": "field_asegurado_pais",
+          "type": "text",
+          "label": "País",
+          "required": false,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 17,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "asegurado_pais",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 310.231,
+              "Y": 452.398,
+              "Width": 134.48700000000002,
+              "Height": 15.185999999999979
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].direccion.codigoPais",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[0].direccion.codigoPais",
+          "jsonOutputPath": "datosFormulario.personas[0].direccion.codigoPais",
+          "conditionalVisibility": null,
+          "helpText": "País de residencia"
+        },
+        {
+          "id": "field_asegurado_provincia",
+          "type": "text",
+          "label": "Provincia",
+          "required": false,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 18,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "asegurado_provincia",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 29.3463,
+              "Y": 451.975,
+              "Width": 135.47070000000002,
+              "Height": 15.661999999999978
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].direccion.codigoProvincia",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[0].direccion.codigoProvincia",
+          "jsonOutputPath": "datosFormulario.personas[0].direccion.codigoProvincia",
+          "conditionalVisibility": null,
+          "helpText": "Provincia de residencia"
+        },
+        {
+          "id": "field_asegurado_canton",
+          "type": "text",
+          "label": "Cantón",
+          "required": false,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 19,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "asegurado_canton",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 173.121,
+              "Y": 451.949,
+              "Width": 131.41799999999998,
+              "Height": 15.185000000000002
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].direccion.codigoCanton",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[0].direccion.codigoCanton",
+          "jsonOutputPath": "datosFormulario.personas[0].direccion.codigoCanton",
+          "conditionalVisibility": null,
+          "helpText": "Cantón de residencia"
+        },
+        {
+          "id": "field_asegurado_distrito",
+          "type": "text",
+          "label": "Distrito",
+          "required": false,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 20,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "asegurado_distrito",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 449.32,
+              "Y": 452.326,
+              "Width": 132.42300000000006,
+              "Height": 15.185000000000002
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].direccion.codigoDistrito",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[0].direccion.codigoDistrito",
+          "jsonOutputPath": "datosFormulario.personas[0].direccion.codigoDistrito",
+          "conditionalVisibility": null,
+          "helpText": "Distrito de residencia"
+        },
+        {
+          "id": "field_asegurado_direccion_exacta",
+          "type": "text",
+          "label": "Dirección exacta",
+          "required": false,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 21,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "asegurado_direccion_exacta",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 30.6795,
+              "Y": 420.349,
+              "Width": 551.1605000000001,
+              "Height": 15.186000000000035
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].direccion.direccionExacta",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[0].direccion.direccionExacta",
+          "jsonOutputPath": "datosFormulario.personas[0].direccion.direccionExacta",
+          "conditionalVisibility": null,
+          "helpText": "Dirección detallada (calle, número, señas)"
+        },
+        {
+          "id": "field_asegurado_telefono_movil",
+          "type": "text",
+          "label": "Teléfono Celular",
+          "required": false,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 22,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "asegurado_telefono_movil",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 92.5089,
+              "Y": 394.474,
+              "Width": 114.7631,
+              "Height": 15.271999999999991
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].telefonoMovil",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[0].telefonoMovil",
+          "jsonOutputPath": "datosFormulario.personas[0].telefonoMovil",
+          "conditionalVisibility": null,
+          "helpText": "Teléfono celular de 8 dígitos"
+        },
+        {
+          "id": "field_asegurado_correo_electronico",
+          "type": "text",
+          "label": "Correo electrónico",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 23,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "asegurado_correo_electronico",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 285.236,
+              "Y": 394.346,
+              "Width": 296.41200000000003,
+              "Height": 15.185999999999979
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].correoElectronico",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[0].correoElectronico",
+          "jsonOutputPath": "datosFormulario.personas[0].correoElectronico",
+          "conditionalVisibility": null,
+          "helpText": "Correo electrónico válido"
+        }
+      ]
+    },
+    {
+      "id": "section_objeto_interes",
+      "title": "Datos del Objeto de Interés",
+      "description": null,
+      "instructions": null,
+      "conditionalVisibility": null,
+      "order": 5,
+      "fields": [
+        {
+          "id": "field_monto_asegurado",
+          "type": "number",
+          "label": "Monto Asegurado",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 1,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "monto_asegurado",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 96.4361,
+              "Y": 353.456,
+              "Width": 150.1089,
+              "Height": 15.271999999999991
+            }
+          },
+          "prefillKey": "datosFormulario.montoAsegurado",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.montoAsegurado",
+          "jsonOutputPath": "datosFormulario.montoAsegurado",
+          "conditionalVisibility": null,
+          "helpText": "Monto en colones o dólares por el cual se asegura"
+        }
+      ]
+    },
+    {
+      "id": "section_beneficiario_1",
+      "title": "Beneficiario 1",
+      "description": null,
+      "instructions": null,
+      "conditionalVisibility": null,
+      "order": 6,
+      "fields": [
+        {
+          "id": "field_beneficiario_1_numero",
+          "type": "number",
+          "label": "N° (Beneficiario 1)",
+          "required": false,
+          "readOnly": true,
+          "defaultValue": 1,
+          "order": 1,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "beneficiario_1_numero",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 28.6036,
+              "Y": 125.08,
+              "Width": 19.32,
+              "Height": 13.200000000000003
+            }
+          },
+          "salidaJSON": "beneficiario_1_numero",
+          "jsonOutputPath": "beneficiario_1_numero",
+          "conditionalVisibility": null,
+          "helpText": "Número de orden del beneficiario (no editable)",
+          "prefillMode": "mandatory"
+        },
+        {
+          "id": "field_beneficiario_1_nombre",
+          "type": "text",
+          "label": "Nombre (Beneficiario 1)",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 2,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "beneficiario_1_nombre",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 49.2436,
+              "Y": 125.08,
+              "Width": 208.4404,
+              "Height": 13.200000000000003
+            }
+          },
+          "prefillKey": "datosFormulario.personas[1].nombreCompleto",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[1].nombreCompleto",
+          "jsonOutputPath": "datosFormulario.personas[1].nombreCompleto",
+          "conditionalVisibility": null,
+          "helpText": "Nombre completo del primer beneficiario"
+        },
+        {
+          "id": "field_beneficiario_1_tipo_identificacion",
+          "type": "select",
+          "label": "Tipo Identificación (Beneficiario 1)",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 3,
+          "options": [
+            {
+              "value": "0",
+              "label": "Cédula Física Nacional"
+            },
+            {
+              "value": "2",
+              "label": "Cédula Jurídica Gobierno Central"
+            },
+            {
+              "value": "3",
+              "label": "Cédula Persona Jurídica Nacional"
+            },
+            {
+              "value": "4",
+              "label": "Cédula Institución Autónoma"
+            },
+            {
+              "value": "5",
+              "label": "DIMEX"
+            },
+            {
+              "value": "6",
+              "label": "DIDI"
+            },
+            {
+              "value": "7",
+              "label": "Pasaporte"
+            },
+            {
+              "value": "8",
+              "label": "Otro"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "beneficiario_1_tipo_identificacion",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 259.004,
+              "Y": 125.08,
+              "Width": 120.59999999999997,
+              "Height": 13.200000000000003
+            }
+          },
+          "prefillKey": "datosFormulario.personas[1].codigoTipoIdentificacion",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[1].codigoTipoIdentificacion",
+          "jsonOutputPath": "datosFormulario.personas[1].codigoTipoIdentificacion",
+          "conditionalVisibility": null,
+          "helpText": "Tipo de documento del primer beneficiario"
+        },
+        {
+          "id": "field_beneficiario_1_numero_identificacion",
+          "type": "text",
+          "label": "N° Identificación (Beneficiario 1)",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 4,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "beneficiario_1_numero_identificacion",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 380.924,
+              "Y": 125.08,
+              "Width": 80.88,
+              "Height": 13.200000000000003
+            }
+          },
+          "prefillKey": "datosFormulario.personas[1].numeroIdentificacion",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[1].numeroIdentificacion",
+          "jsonOutputPath": "datosFormulario.personas[1].numeroIdentificacion",
+          "conditionalVisibility": null,
+          "helpText": "Número de documento del primer beneficiario"
+        },
+        {
+          "id": "field_beneficiario_1_parentesco",
+          "type": "select",
+          "label": "Parentesco (Beneficiario 1)",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 5,
+          "options": [
+            {
+              "value": "Madre",
+              "label": "Madre"
+            },
+            {
+              "value": "Padre",
+              "label": "Padre"
+            },
+            {
+              "value": "Hijo (a)",
+              "label": "Hijo (a)"
+            },
+            {
+              "value": "Hermano (a)",
+              "label": "Hermano (a)"
+            },
+            {
+              "value": "Cónyuge",
+              "label": "Cónyuge"
+            },
+            {
+              "value": "Otro",
+              "label": "Otro"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "beneficiario_1_parentesco",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 463.124,
+              "Y": 125.08,
+              "Width": 69.48000000000002,
+              "Height": 13.200000000000003
+            }
+          },
+          "prefillKey": "datosFormulario.personas[1].descripcionParentesco",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[1].descripcionParentesco",
+          "jsonOutputPath": "datosFormulario.personas[1].descripcionParentesco",
+          "conditionalVisibility": null,
+          "helpText": "Relación familiar con el asegurado"
+        },
+        {
+          "id": "field_beneficiario_1_porcentaje",
+          "type": "number",
+          "label": "Porcentaje (Beneficiario 1)",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 6,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "beneficiario_1_porcentaje",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 533.924,
+              "Y": 125.08,
+              "Width": 48.84000000000003,
+              "Height": 13.200000000000003
+            }
+          },
+          "prefillKey": "datosFormulario.personas[1].porcentaje",
+          "prefillMode": "optional",
+          "helpText": "Porcentaje (la suma total debe ser 100%)",
+          "salidaJSON": "datosFormulario.personas[1].porcentaje",
+          "jsonOutputPath": "datosFormulario.personas[1].porcentaje",
+          "conditionalVisibility": null
+        }
+      ]
+    },
+    {
+      "id": "section_beneficiario_2",
+      "title": "Beneficiario 2",
+      "description": null,
+      "instructions": null,
+      "conditionalVisibility": "{\"logic\": \"and\", \"conditions\": [{\"fieldId\": \"field_beneficiario_1_nombre\", \"operator\": \"not_empty\"}]}",
+      "order": 7,
+      "fields": [
+        {
+          "id": "field_beneficiario_2_numero",
+          "type": "number",
+          "label": "N° (Beneficiario 2)",
+          "required": false,
+          "readOnly": true,
+          "defaultValue": 2,
+          "order": 1,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "beneficiario_2_numero",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 28.6036,
+              "Y": 103.92,
+              "Width": 19.32,
+              "Height": 13.200000000000003
+            }
+          },
+          "salidaJSON": "beneficiario_2_numero",
+          "jsonOutputPath": "beneficiario_2_numero",
+          "conditionalVisibility": null,
+          "helpText": "Número de orden del beneficiario (no editable)",
+          "prefillMode": "mandatory"
+        },
+        {
+          "id": "field_beneficiario_2_nombre",
+          "type": "text",
+          "label": "Nombre (Beneficiario 2)",
+          "required": false,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 2,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "beneficiario_2_nombre",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 49.2436,
+              "Y": 103.92,
+              "Width": 208.4404,
+              "Height": 13.200000000000003
+            }
+          },
+          "prefillKey": "datosFormulario.personas[2].nombreCompleto",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[2].nombreCompleto",
+          "jsonOutputPath": "datosFormulario.personas[2].nombreCompleto",
+          "conditionalVisibility": null,
+          "helpText": "Nombre completo del segundo beneficiario"
+        },
+        {
+          "id": "field_beneficiario_2_tipo_identificacion",
+          "type": "select",
+          "label": "Tipo Identificación (Beneficiario 2)",
+          "required": false,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 3,
+          "options": [
+            {
+              "value": "0",
+              "label": "Cédula Física Nacional"
+            },
+            {
+              "value": "2",
+              "label": "Cédula Jurídica Gobierno Central"
+            },
+            {
+              "value": "3",
+              "label": "Cédula Persona Jurídica Nacional"
+            },
+            {
+              "value": "4",
+              "label": "Cédula Institución Autónoma"
+            },
+            {
+              "value": "5",
+              "label": "DIMEX"
+            },
+            {
+              "value": "6",
+              "label": "DIDI"
+            },
+            {
+              "value": "7",
+              "label": "Pasaporte"
+            },
+            {
+              "value": "8",
+              "label": "Otro"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "beneficiario_2_tipo_identificacion",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 259.004,
+              "Y": 103.92,
+              "Width": 120.59999999999997,
+              "Height": 13.200000000000003
+            }
+          },
+          "prefillKey": "datosFormulario.personas[2].codigoTipoIdentificacion",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[2].codigoTipoIdentificacion",
+          "jsonOutputPath": "datosFormulario.personas[2].codigoTipoIdentificacion",
+          "conditionalVisibility": null,
+          "helpText": "Tipo de documento del segundo beneficiario"
+        },
+        {
+          "id": "field_beneficiario_2_numero_identificacion",
+          "type": "text",
+          "label": "N° Identificación (Beneficiario 2)",
+          "required": false,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 4,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "beneficiario_2_numero_identificacion",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 380.924,
+              "Y": 103.92,
+              "Width": 80.88,
+              "Height": 13.200000000000003
+            }
+          },
+          "prefillKey": "datosFormulario.personas[2].numeroIdentificacion",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[2].numeroIdentificacion",
+          "jsonOutputPath": "datosFormulario.personas[2].numeroIdentificacion",
+          "conditionalVisibility": null,
+          "helpText": "Número de documento del segundo beneficiario"
+        },
+        {
+          "id": "field_beneficiario_2_parentesco",
+          "type": "select",
+          "label": "Parentesco (Beneficiario 2)",
+          "required": false,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 5,
+          "options": [
+            {
+              "value": "Madre",
+              "label": "Madre"
+            },
+            {
+              "value": "Padre",
+              "label": "Padre"
+            },
+            {
+              "value": "Hijo (a)",
+              "label": "Hijo (a)"
+            },
+            {
+              "value": "Hermano (a)",
+              "label": "Hermano (a)"
+            },
+            {
+              "value": "Cónyuge",
+              "label": "Cónyuge"
+            },
+            {
+              "value": "Otro",
+              "label": "Otro"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "beneficiario_2_parentesco",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 463.124,
+              "Y": 103.92,
+              "Width": 69.48000000000002,
+              "Height": 13.200000000000003
+            }
+          },
+          "prefillKey": "datosFormulario.personas[2].descripcionParentesco",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[2].descripcionParentesco",
+          "jsonOutputPath": "datosFormulario.personas[2].descripcionParentesco",
+          "conditionalVisibility": null,
+          "helpText": "Relación familiar con el asegurado"
+        },
+        {
+          "id": "field_beneficiario_2_porcentaje",
+          "type": "number",
+          "label": "Porcentaje (Beneficiario 2)",
+          "required": false,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 6,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "beneficiario_2_porcentaje",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 533.924,
+              "Y": 103.92,
+              "Width": 48.84000000000003,
+              "Height": 13.200000000000003
+            }
+          },
+          "prefillKey": "datosFormulario.personas[2].porcentaje",
+          "prefillMode": "optional",
+          "helpText": "Porcentaje (la suma total debe ser 100%)",
+          "salidaJSON": "datosFormulario.personas[2].porcentaje",
+          "jsonOutputPath": "datosFormulario.personas[2].porcentaje",
+          "conditionalVisibility": null
+        }
+      ]
+    },
+    {
+      "id": "section_beneficiario_3",
+      "title": "Beneficiario 3",
+      "description": null,
+      "instructions": null,
+      "conditionalVisibility": "{\"logic\": \"and\", \"conditions\": [{\"fieldId\": \"field_beneficiario_2_nombre\", \"operator\": \"not_empty\"}]}",
+      "order": 8,
+      "fields": [
+        {
+          "id": "field_beneficiario_3_numero",
+          "type": "number",
+          "label": "N° (Beneficiario 3)",
+          "required": false,
+          "readOnly": true,
+          "defaultValue": 3,
+          "order": 1,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "beneficiario_3_numero",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 28.6036,
+              "Y": 84.2801,
+              "Width": 19.32,
+              "Height": 13.679999999999993
+            }
+          },
+          "salidaJSON": "beneficiario_3_numero",
+          "jsonOutputPath": "beneficiario_3_numero",
+          "conditionalVisibility": null,
+          "helpText": "Número de orden del beneficiario (no editable)",
+          "prefillMode": "mandatory"
+        },
+        {
+          "id": "field_beneficiario_3_nombre",
+          "type": "text",
+          "label": "Nombre (Beneficiario 3)",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 2,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "beneficiario_3_nombre",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 49.2436,
+              "Y": 84.2801,
+              "Width": 208.4404,
+              "Height": 13.679999999999993
+            }
+          },
+          "prefillKey": "datosFormulario.personas[3].nombreCompleto",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[3].nombreCompleto",
+          "jsonOutputPath": "datosFormulario.personas[3].nombreCompleto",
+          "conditionalVisibility": null,
+          "helpText": "Nombre completo del tercer beneficiario"
+        },
+        {
+          "id": "field_beneficiario_3_tipo_identificacion",
+          "type": "select",
+          "label": "Tipo Identificación (Beneficiario 3)",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 3,
+          "options": [
+            {
+              "value": "0",
+              "label": "Cédula Física Nacional"
+            },
+            {
+              "value": "2",
+              "label": "Cédula Jurídica Gobierno Central"
+            },
+            {
+              "value": "3",
+              "label": "Cédula Persona Jurídica Nacional"
+            },
+            {
+              "value": "4",
+              "label": "Cédula Institución Autónoma"
+            },
+            {
+              "value": "5",
+              "label": "DIMEX"
+            },
+            {
+              "value": "6",
+              "label": "DIDI"
+            },
+            {
+              "value": "7",
+              "label": "Pasaporte"
+            },
+            {
+              "value": "8",
+              "label": "Otro"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "beneficiario_3_tipo_identificacion",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 259.004,
+              "Y": 84.2801,
+              "Width": 120.59999999999997,
+              "Height": 13.679999999999993
+            }
+          },
+          "prefillKey": "datosFormulario.personas[3].codigoTipoIdentificacion",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[3].codigoTipoIdentificacion",
+          "jsonOutputPath": "datosFormulario.personas[3].codigoTipoIdentificacion",
+          "conditionalVisibility": null,
+          "helpText": "Tipo de documento del tercer beneficiario"
+        },
+        {
+          "id": "field_beneficiario_3_numero_identificacion",
+          "type": "text",
+          "label": "N° Identificación (Beneficiario 3)",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 4,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "beneficiario_3_numero_identificacion",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 380.924,
+              "Y": 84.2801,
+              "Width": 80.88,
+              "Height": 13.679999999999993
+            }
+          },
+          "prefillKey": "datosFormulario.personas[3].numeroIdentificacion",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[3].numeroIdentificacion",
+          "jsonOutputPath": "datosFormulario.personas[3].numeroIdentificacion",
+          "conditionalVisibility": null,
+          "helpText": "Número de documento del tercer beneficiario"
+        },
+        {
+          "id": "field_beneficiario_3_parentesco",
+          "type": "select",
+          "label": "Parentesco (Beneficiario 3)",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 5,
+          "options": [
+            {
+              "value": "Madre",
+              "label": "Madre"
+            },
+            {
+              "value": "Padre",
+              "label": "Padre"
+            },
+            {
+              "value": "Hijo (a)",
+              "label": "Hijo (a)"
+            },
+            {
+              "value": "Hermano (a)",
+              "label": "Hermano (a)"
+            },
+            {
+              "value": "Cónyuge",
+              "label": "Cónyuge"
+            },
+            {
+              "value": "Otro",
+              "label": "Otro"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "beneficiario_3_parentesco",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 463.124,
+              "Y": 84.2801,
+              "Width": 69.48000000000002,
+              "Height": 13.679999999999993
+            }
+          },
+          "prefillKey": "datosFormulario.personas[3].descripcionParentesco",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[3].descripcionParentesco",
+          "jsonOutputPath": "datosFormulario.personas[3].descripcionParentesco",
+          "conditionalVisibility": null,
+          "helpText": "Relación familiar con el asegurado"
+        },
+        {
+          "id": "field_beneficiario_3_porcentaje",
+          "type": "number",
+          "label": "Porcentaje (Beneficiario 3)",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 6,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "beneficiario_3_porcentaje",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 533.924,
+              "Y": 84.2801,
+              "Width": 48.84000000000003,
+              "Height": 13.679999999999993
+            }
+          },
+          "prefillKey": "datosFormulario.personas[3].porcentaje",
+          "prefillMode": "optional",
+          "helpText": "Porcentaje (la suma total debe ser 100%)",
+          "salidaJSON": "datosFormulario.personas[3].porcentaje",
+          "jsonOutputPath": "datosFormulario.personas[3].porcentaje",
+          "conditionalVisibility": null
+        }
+      ]
+    },
+    {
+      "id": "section_vigencia",
+      "title": "Plazo de Vigencia",
+      "description": null,
+      "instructions": null,
+      "conditionalVisibility": null,
+      "order": 9,
+      "fields": [
+        {
+          "id": "field_vigencia_desde",
+          "type": "date",
+          "label": "Vigencia Desde",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 1,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "vigencia_desde",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 205.09,
+              "Y": 41.0199,
+              "Width": 145.309,
+              "Height": 15.2727
+            }
+          },
+          "prefillKey": "datosFormulario.polizaMadre.vigenciaDesde",
+          "prefillMode": "mandatory",
+          "salidaJSON": "datosFormulario.polizaMadre.vigenciaDesde",
+          "jsonOutputPath": "datosFormulario.polizaMadre.vigenciaDesde",
+          "conditionalVisibility": null,
+          "helpText": "Fecha de inicio de la vigencia del seguro"
+        },
+        {
+          "id": "field_vigencia_hasta",
+          "type": "date",
+          "label": "Vigencia Hasta",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 2,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "vigencia_hasta",
+            "page": 1,
+            "nativeType": "Text",
+            "rect": {
+              "X": 395.781,
+              "Y": 40.5836,
+              "Width": 145.30900000000003,
+              "Height": 15.2727
+            }
+          },
+          "prefillKey": "datosFormulario.polizaMadre.vigenciaHasta",
+          "prefillMode": "mandatory",
+          "salidaJSON": "datosFormulario.polizaMadre.vigenciaHasta",
+          "jsonOutputPath": "datosFormulario.polizaMadre.vigenciaHasta",
+          "conditionalVisibility": null,
+          "helpText": "Fecha de finalización de la vigencia del seguro"
+        }
+      ]
+    },
+    {
+      "id": "section_notificaciones",
+      "title": "Notificaciones",
+      "description": null,
+      "instructions": null,
+      "conditionalVisibility": null,
+      "order": 10,
+      "fields": [
+        {
+          "id": "field_notificacion_medio",
+          "type": "select",
+          "label": "Medio de Notificación",
+          "required": true,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 1,
+          "options": [
+            {
+              "value": "Correo electrónico",
+              "label": "Correo electrónico"
+            },
+            {
+              "value": "Domicilio físico",
+              "label": "Domicilio físico"
+            },
+            {
+              "value": "Otros",
+              "label": "Otros"
+            }
+          ],
+          "sourceMeta": {
+            "sourceName": "notificacion_medio",
+            "page": 2,
+            "nativeType": "Text",
+            "rect": {
+              "X": 206.4,
+              "Y": 726.109,
+              "Width": 374.83500000000004,
+              "Height": 15.27299999999991
+            }
+          },
+          "prefillKey": "datosFormulario.personas[0].mediosNotificacion[0].descripcion",
+          "prefillMode": "optional",
+          "salidaJSON": "datosFormulario.personas[0].mediosNotificacion[0].descripcion",
+          "jsonOutputPath": "datosFormulario.personas[0].mediosNotificacion[0].descripcion",
+          "conditionalVisibility": null,
+          "helpText": "Cómo desea recibir notificaciones"
+        }
+      ]
+    },
+    {
+      "id": "section_firma",
+      "title": "Firma / Tomador",
+      "description": null,
+      "instructions": null,
+      "conditionalVisibility": null,
+      "order": 11,
+      "fields": [
+        {
+          "id": "field_tomador_nombre_cargo",
+          "type": "text",
+          "label": "Nombre Completo y Cargo (Tomador)",
+          "required": false,
+          "readOnly": false,
+          "defaultValue": null,
+          "order": 1,
+          "options": null,
+          "sourceMeta": {
+            "sourceName": "tomador_nombre_cargo",
+            "page": 2,
+            "nativeType": "Text",
+            "rect": {
+              "X": 33.9345,
+              "Y": 271.6,
+              "Width": 544.2305,
+              "Height": 15.185999999999979
+            }
+          },
+          "prefillKey": "datosFormulario.polizaMadre.nombreCargoFirmante",
+          "prefillMode": "mandatory",
+          "salidaJSON": "datosFormulario.polizaMadre.nombreCargoFirmante",
+          "jsonOutputPath": "datosFormulario.polizaMadre.nombreCargoFirmante",
+          "conditionalVisibility": null,
+          "helpText": "Nombre y cargo del representante del Tomador"
+        },
+        {
+          "id": "field_1777390731603",
+          "label": "Nuevo campo",
+          "type": "signature",
+          "placeholder": null,
+          "required": false,
+          "readOnly": true,
+          "width": "full",
+          "helpText": null,
+          "validationPattern": null,
+          "maxLength": null,
+          "options": null,
+          "conditionalVisibility": null,
+          "defaultValue": null,
+          "prefillMode": null,
+          "prefillKey": null,
+          "sourceMeta": {
+            "sourceName": null,
+            "page": 2,
+            "rect": {
+              "x": 137.6750483558994,
+              "y": 101.92855415860734,
+              "width": 313.76402321083174,
+              "height": 107.35009671179884
+            },
+            "sourceType": "signature"
+          },
+          "radioGroupFields": null,
+          "sharedValue": true,
+          "excludeFromJson": true
+        }
+      ]
+    }
+  ],
+  "validationRules": [],
+  "prefillMappings": [],
+  "generatedDocuments": [],
+  "version": 1,
+  "_sourcePdf": {
+    "fileName": "1009052_Vida_Colectiva_DEMO.pdf",
+    "pageCount": 2,
+    "fieldPositions": [
+      {
+        "sourceName": "beneficiario_1_nombre",
+        "page": 1,
+        "rect": {
+          "X": 49.2436,
+          "Y": 125.08,
+          "Width": 208.4404,
+          "Height": 13.200000000000003
+        }
+      },
+      {
+        "sourceName": "beneficiario_1_tipo_identificacion",
+        "page": 1,
+        "rect": {
+          "X": 259.004,
+          "Y": 125.08,
+          "Width": 120.59999999999997,
+          "Height": 13.200000000000003
+        }
+      },
+      {
+        "sourceName": "beneficiario_1_numero_identificacion",
+        "page": 1,
+        "rect": {
+          "X": 380.924,
+          "Y": 125.08,
+          "Width": 80.88,
+          "Height": 13.200000000000003
+        }
+      },
+      {
+        "sourceName": "beneficiario_1_parentesco",
+        "page": 1,
+        "rect": {
+          "X": 463.124,
+          "Y": 125.08,
+          "Width": 69.48000000000002,
+          "Height": 13.200000000000003
+        }
+      },
+      {
+        "sourceName": "beneficiario_1_porcentaje",
+        "page": 1,
+        "rect": {
+          "X": 533.924,
+          "Y": 125.08,
+          "Width": 48.84000000000003,
+          "Height": 13.200000000000003
+        }
+      },
+      {
+        "sourceName": "beneficiario_2_nombre",
+        "page": 1,
+        "rect": {
+          "X": 49.2436,
+          "Y": 103.92,
+          "Width": 208.4404,
+          "Height": 13.200000000000003
+        }
+      },
+      {
+        "sourceName": "beneficiario_2_tipo_identificacion",
+        "page": 1,
+        "rect": {
+          "X": 259.004,
+          "Y": 103.92,
+          "Width": 120.59999999999997,
+          "Height": 13.200000000000003
+        }
+      },
+      {
+        "sourceName": "beneficiario_2_numero_identificacion",
+        "page": 1,
+        "rect": {
+          "X": 380.924,
+          "Y": 103.92,
+          "Width": 80.88,
+          "Height": 13.200000000000003
+        }
+      },
+      {
+        "sourceName": "beneficiario_2_parentesco",
+        "page": 1,
+        "rect": {
+          "X": 463.124,
+          "Y": 103.92,
+          "Width": 69.48000000000002,
+          "Height": 13.200000000000003
+        }
+      },
+      {
+        "sourceName": "beneficiario_2_porcentaje",
+        "page": 1,
+        "rect": {
+          "X": 533.924,
+          "Y": 103.92,
+          "Width": 48.84000000000003,
+          "Height": 13.200000000000003
+        }
+      },
+      {
+        "sourceName": "beneficiario_3_nombre",
+        "page": 1,
+        "rect": {
+          "X": 49.2436,
+          "Y": 84.2801,
+          "Width": 208.4404,
+          "Height": 13.679999999999993
+        }
+      },
+      {
+        "sourceName": "beneficiario_3_tipo_identificacion",
+        "page": 1,
+        "rect": {
+          "X": 259.004,
+          "Y": 84.2801,
+          "Width": 120.59999999999997,
+          "Height": 13.679999999999993
+        }
+      },
+      {
+        "sourceName": "beneficiario_3_numero_identificacion",
+        "page": 1,
+        "rect": {
+          "X": 380.924,
+          "Y": 84.2801,
+          "Width": 80.88,
+          "Height": 13.679999999999993
+        }
+      },
+      {
+        "sourceName": "beneficiario_3_parentesco",
+        "page": 1,
+        "rect": {
+          "X": 463.124,
+          "Y": 84.2801,
+          "Width": 69.48000000000002,
+          "Height": 13.679999999999993
+        }
+      },
+      {
+        "sourceName": "beneficiario_3_porcentaje",
+        "page": 1,
+        "rect": {
+          "X": 533.924,
+          "Y": 84.2801,
+          "Width": 48.84000000000003,
+          "Height": 13.679999999999993
+        }
+      },
+      {
+        "sourceName": "solicitud_lugar",
+        "page": 1,
+        "rect": {
+          "X": 62.8361,
+          "Y": 666.219,
+          "Width": 518.7489,
+          "Height": 15.184999999999945
+        }
+      },
+      {
+        "sourceName": "solicitud_fecha_mes",
+        "page": 1,
+        "rect": {
+          "X": 434.617,
+          "Y": 643.953,
+          "Width": 146.48999999999995,
+          "Height": 15.186000000000035
+        }
+      },
+      {
+        "sourceName": "solicitud_fecha_ano",
+        "page": 1,
+        "rect": {
+          "X": 259.723,
+          "Y": 643.879,
+          "Width": 145.06099999999998,
+          "Height": 15.186000000000035
+        }
+      },
+      {
+        "sourceName": "asegurado_primer_apellido",
+        "page": 1,
+        "rect": {
+          "X": 87.7322,
+          "Y": 540.929,
+          "Width": 117.41479999999999,
+          "Height": 15.186000000000035
+        }
+      },
+      {
+        "sourceName": "asegurado_nombre_completo",
+        "page": 1,
+        "rect": {
+          "X": 471.955,
+          "Y": 540.126,
+          "Width": 110.26600000000002,
+          "Height": 15.18500000000006
+        }
+      },
+      {
+        "sourceName": "asegurado_tipo_id_otro_texto",
+        "page": 1,
+        "rect": {
+          "X": 481.677,
+          "Y": 515.415,
+          "Width": 101.10199999999998,
+          "Height": 15.18500000000006
+        }
+      },
+      {
+        "sourceName": "asegurado_profesion_ocupacion",
+        "page": 1,
+        "rect": {
+          "X": 92.3508,
+          "Y": 492.388,
+          "Width": 127.9012,
+          "Height": 15.186000000000035
+        }
+      },
+      {
+        "sourceName": "asegurado_segundo_apellido",
+        "page": 1,
+        "rect": {
+          "X": 278.509,
+          "Y": 540.327,
+          "Width": 112.582,
+          "Height": 15.381999999999948
+        }
+      },
+      {
+        "sourceName": "asegurado_numero_identificacion",
+        "page": 1,
+        "rect": {
+          "X": 321.054,
+          "Y": 514.8,
+          "Width": 69.709,
+          "Height": 15.382000000000062
+        }
+      },
+      {
+        "sourceName": "poliza_nombre_tomador",
+        "page": 1,
+        "rect": {
+          "X": 149.142,
+          "Y": 603.078,
+          "Width": 433.906,
+          "Height": 15.18500000000006
+        }
+      },
+      {
+        "sourceName": "asegurado_provincia",
+        "page": 1,
+        "rect": {
+          "X": 29.3463,
+          "Y": 451.975,
+          "Width": 135.47070000000002,
+          "Height": 15.661999999999978
+        }
+      },
+      {
+        "sourceName": "vigencia_desde",
+        "page": 1,
+        "rect": {
+          "X": 205.09,
+          "Y": 41.0199,
+          "Width": 145.309,
+          "Height": 15.2727
+        }
+      },
+      {
+        "sourceName": "vigencia_hasta",
+        "page": 1,
+        "rect": {
+          "X": 395.781,
+          "Y": 40.5836,
+          "Width": 145.30900000000003,
+          "Height": 15.2727
+        }
+      },
+      {
+        "sourceName": "notificacion_medio",
+        "page": 2,
+        "rect": {
+          "X": 206.4,
+          "Y": 726.109,
+          "Width": 374.83500000000004,
+          "Height": 15.27299999999991
+        }
+      },
+      {
+        "sourceName": "asegurado_correo_electronico",
+        "page": 1,
+        "rect": {
+          "X": 285.236,
+          "Y": 394.346,
+          "Width": 296.41200000000003,
+          "Height": 15.185999999999979
+        }
+      },
+      {
+        "sourceName": "asegurado_canton",
+        "page": 1,
+        "rect": {
+          "X": 173.121,
+          "Y": 451.949,
+          "Width": 131.41799999999998,
+          "Height": 15.185000000000002
+        }
+      },
+      {
+        "sourceName": "tomador_nombre_cargo",
+        "page": 2,
+        "rect": {
+          "X": 33.9345,
+          "Y": 271.6,
+          "Width": 544.2305,
+          "Height": 15.185999999999979
+        }
+      },
+      {
+        "sourceName": "solicitud_fecha_dia",
+        "page": 1,
+        "rect": {
+          "X": 84.7617,
+          "Y": 643.772,
+          "Width": 146.4903,
+          "Height": 15.185999999999922
+        }
+      },
+      {
+        "sourceName": "poliza_numero",
+        "page": 1,
+        "rect": {
+          "X": 97.4094,
+          "Y": 581.098,
+          "Width": 208.93059999999997,
+          "Height": 15.186000000000035
+        }
+      },
+      {
+        "sourceName": "asegurado_fecha_nacimiento_mes",
+        "page": 1,
+        "rect": {
+          "X": 388.684,
+          "Y": 485.14,
+          "Width": 32.57299999999998,
+          "Height": 13.87700000000001
+        }
+      },
+      {
+        "sourceName": "asegurado_pais",
+        "page": 1,
+        "rect": {
+          "X": 310.231,
+          "Y": 452.398,
+          "Width": 134.48700000000002,
+          "Height": 15.185999999999979
+        }
+      },
+      {
+        "sourceName": "asegurado_direccion_exacta",
+        "page": 1,
+        "rect": {
+          "X": 30.6795,
+          "Y": 420.349,
+          "Width": 551.1605000000001,
+          "Height": 15.186000000000035
+        }
+      },
+      {
+        "sourceName": "asegurado_fecha_nacimiento_dia",
+        "page": 1,
+        "rect": {
+          "X": 353.025,
+          "Y": 485.211,
+          "Width": 23.04000000000002,
+          "Height": 13.658000000000015
+        }
+      },
+      {
+        "sourceName": "asegurado_fecha_nacimiento_ano",
+        "page": 1,
+        "rect": {
+          "X": 312.443,
+          "Y": 484.379,
+          "Width": 23.04000000000002,
+          "Height": 14.748999999999967
+        }
+      },
+      {
+        "sourceName": "asegurado_distrito",
+        "page": 1,
+        "rect": {
+          "X": 449.32,
+          "Y": 452.326,
+          "Width": 132.42300000000006,
+          "Height": 15.185000000000002
+        }
+      },
+      {
+        "sourceName": "asegurado_telefono_movil",
+        "page": 1,
+        "rect": {
+          "X": 92.5089,
+          "Y": 394.474,
+          "Width": 114.7631,
+          "Height": 15.271999999999991
+        }
+      },
+      {
+        "sourceName": "monto_asegurado",
+        "page": 1,
+        "rect": {
+          "X": 96.4361,
+          "Y": 353.456,
+          "Width": 150.1089,
+          "Height": 15.271999999999991
+        }
+      },
+      {
+        "sourceName": "asegurado_tipo_id_cedula",
+        "page": 1,
+        "rect": {
+          "X": 112.254,
+          "Y": 521.918,
+          "Width": 10.554999999999993,
+          "Height": 10.308999999999969
+        }
+      },
+      {
+        "sourceName": "asegurado_sexo_masculino",
+        "page": 1,
+        "rect": {
+          "X": 521.155,
+          "Y": 491.209,
+          "Width": 10.555000000000064,
+          "Height": 10.308999999999969
+        }
+      },
+      {
+        "sourceName": "asegurado_tipo_id_otro",
+        "page": 1,
+        "rect": {
+          "X": 155.693,
+          "Y": 521.843,
+          "Width": 10.554999999999978,
+          "Height": 10.309000000000083
+        }
+      },
+      {
+        "sourceName": "asegurado_tipo_id_dimex",
+        "page": 1,
+        "rect": {
+          "X": 232.636,
+          "Y": 521.918,
+          "Width": 10.555000000000007,
+          "Height": 10.308999999999969
+        }
+      },
+      {
+        "sourceName": "asegurado_sexo_femenino",
+        "page": 1,
+        "rect": {
+          "X": 463.732,
+          "Y": 491.073,
+          "Width": 10.55499999999995,
+          "Height": 10.309000000000026
+        }
+      },
+      {
+        "sourceName": "asegurado_tipo_id_pasaporte",
+        "page": 1,
+        "rect": {
+          "X": 198.737,
+          "Y": 521.864,
+          "Width": 10.554000000000002,
+          "Height": 10.307999999999993
+        }
+      },
+      {
+        "sourceName": "asegurado_tipo_id_didi",
+        "page": 1,
+        "rect": {
+          "X": 287.019,
+          "Y": 521.918,
+          "Width": 10.553999999999974,
+          "Height": 10.308999999999969
+        }
+      },
+      {
+        "sourceName": "beneficiario_3_numero",
+        "page": 1,
+        "rect": {
+          "X": 28.6036,
+          "Y": 84.2801,
+          "Width": 19.32,
+          "Height": 13.679999999999993
+        }
+      },
+      {
+        "sourceName": "beneficiario_2_numero",
+        "page": 1,
+        "rect": {
+          "X": 28.6036,
+          "Y": 103.92,
+          "Width": 19.32,
+          "Height": 13.200000000000003
+        }
+      },
+      {
+        "sourceName": "beneficiario_1_numero",
+        "page": 1,
+        "rect": {
+          "X": 28.6036,
+          "Y": 125.08,
+          "Width": 19.32,
+          "Height": 13.200000000000003
+        }
+      }
+    ]
+  }
+}
