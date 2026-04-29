@@ -648,6 +648,16 @@
         });
         $('#btnV2Process').addEventListener('click', runV2Process);
         $('#btnV2Download').addEventListener('click', downloadV2Zip);
+        $('#v2RenameToggle').addEventListener('click', function() {
+            var wrap = $('#v2RenameTablePanel').querySelector('.v2-rename-table-wrap');
+            if (wrap.hidden) {
+                wrap.hidden = false;
+                this.textContent = '▲ Ocultar';
+            } else {
+                wrap.hidden = true;
+                this.textContent = '▼ Mostrar';
+            }
+        });
         $('#v2WarningsToggle').addEventListener('click', function() {
             var panel = $('#v2WarningsPanel');
             panel.hidden = !panel.hidden;
@@ -732,6 +742,7 @@
                 $('#v2PageInfo').textContent = v2State.preview.numPages + ' página' + (v2State.preview.numPages > 1 ? 's' : '') + ' (renombrado)';
             }
 
+            renderV2RenameTable(result.renamedFields || []);
             renderV2Warnings(result.warnings);
         } catch (err) {
             console.error(err);
@@ -740,6 +751,32 @@
         }
 
         refreshV2ProcessButton();
+    }
+
+    function renderV2RenameTable(fields) {
+        var panel = $('#v2RenameTablePanel');
+        var tbody = $('#v2RenameTableBody');
+        var countEl = $('#v2RenameCount');
+
+        if (!fields || !fields.length) {
+            panel.hidden = true;
+            return;
+        }
+
+        panel.hidden = false;
+        countEl.textContent = fields.length + ' campo' + (fields.length > 1 ? 's' : '');
+
+        tbody.innerHTML = '';
+        for (var i = 0; i < fields.length; i++) {
+            var f = fields[i];
+            var tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td class="v2-col-num">' + (i + 1) + '</td>' +
+                '<td class="v2-col-old">' + escapeHtml(f.oldName) + '</td>' +
+                '<td class="v2-col-arrow">→</td>' +
+                '<td class="v2-col-new">' + escapeHtml(f.newName) + '</td>';
+            tbody.appendChild(tr);
+        }
     }
 
     function renderV2Warnings(warnings) {

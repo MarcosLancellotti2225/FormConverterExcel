@@ -36,6 +36,7 @@ async function convertPdf(pdfBytes, excelBytes, options) {
         pdfBytes: renamedPdfBytes,
         warnings: renameWarnings,
         renamedCount,
+        renamedFields,
         summary: renameSummary,
     } = await renamePdf(pdfBytes, renameMapping);
     allWarnings.push(...renameWarnings);
@@ -64,6 +65,7 @@ async function convertPdf(pdfBytes, excelBytes, options) {
         zipFilename,
         renamedPdfBytes,
         enrichedJson,
+        renamedFields: renamedFields || [],
         warnings: allWarnings,
         stats: {
             excelRows: excelRows.length,

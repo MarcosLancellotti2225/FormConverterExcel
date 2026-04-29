@@ -352,6 +352,27 @@
                 <div class="v2-preview-placeholder">Cargá un PDF para ver el preview</div>
             </div>
 
+            <div id="v2RenameTablePanel" class="v2-rename-panel" hidden>
+                <div class="v2-rename-header">
+                    <h3>Campos renombrados</h3>
+                    <span id="v2RenameCount" class="v2-rename-count"></span>
+                    <button id="v2RenameToggle" class="v2-rename-toggle">▲ Ocultar</button>
+                </div>
+                <div class="v2-rename-table-wrap">
+                    <table class="v2-rename-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Nombre original (AcroForm)</th>
+                                <th></th>
+                                <th>Nombre nuevo (propuesto)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="v2RenameTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
             <div class="v2-status-bar">
                 <span id="v2PageInfo" class="v2-page-info"></span>
                 <span id="v2ResultInfo" class="v2-result-info"></span>
