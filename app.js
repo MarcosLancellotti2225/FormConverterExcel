@@ -372,6 +372,7 @@
             }
 
             renderMatchTable(result.matches, false);
+            renderConvRenameTable(result.matches);
             renderConvWarnings(result.warnings);
 
             var s = result.stats;
@@ -569,6 +570,8 @@
             statusEl.className = 'status active success';
             statusEl.textContent = '✓ PDF generado. ' + result.renamedCount + ' campos renombrados. Descargando...';
 
+            renderConvRenameTable(convState.matches);
+
             if (result.warnings.length) {
                 renderConvWarnings(result.warnings);
             }
@@ -611,6 +614,48 @@
         var blob = new Blob([JSON.stringify(debug, null, 2)], { type: 'application/json' });
         var name = (convState.pdf ? convState.pdf.name.replace(/\.pdf$/i, '') : 'convert') + '_debug.json';
         InsPipelineBundle.downloadBlob(blob, name);
+    }
+
+    function renderConvRenameTable(matches) {
+        var panel = $('#convRenamePanel');
+        var tbody = $('#convRenameTableBody');
+        var countEl = $('#convRenameCount');
+        if (!matches || !matches.length) { panel.hidden = true; return; }
+
+        var sorted = matches.slice().sort(function(a, b) {
+            if (a.page !== b.page) return a.page - b.page;
+            if (a.rect && b.rect) return a.rect.y - b.rect.y;
+            return 0;
+        });
+
+        var renamed = sorted.filter(function(m) { return m.source !== 'unchanged'; });
+        var unchanged = sorted.filter(function(m) { return m.source === 'unchanged'; });
+
+        countEl.textContent = renamed.length + ' renombrados · ' + unchanged.length + ' sin cambio · ' + sorted.length + ' total';
+        panel.hidden = false;
+        tbody.innerHTML = '';
+
+        var all = renamed.concat(unchanged);
+        for (var i = 0; i < all.length; i++) {
+            var m = all[i];
+            var changed = m.source !== 'unchanged';
+            var tr = document.createElement('tr');
+            var statusClass = changed ? 'v2-status-ok' : 'v2-status-orphan';
+            var statusLabel = changed ? '✓ Renombrado' : '— Sin cambio';
+            if (changed) {
+                tr.style.background = '#f0fff0';
+            } else {
+                tr.style.background = '#fff8e1';
+            }
+            tr.innerHTML =
+                '<td style="color:#adb5bd;text-align:right;width:30px;">' + (i + 1) + '</td>' +
+                '<td>' + (m.page + 1) + '</td>' +
+                '<td style="font-family:monospace;font-size:11px;color:#dc3545;word-break:break-all;">' + escapeHtml(m.originalName) + '</td>' +
+                '<td style="text-align:center;color:#0066cc;font-weight:bold;">' + (changed ? '→' : '') + '</td>' +
+                '<td style="font-family:monospace;font-size:11px;color:#28a745;word-break:break-all;">' + escapeHtml(changed ? m.newName : m.originalName) + '</td>' +
+                '<td style="font-size:10px;white-space:nowrap;" class="' + statusClass + '">' + statusLabel + '</td>';
+            tbody.appendChild(tr);
+        }
     }
 
     // ==================== CONVERT PDF V2 FLOW ====================

@@ -37,9 +37,9 @@
                 <p>Cargá un PDF original + el Excel de mapeo (22 columnas). Genera el PDF renombrado + JSON enriquecido para Lovable.</p>
                 <button class="primary">Empezar</button>
             </div>
-            <div class="mode-card" data-mode="convert-pdf" hidden>
+            <div class="mode-card" data-mode="convert-pdf">
                 <div class="mode-icon">PDF</div>
-                <h2>Convertir PDF (legacy)</h2>
+                <h2>Convertir PDF</h2>
                 <p>Renombra los campos AcroForm de un PDF usando el Excel como diccionario y descarga el PDF con nombres semanticos.</p>
                 <button class="primary">Empezar</button>
             </div>
@@ -140,6 +140,29 @@
                     <button id="btnConvDebug" class="secondary btn-sm">Exportar debug JSON</button>
                 </div>
                 <div id="convExportStatus" class="status"></div>
+            </section>
+
+            <section class="panel" id="convRenamePanel" hidden>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                    <h2 style="margin:0;">Antes → Después</h2>
+                    <span id="convRenameCount" style="font-size:12px;color:#495057;"></span>
+                </div>
+                <p class="hint">Tabla de todos los campos: cómo se llamaban en el PDF original vs cómo quedan en el PDF renombrado.</p>
+                <div class="match-table-wrap" style="max-height:400px;">
+                    <table class="match-table" id="convRenameTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Pag</th>
+                                <th>Nombre Original</th>
+                                <th></th>
+                                <th>Nombre Nuevo</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="convRenameTableBody"></tbody>
+                    </table>
+                </div>
             </section>
 
             <section class="panel" id="convWarningsPanel" hidden>
