@@ -18,6 +18,7 @@
         initPdfToHtmlFlow();
         initMatrixEditorFlow();
         initDetectFieldsFlow();
+        initGenerateMatrixFlow();
 
         selectMode(null);
     }
@@ -44,6 +45,7 @@
         $('#pdfToHtmlFlow').hidden = mode !== 'pdf-to-html';
         $('#enrichJsonFlow').hidden = mode !== 'enrich-json';
         $('#matrixEditorFlow').hidden = mode !== 'matrix-editor';
+        $('#generateMatrixFlow').hidden = mode !== 'generate-matrix';
         $('#detectFieldsFlow').hidden = mode !== 'detect-fields';
         $('#btnBackToHome').hidden = !mode;
         var main = document.querySelector('main');
@@ -1096,6 +1098,104 @@
         window._detectedAcroFields = detectState.fields.map(function(f) { return f.name; });
         selectMode('matrix-editor');
         $('#detectStatus').textContent = '→ Pasados ' + detectState.fields.length + ' campos al Editor de Matriz';
+    }
+
+    // ==================== GENERATE MATRIX FLOW ====================
+
+    var genState = {
+        excel: null,
+        pdfFiles: []
+    };
+
+    function initGenerateMatrixFlow() {
+        $('#genExcelInput').addEventListener('change', function(e) {
+            genState.excel = e.target.files[0] || null;
+            var el = $('#genExcelStatus');
+            var slot = el.closest('.file-slot');
+            if (genState.excel) {
+                slot.classList.add('loaded');
+                el.textContent = '✓ ' + genState.excel.name + ' (' + formatSize(genState.excel.size) + ')';
+            } else {
+                slot.classList.remove('loaded');
+                el.textContent = '';
+            }
+            refreshGenButton();
+        });
+        $('#genPdfInput').addEventListener('change', function(e) {
+            genState.pdfFiles = Array.from(e.target.files || []);
+            var el = $('#genPdfStatus');
+            var slot = el.closest('.file-slot');
+            if (genState.pdfFiles.length > 0) {
+                slot.classList.add('loaded');
+                var names = genState.pdfFiles.map(function(f) { return f.name; });
+                el.textContent = '✓ ' + genState.pdfFiles.length + ' PDF' + (genState.pdfFiles.length > 1 ? 's' : '') + ': ' + names.join(', ');
+            } else {
+                slot.classList.remove('loaded');
+                el.textContent = '';
+            }
+            refreshGenButton();
+        });
+        $('#btnGenerate').addEventListener('click', runGenerate);
+    }
+
+    function refreshGenButton() {
+        $('#btnGenerate').disabled = !(genState.excel && genState.pdfFiles.length > 0);
+    }
+
+    async function runGenerate() {
+        var statusEl = $('#genStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Procesando matriz + ' + genState.pdfFiles.length + ' PDF(s)...';
+
+        try {
+            var t0 = performance.now();
+            var results = await InsPipelineBundle.runGenerateMatrices({
+                matrixFile: genState.excel,
+                pdfFiles: genState.pdfFiles
+            });
+            var t1 = performance.now();
+
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ ' + results.length + ' matriz/matrices generada(s) en ' + Math.round(t1 - t0) + 'ms';
+
+            renderGenResults(results);
+            $('#genResultPanel').hidden = false;
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
+    }
+
+    function renderGenResults(results) {
+        var container = $('#genResults');
+        container.innerHTML = '';
+
+        for (var i = 0; i < results.length; i++) {
+            var r = results[i];
+            var div = document.createElement('div');
+            div.className = 'gen-result-card';
+            div.innerHTML =
+                '<h3>' + escapeHtml(r.code) + '</h3>' +
+                '<div class="stat-grid">' +
+                    '<div class="stat"><span class="stat-n">' + r.stats.pdfFields + '</span><span class="stat-l">Campos PDF</span></div>' +
+                    '<div class="stat"><span class="stat-n">' + r.stats.matrixRows + '</span><span class="stat-l">Filas matriz</span></div>' +
+                    '<div class="stat"><span class="stat-n">' + r.stats.matched + '</span><span class="stat-l">Matcheados</span></div>' +
+                    '<div class="stat' + (r.stats.unmatched ? ' stat-warn' : '') + '"><span class="stat-n">' + r.stats.unmatched + '</span><span class="stat-l">Sin match</span></div>' +
+                '</div>';
+
+            var btn = document.createElement('button');
+            btn.className = 'primary';
+            btn.textContent = 'Descargar ' + r.fileName;
+            btn.addEventListener('click', (function(result) {
+                return function() {
+                    var blob = new Blob([result.buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                    InsPipelineBundle.downloadBlob(blob, result.fileName);
+                };
+            })(r));
+            div.appendChild(btn);
+            container.appendChild(div);
+        }
     }
 
     // ==================== INIT ====================

@@ -1099,3 +1099,16 @@ footer {
     background: var(--bg-elevated);
     color: var(--accent);
 }
+
+.gen-result-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+}
+.gen-result-card h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1rem;
+    color: var(--accent);
+}

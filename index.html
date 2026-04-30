@@ -38,6 +38,12 @@
                 <button class="primary">Empezar</button>
             </div>
 
+            <div class="mode-card" data-mode="generate-matrix">
+                <div class="mode-icon">📋</div>
+                <h2>Generador de Matriz</h2>
+                <p>Cargá la matriz del cliente + los PDFs. Genera un Excel de 22 columnas por PDF con AcroForm Actual, Propuesto sugerido y todos los datos.</p>
+                <button class="primary">Empezar</button>
+            </div>
             <div class="mode-card" data-mode="convert-pdf">
                 <div class="mode-icon">PDF</div>
                 <h2>Convertir PDF</h2>
@@ -303,6 +309,41 @@
                 <div id="mtxExportStatus" class="status"></div>
             </section>
         </div>
+        <!-- ============ GENERATE MATRIX FLOW ============ -->
+        <div id="generateMatrixFlow" hidden>
+            <section class="panel">
+                <h2>1. Archivos</h2>
+                <p class="hint">Cargá la matriz del cliente (13 columnas) y los PDFs asociados (1 a 3). Se genera un Excel de 22 columnas por cada PDF.</p>
+                <div class="inputs-grid">
+                    <label class="file-slot required" data-slot="gen-excel">
+                        <span class="label">Matriz del cliente</span>
+                        <span class="desc">Excel con las 13 columnas del cliente</span>
+                        <input type="file" accept=".xlsx,.xls" id="genExcelInput">
+                        <span class="file-status" id="genExcelStatus"></span>
+                    </label>
+                    <label class="file-slot required" data-slot="gen-pdfs">
+                        <span class="label">PDFs del formulario</span>
+                        <span class="desc">1 a 3 PDFs (Vida Colectiva, Protección Crediticia, etc.)</span>
+                        <input type="file" accept=".pdf" id="genPdfInput" multiple>
+                        <span class="file-status" id="genPdfStatus"></span>
+                    </label>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>2. Generar</h2>
+                <div class="actions">
+                    <button id="btnGenerate" class="primary" disabled>Generar Matrices 22 columnas</button>
+                </div>
+                <div id="genStatus" class="status"></div>
+            </section>
+
+            <section class="panel" id="genResultPanel" hidden>
+                <h2>3. Resultado</h2>
+                <div id="genResults"></div>
+            </section>
+        </div>
+
         <!-- ============ DETECT FIELDS FLOW ============ -->
         <div id="detectFieldsFlow" hidden>
             <section class="panel">
@@ -364,7 +405,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=3"></script>
-    <script src="app.js?v=3"></script>
+    <script src="bundle.js?v=4"></script>
+    <script src="app.js?v=4"></script>
 </body>
 </html>

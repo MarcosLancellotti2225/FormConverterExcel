@@ -9,6 +9,7 @@ const { analyzePdf, generatePdf, convertDirect } = require('./pdf-converter/pipe
 const { runEnrichPipeline } = require('./enricher/pipeline-enrich');
 const matrixEditor = require('./matrix-editor/pipeline-edit');
 const { detectFields } = require('./pdf-detect/index');
+const { generateMatrices } = require('./matrix-generator/index');
 
 async function fileToUint8Array(file) {
     const ab = await file.arrayBuffer();
@@ -564,8 +565,20 @@ function detectFieldsToXlsx(fields) {
     return new Uint8Array(buf);
 }
 
-if (typeof window !== 'undefined') {
-    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview };
+async function runGenerateMatrices(inputs) {
+    const { matrixFile, pdfFiles } = inputs;
+    if (!matrixFile) throw new Error('Cargá la matriz del cliente');
+    if (!pdfFiles || !pdfFiles.length) throw new Error('Cargá al menos un PDF');
+    const excelBytes = await fileToUint8Array(matrixFile);
+    const pdfEntries = [];
+    for (const f of pdfFiles) {
+        pdfEntries.push({ name: f.name, bytes: await fileToUint8Array(f) });
+    }
+    return generateMatrices(excelBytes, pdfEntries);
 }
 
-module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview };
+if (typeof window !== 'undefined') {
+    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview, runGenerateMatrices };
+}
+
+module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview, runGenerateMatrices };
