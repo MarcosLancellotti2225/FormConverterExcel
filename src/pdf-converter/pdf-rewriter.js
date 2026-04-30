@@ -152,4 +152,72 @@ function ensureFieldType(dict, context) {
     dict.set(PDFName.of('FT'), PDFName.of('Tx'));
 }
 
-module.exports = { rewritePdf };
+async function addFieldToPdf(pdfBytes, newFields) {
+    const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+    const context = pdfDoc.context;
+    const pages = pdfDoc.getPages();
+
+    let acroFormRef = pdfDoc.catalog.get(PDFName.of('AcroForm'));
+    let acroForm;
+    if (acroFormRef) {
+        acroForm = context.lookup(acroFormRef);
+    } else {
+        acroForm = context.obj({});
+        pdfDoc.catalog.set(PDFName.of('AcroForm'), acroForm);
+    }
+
+    let fieldsRef = acroForm.get(PDFName.of('Fields'));
+    let fieldsArray = fieldsRef ? context.lookup(fieldsRef) : null;
+    if (!fieldsArray) {
+        fieldsArray = PDFArray.withContext(context);
+        acroForm.set(PDFName.of('Fields'), fieldsArray);
+    }
+
+    for (const f of newFields) {
+        const pageIdx = (f.page || 1) - 1;
+        if (pageIdx < 0 || pageIdx >= pages.length) continue;
+        const page = pages[pageIdx];
+        const pageRef = pdfDoc.getPage(pageIdx).ref;
+
+        const { PDFDict, PDFNumber } = require('pdf-lib');
+        const rect = PDFArray.withContext(context);
+        rect.push(PDFNumber.of(f.x));
+        rect.push(PDFNumber.of(f.y));
+        rect.push(PDFNumber.of(f.x + f.width));
+        rect.push(PDFNumber.of(f.y + f.height));
+
+        const fieldDict = context.obj({});
+        fieldDict.set(PDFName.of('Type'), PDFName.of('Annot'));
+        fieldDict.set(PDFName.of('Subtype'), PDFName.of('Widget'));
+        fieldDict.set(PDFName.of('FT'), PDFName.of('Tx'));
+        fieldDict.set(PDFName.of('T'), PDFHexString.fromText(f.name));
+        fieldDict.set(PDFName.of('Rect'), rect);
+        fieldDict.set(PDFName.of('P'), pageRef);
+        fieldDict.set(PDFName.of('F'), PDFNumber.of(4));
+
+        const da = '/Helv 10 Tf 0 g';
+        fieldDict.set(PDFName.of('DA'), PDFString.of(da));
+
+        const fieldRef = context.register(fieldDict);
+        fieldsArray.push(fieldRef);
+
+        let annotsRef = page.node.get(PDFName.of('Annots'));
+        let annots;
+        if (annotsRef) {
+            annots = context.lookup(annotsRef);
+            if (!annots || typeof annots.push !== 'function') {
+                annots = PDFArray.withContext(context);
+                page.node.set(PDFName.of('Annots'), annots);
+            }
+        } else {
+            annots = PDFArray.withContext(context);
+            page.node.set(PDFName.of('Annots'), annots);
+        }
+        annots.push(fieldRef);
+    }
+
+    const savedBytes = await pdfDoc.save({ updateFieldAppearances: false });
+    return { pdfBytes: savedBytes };
+}
+
+module.exports = { rewritePdf, addFieldToPdf };

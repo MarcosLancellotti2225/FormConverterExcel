@@ -298,7 +298,9 @@
         pdf: null,
         excel: null,
         resultPdfBytes: null,
-        preview: null
+        preview: null,
+        drawMode: false,
+        addedFields: []
     };
 
     function initConvertPdfFlow() {
@@ -314,6 +316,9 @@
         });
         $('#btnConvertDirect').addEventListener('click', runConvertDirect);
         $('#btnDownloadConverted').addEventListener('click', downloadConverted);
+        $('#btnAddField').addEventListener('click', enterDrawMode);
+        $('#btnCancelAddField').addEventListener('click', exitDrawMode);
+        initDrawHandlers();
     }
 
     function updateConvFileStatus(id, file) {
@@ -352,6 +357,8 @@
                 result.renamedCount + '/' + result.excelRows + ' campos renombrados.';
 
             $('#btnDownloadConverted').hidden = false;
+            $('#btnAddField').hidden = false;
+            convState.addedFields = [];
 
             renderConvRenameTable(result.renamedFields, result.excelRows);
             renderConvWarnings(result.warnings);
@@ -421,6 +428,155 @@
             return '  [' + (w.type || 'warn') + '] ' + (w.field || '') + ' — ' + (w.reason || '');
         });
         $('#convWarningsLog').textContent = lines.join('\n');
+    }
+
+    // ---- Add Field: draw rectangle on preview ----
+
+    var drawState = { active: false, startX: 0, startY: 0, rect: null, pageDiv: null };
+
+    function enterDrawMode() {
+        convState.drawMode = true;
+        $('#btnAddField').hidden = true;
+        $('#btnCancelAddField').hidden = false;
+        $('#convPreview').classList.add('draw-mode');
+        $('#convStatus').textContent = 'Dibujá un rectangulo sobre el preview para crear el campo.';
+    }
+
+    function exitDrawMode() {
+        convState.drawMode = false;
+        $('#btnAddField').hidden = false;
+        $('#btnCancelAddField').hidden = true;
+        $('#convPreview').classList.remove('draw-mode');
+        if (drawState.rect) {
+            drawState.rect.remove();
+            drawState.rect = null;
+        }
+        drawState.active = false;
+        $('#convStatus').textContent = '';
+    }
+
+    function initDrawHandlers() {
+        var container = $('#convPreview');
+
+        container.addEventListener('mousedown', function(e) {
+            if (!convState.drawMode) return;
+            var pageDiv = e.target.closest('.detect-page');
+            if (!pageDiv) return;
+            e.preventDefault();
+            var pr = pageDiv.getBoundingClientRect();
+            drawState.active = true;
+            drawState.startX = e.clientX - pr.left;
+            drawState.startY = e.clientY - pr.top;
+            drawState.pageDiv = pageDiv;
+
+            var rect = document.createElement('div');
+            rect.className = 'draw-rect';
+            rect.style.left = drawState.startX + 'px';
+            rect.style.top = drawState.startY + 'px';
+            rect.style.width = '0px';
+            rect.style.height = '0px';
+            pageDiv.appendChild(rect);
+            drawState.rect = rect;
+        });
+
+        container.addEventListener('mousemove', function(e) {
+            if (!drawState.active || !drawState.rect) return;
+            var pr = drawState.pageDiv.getBoundingClientRect();
+            var curX = e.clientX - pr.left;
+            var curY = e.clientY - pr.top;
+            var x = Math.min(drawState.startX, curX);
+            var y = Math.min(drawState.startY, curY);
+            var w = Math.abs(curX - drawState.startX);
+            var h = Math.abs(curY - drawState.startY);
+            drawState.rect.style.left = x + 'px';
+            drawState.rect.style.top = y + 'px';
+            drawState.rect.style.width = w + 'px';
+            drawState.rect.style.height = h + 'px';
+        });
+
+        container.addEventListener('mouseup', function(e) {
+            if (!drawState.active || !drawState.rect) return;
+            drawState.active = false;
+
+            var pr = drawState.pageDiv.getBoundingClientRect();
+            var curX = e.clientX - pr.left;
+            var curY = e.clientY - pr.top;
+            var left = Math.min(drawState.startX, curX);
+            var top = Math.min(drawState.startY, curY);
+            var w = Math.abs(curX - drawState.startX);
+            var h = Math.abs(curY - drawState.startY);
+
+            drawState.rect.remove();
+            drawState.rect = null;
+
+            if (w < 10 || h < 5) return;
+
+            var pageIdx = getPageIndex(drawState.pageDiv);
+
+            promptFieldName(function(fieldName) {
+                if (!fieldName) return;
+                addNewField(fieldName, pageIdx, left, top, w, h);
+            });
+        });
+    }
+
+    function getPageIndex(pageDiv) {
+        var pages = $$('.detect-page', $('#convPreview'));
+        for (var i = 0; i < pages.length; i++) {
+            if (pages[i] === pageDiv) return i;
+        }
+        return 0;
+    }
+
+    function promptFieldName(callback) {
+        var name = prompt('Nombre del campo:');
+        if (name && name.trim()) callback(name.trim());
+    }
+
+    async function addNewField(fieldName, pageIdx, left, top, w, h) {
+        var statusEl = $('#convStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Agregando campo "' + fieldName + '"...';
+
+        try {
+            var pageDiv = $$('.detect-page', $('#convPreview'))[pageIdx];
+            var pdfScale = parseFloat(pageDiv.dataset.pdfScale) || 1;
+            var pageHeight = parseFloat(pageDiv.dataset.pdfPageHeight) || 792;
+
+            var pdfX = left / pdfScale;
+            var pdfW = w / pdfScale;
+            var pdfH = h / pdfScale;
+            var pdfY = pageHeight - (top / pdfScale) - pdfH;
+
+            var newField = {
+                name: fieldName,
+                page: pageIdx + 1,
+                x: pdfX,
+                y: pdfY,
+                width: pdfW,
+                height: pdfH
+            };
+
+            var result = await InsPipelineBundle.runAddFields(
+                new Uint8Array(convState.resultPdfBytes), [newField]
+            );
+
+            convState.resultPdfBytes = result.pdfBytes;
+            convState.addedFields.push(newField);
+
+            exitDrawMode();
+
+            statusEl.textContent = '⟳ Actualizando preview...';
+            await renderConvPreview(result.pdfBytes);
+
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ Campo "' + fieldName + '" agregado. ' +
+                convState.addedFields.length + ' campo(s) nuevo(s) en total.';
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ Error al agregar campo: ' + err.message;
+        }
     }
 
     // ==================== PDF TO HTML FLOW ====================

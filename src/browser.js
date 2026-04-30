@@ -10,6 +10,7 @@ const { runEnrichPipeline } = require('./enricher/pipeline-enrich');
 const matrixEditor = require('./matrix-editor/pipeline-edit');
 const { detectFields } = require('./pdf-detect/index');
 const { generateMatrices } = require('./matrix-generator/index');
+const { addFieldToPdf } = require('./pdf-converter/pdf-rewriter');
 
 async function fileToUint8Array(file) {
     const ab = await file.arrayBuffer();
@@ -502,6 +503,8 @@ async function renderDetectPreview(pdfBytes, container, fields) {
         pageDiv.className = 'detect-page';
         pageDiv.style.width = Math.floor(viewport.width) + 'px';
         pageDiv.style.position = 'relative';
+        pageDiv.dataset.pdfScale = scale;
+        pageDiv.dataset.pdfPageHeight = baseViewport.height;
 
         const label = document.createElement('div');
         label.className = 'detect-page-label';
@@ -577,8 +580,12 @@ async function runGenerateMatrices(inputs) {
     return generateMatrices(excelBytes, pdfEntries);
 }
 
-if (typeof window !== 'undefined') {
-    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview, runGenerateMatrices };
+async function runAddFields(pdfBytes, newFields) {
+    return addFieldToPdf(pdfBytes, newFields);
 }
 
-module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview, runGenerateMatrices };
+if (typeof window !== 'undefined') {
+    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields };
+}
+
+module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields };
