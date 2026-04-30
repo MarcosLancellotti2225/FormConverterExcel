@@ -11,6 +11,11 @@ const MERGE_X_GAP = 12;
 
 function resolveNames(labeledFields, excelBuffer, referenceJson, textItems) {
     const excelRows = parseExcelMatrix(excelBuffer);
+
+    if (excelRows._is22Col) {
+        return resolveFrom22ColMapping(labeledFields, excelRows);
+    }
+
     const excelIndex = buildExcelIndex(excelRows);
     const refIndex = referenceJson ? buildRefIndex(referenceJson) : null;
     const mergedByPage = buildMergedTextByPage(textItems || []);
@@ -44,6 +49,58 @@ function resolveNames(labeledFields, excelBuffer, referenceJson, textItems) {
     }
 
     disambiguateCollisions(matches, warnings);
+
+    return { matches, warnings };
+}
+
+function resolveFrom22ColMapping(labeledFields, excelRows) {
+    const nameMap = new Map();
+    for (const row of excelRows) {
+        if (row.acroActual && row.acroPropuesto) {
+            nameMap.set(row.acroActual, row.acroPropuesto);
+        }
+    }
+
+    const warnings = [];
+    const matches = [];
+
+    for (const field of labeledFields) {
+        const newName = nameMap.get(field.name);
+        if (newName) {
+            matches.push({
+                originalName: field.name,
+                detectedLabel: field.detectedLabel || '',
+                newName,
+                source: 'excel-exact',
+                confidence: 100,
+                page: field.page,
+                type: field.type,
+                rect: field.rect,
+            });
+        } else {
+            matches.push({
+                originalName: field.name,
+                detectedLabel: field.detectedLabel || '',
+                newName: field.name,
+                source: 'unchanged',
+                confidence: 0,
+                page: field.page,
+                type: field.type,
+                rect: field.rect,
+            });
+        }
+    }
+
+    const pdfNames = new Set(labeledFields.map(f => f.name));
+    for (const [actual, propuesto] of nameMap) {
+        if (!pdfNames.has(actual)) {
+            warnings.push({
+                type: 'mapping_not_found',
+                field: actual,
+                reason: `"${actual}" (→ "${propuesto}") del Excel no existe en el PDF`,
+            });
+        }
+    }
 
     return { matches, warnings };
 }
@@ -278,6 +335,9 @@ function parseExcelMatrix(buffer) {
     const sheet = workbook.Sheets[sheetName];
     const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
 
+    const parsed22 = tryParse22ColFormat(rawRows);
+    if (parsed22) return parsed22;
+
     const { headerRow, columnMap } = findColumns(rawRows);
     const rows = [];
 
@@ -296,6 +356,34 @@ function parseExcelMatrix(buffer) {
     }
 
     return rows;
+}
+
+function tryParse22ColFormat(rawRows) {
+    for (let i = 0; i < Math.min(5, rawRows.length); i++) {
+        const row = rawRows[i];
+        if (!row) continue;
+        let colActual = -1;
+        let colPropuesto = -1;
+        for (let j = 0; j < row.length; j++) {
+            const cell = cleanStr(String(row[j] || '')).toLowerCase();
+            if (/acroform\s*actual/.test(cell)) colActual = j;
+            if (/acroform\s*propuesto/.test(cell)) colPropuesto = j;
+        }
+        if (colActual >= 0 && colPropuesto >= 0) {
+            const rows = [];
+            for (let r = i + 1; r < rawRows.length; r++) {
+                const dataRow = rawRows[r];
+                if (!dataRow) continue;
+                const acroActual = cleanStr(getCell(dataRow, colActual));
+                const acroPropuesto = cleanStr(getCell(dataRow, colPropuesto));
+                if (!acroActual) continue;
+                rows.push({ acroActual, acroPropuesto: acroPropuesto || acroActual });
+            }
+            rows._is22Col = true;
+            return rows;
+        }
+    }
+    return null;
 }
 
 function findMatrixSheet(workbook) {
