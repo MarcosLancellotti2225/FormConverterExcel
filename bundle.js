@@ -88297,7 +88297,14 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         if (v === null || v === void 0) return "";
         return String(v).trim();
       }
-      module.exports = { resolveNames };
+      function parseExcelFor22Col(buffer) {
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const sheetName = findMatrixSheet(workbook);
+        const sheet = workbook.Sheets[sheetName];
+        const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+        return tryParse22ColFormat(rawRows);
+      }
+      module.exports = { resolveNames, parseExcelFor22Col };
     }
   });
 
@@ -88432,8 +88439,27 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       var { extractFields } = require_extract_fields();
       var { extractText } = require_extract_text();
       var { detectLabels } = require_label_detector();
-      var { resolveNames } = require_name_resolver();
+      var { resolveNames, parseExcelFor22Col } = require_name_resolver();
       var { rewritePdf } = require_pdf_rewriter();
+      async function convertDirect(pdfBytes, excelBuffer) {
+        const mapping = parseExcelFor22Col(excelBuffer);
+        if (!mapping) throw new Error('El Excel no tiene formato 22 columnas (no se encontraron columnas "AcroForm Actual" y "AcroForm Propuesto")');
+        const renameMap = [];
+        for (const row of mapping) {
+          if (row.acroActual && row.acroPropuesto) {
+            renameMap.push({ oldName: row.acroActual, newName: row.acroPropuesto });
+          }
+        }
+        if (renameMap.length === 0) throw new Error("El Excel no tiene filas con AcroForm Actual \u2192 Propuesto");
+        const result = await rewritePdf(pdfBytes, renameMap);
+        return {
+          pdfBytes: result.pdfBytes,
+          warnings: result.warnings,
+          renamedCount: result.renamedCount,
+          renamedFields: result.renamedFields || [],
+          excelRows: renameMap.length
+        };
+      }
       async function analyzePdf(inputs) {
         const { pdfBytes, excelBuffer, referenceJsonText } = inputs;
         if (!pdfBytes) throw new Error("PDF file is required");
@@ -88519,7 +88545,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         }
         return { deduped: renameMap, collisionWarnings: warnings };
       }
-      module.exports = { analyzePdf, generatePdf };
+      module.exports = { analyzePdf, generatePdf, convertDirect };
     }
   });
 
@@ -95216,7 +95242,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
   var require_browser = __commonJS({
     "src/browser.js"(exports, module) {
       var { runPipelineAll, runEnrichAll } = require_pipeline();
-      var { analyzePdf, generatePdf } = require_pipeline_convert_pdf();
+      var { analyzePdf, generatePdf, convertDirect } = require_pipeline_convert_pdf();
       var { runEnrichPipeline } = require_pipeline_enrich();
       var matrixEditor = require_pipeline_edit();
       var { detectFields } = require_pdf_detect();
@@ -95303,6 +95329,14 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       async function runConvertGenerate(pdfBytes, finalMatches) {
         const result = await generatePdf(pdfBytes, finalMatches);
         return result;
+      }
+      async function runConvertDirect(inputs) {
+        const { pdfFile, excelFile } = inputs;
+        if (!pdfFile) throw new Error("Carg\xE1 el PDF original");
+        if (!excelFile) throw new Error("Carg\xE1 el Excel de mapeo (22 columnas)");
+        const pdfBytes = await fileToUint8Array(pdfFile);
+        const excelBuffer = await fileToUint8Array(excelFile);
+        return convertDirect(pdfBytes, excelBuffer);
       }
       async function renderPreview(pdfBytes, matches, container) {
         const pdfjsLib = (init_pdf(), __toCommonJS(pdf_exports));
@@ -95683,9 +95717,9 @@ ${pagesHtml}</body>
         return new Uint8Array(buf);
       }
       if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview };
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview };
       }
-      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview };
+      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview };
     }
   });
   return require_browser();

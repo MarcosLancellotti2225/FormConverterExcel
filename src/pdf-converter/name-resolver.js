@@ -636,4 +636,12 @@ function cleanStr(v) {
     return String(v).trim();
 }
 
-module.exports = { resolveNames };
+function parseExcelFor22Col(buffer) {
+    const workbook = XLSX.read(buffer, { type: 'array' });
+    const sheetName = findMatrixSheet(workbook);
+    const sheet = workbook.Sheets[sheetName];
+    const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    return tryParse22ColFormat(rawRows);
+}
+
+module.exports = { resolveNames, parseExcelFor22Col };

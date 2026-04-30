@@ -3,8 +3,31 @@
 const { extractFields } = require('./extract-fields');
 const { extractText } = require('./extract-text');
 const { detectLabels } = require('./label-detector');
-const { resolveNames } = require('./name-resolver');
+const { resolveNames, parseExcelFor22Col } = require('./name-resolver');
 const { rewritePdf } = require('./pdf-rewriter');
+
+async function convertDirect(pdfBytes, excelBuffer) {
+    const mapping = parseExcelFor22Col(excelBuffer);
+    if (!mapping) throw new Error('El Excel no tiene formato 22 columnas (no se encontraron columnas "AcroForm Actual" y "AcroForm Propuesto")');
+
+    const renameMap = [];
+    for (const row of mapping) {
+        if (row.acroActual && row.acroPropuesto) {
+            renameMap.push({ oldName: row.acroActual, newName: row.acroPropuesto });
+        }
+    }
+
+    if (renameMap.length === 0) throw new Error('El Excel no tiene filas con AcroForm Actual → Propuesto');
+
+    const result = await rewritePdf(pdfBytes, renameMap);
+    return {
+        pdfBytes: result.pdfBytes,
+        warnings: result.warnings,
+        renamedCount: result.renamedCount,
+        renamedFields: result.renamedFields || [],
+        excelRows: renameMap.length,
+    };
+}
 
 async function analyzePdf(inputs) {
     const { pdfBytes, excelBuffer, referenceJsonText } = inputs;
@@ -104,4 +127,4 @@ function deduplicateNames(renameMap) {
     return { deduped: renameMap, collisionWarnings: warnings };
 }
 
-module.exports = { analyzePdf, generatePdf };
+module.exports = { analyzePdf, generatePdf, convertDirect };

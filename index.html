@@ -43,10 +43,10 @@
                 <p>Cargá un PDF original + el Excel de mapeo (22 columnas). Genera el PDF renombrado + JSON enriquecido para Lovable.</p>
                 <button class="primary">Empezar</button>
             </div>
-            <div class="mode-card" data-mode="convert-pdf" hidden>
+            <div class="mode-card" data-mode="convert-pdf">
                 <div class="mode-icon">PDF</div>
                 <h2>Convertir PDF</h2>
-                <p>Renombra los campos AcroForm de un PDF usando el Excel como diccionario y descarga el PDF con nombres semanticos.</p>
+                <p>Cargá un PDF + la Matriz de 22 columnas. Renombra los campos AcroForm usando el mapeo directo AcroForm Actual → Propuesto.</p>
                 <button class="primary">Empezar</button>
             </div>
             <div class="mode-card" data-mode="enrich-json" hidden>
@@ -67,102 +67,45 @@
         <div id="convertPdfFlow" hidden>
             <section class="panel">
                 <h2>1. Archivos</h2>
-                <p class="hint">El PDF y la Matriz son obligatorios. El JSON de referencia es opcional (si tenes un JSON de otro PDF del mismo formulario con nombres buenos).</p>
-
+                <p class="hint">Cargá el PDF original y la Matriz Excel de 22 columnas con las columnas "AcroForm Actual" y "AcroForm Propuesto".</p>
                 <div class="inputs-grid">
                     <label class="file-slot required" data-slot="conv-pdf">
                         <span class="label">PDF original</span>
-                        <span class="desc">El PDF con nombres AcroForm feos</span>
+                        <span class="desc">El PDF con nombres AcroForm a renombrar</span>
                         <input type="file" accept=".pdf" id="convPdfInput">
                         <span class="file-status" id="convPdfStatus"></span>
                     </label>
-
                     <label class="file-slot required" data-slot="conv-excel">
-                        <span class="label">Matriz Excel</span>
-                        <span class="desc">Columnas: Nombre en PDF, Nombre del Campo en PDF</span>
+                        <span class="label">Matriz Excel (22 columnas)</span>
+                        <span class="desc">Con columnas AcroForm Actual → AcroForm Propuesto</span>
                         <input type="file" accept=".xlsx,.xls" id="convExcelInput">
                         <span class="file-status" id="convExcelStatus"></span>
-                    </label>
-
-                    <label class="file-slot" data-slot="conv-ref">
-                        <span class="label">JSON Lovable referencia (opcional)</span>
-                        <span class="desc">Diccionario posicional de un PDF bueno</span>
-                        <input type="file" accept=".json" id="convRefInput">
-                        <span class="file-status" id="convRefStatus"></span>
                     </label>
                 </div>
             </section>
 
             <section class="panel">
-                <h2>2. Analizar</h2>
+                <h2>2. Convertir</h2>
                 <div class="actions">
-                    <button id="btnAnalyze" class="primary" disabled>Analizar PDF</button>
+                    <button id="btnConvertDirect" class="primary" disabled>Convertir PDF</button>
                 </div>
                 <div id="convStatus" class="status"></div>
-            </section>
-
-            <div id="splitView" class="split-view" hidden>
-                <section class="panel split-left" id="matchTablePanel">
-                    <h2>3. Tabla de Match</h2>
-                    <p class="hint">Revisa y edita. Click en una fila para verla en el PDF.</p>
-                    <div class="field-nav">
-                        <button id="btnPrevField" class="secondary btn-sm" disabled>&larr; Prev</button>
-                        <span id="fieldNavCounter" class="field-nav-counter">0 / 0</span>
-                        <button id="btnNextField" class="secondary btn-sm" disabled>Next &rarr;</button>
-                        <span id="matchStats" class="match-stats"></span>
-                        <label class="toggle toggle-sm">
-                            <input type="checkbox" id="filterUnmatched">
-                            <span>Solo sin match</span>
-                        </label>
-                    </div>
-                    <div class="match-table-wrap">
-                        <table id="matchTable" class="match-table">
-                            <thead>
-                                <tr>
-                                    <th>Pag</th>
-                                    <th>Nombre Original</th>
-                                    <th>Label Detectado</th>
-                                    <th>Nombre Nuevo</th>
-                                    <th>Fuente</th>
-                                    <th>Conf.</th>
-                                </tr>
-                            </thead>
-                            <tbody id="matchTableBody"></tbody>
-                        </table>
-                    </div>
-                </section>
-
-                <section class="panel split-right" id="previewPanel">
-                    <h2>Preview</h2>
-                    <p class="hint">Azul = matcheado, rojo = sin match. Click para ir a la fila.</p>
-                    <div id="pdfPreview" class="pdf-preview"></div>
-                </section>
-            </div>
-
-            <section class="panel" id="convExportPanel" hidden>
-                <h2>4. Exportar</h2>
-                <div class="actions">
-                    <button id="btnGeneratePdf" class="primary">Generar y descargar PDF</button>
-                    <button id="btnConvDebug" class="secondary btn-sm">Exportar debug JSON</button>
-                </div>
-                <div id="convExportStatus" class="status"></div>
             </section>
 
             <section class="panel" id="convRenamePanel" hidden>
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
                     <h2 style="margin:0;">Antes → Después</h2>
-                    <span id="convRenameCount" style="font-size:12px;color:#495057;"></span>
+                    <span id="convRenameCount" style="font-size:12px;color:var(--text-muted);"></span>
                 </div>
-                <p class="hint">Tabla de todos los campos: cómo se llamaban en el PDF original vs cómo quedan en el PDF renombrado.</p>
-                <div class="match-table-wrap" style="max-height:400px;">
+                <p class="hint">Mapeo directo: cómo se llamaban en el PDF original vs cómo quedan en el PDF renombrado.</p>
+                <div class="match-table-wrap" style="max-height:60vh;">
                     <table class="match-table" id="convRenameTable">
                         <thead>
                             <tr>
                                 <th>#</th>
-                                <th>Pag</th>
-                                <th>Nombre Original</th>
+                                <th>AcroForm Actual</th>
                                 <th></th>
-                                <th>Nombre Nuevo</th>
+                                <th>AcroForm Propuesto</th>
                                 <th>Estado</th>
                             </tr>
                         </thead>

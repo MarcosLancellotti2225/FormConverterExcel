@@ -5,7 +5,7 @@
 'use strict';
 
 const { runPipelineAll, runEnrichAll } = require('./pipeline');
-const { analyzePdf, generatePdf } = require('./pdf-converter/pipeline-convert-pdf');
+const { analyzePdf, generatePdf, convertDirect } = require('./pdf-converter/pipeline-convert-pdf');
 const { runEnrichPipeline } = require('./enricher/pipeline-enrich');
 const matrixEditor = require('./matrix-editor/pipeline-edit');
 const { detectFields } = require('./pdf-detect/index');
@@ -128,6 +128,15 @@ async function runConvertAnalysis(inputs) {
 async function runConvertGenerate(pdfBytes, finalMatches) {
     const result = await generatePdf(pdfBytes, finalMatches);
     return result;
+}
+
+async function runConvertDirect(inputs) {
+    const { pdfFile, excelFile } = inputs;
+    if (!pdfFile) throw new Error('Cargá el PDF original');
+    if (!excelFile) throw new Error('Cargá el Excel de mapeo (22 columnas)');
+    const pdfBytes = await fileToUint8Array(pdfFile);
+    const excelBuffer = await fileToUint8Array(excelFile);
+    return convertDirect(pdfBytes, excelBuffer);
 }
 
 async function renderPreview(pdfBytes, matches, container) {
@@ -550,7 +559,7 @@ function detectFieldsToXlsx(fields) {
 }
 
 if (typeof window !== 'undefined') {
-    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview };
+    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview };
 }
 
-module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview };
+module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview };
