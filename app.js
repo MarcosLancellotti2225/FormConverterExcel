@@ -383,7 +383,7 @@
     }
 
     function renderConvRenameTable(renamedFields, excelRows) {
-        var panel = $('#convRenamePanel');
+        var panel = $('#convResultPanel');
         var tbody = $('#convRenameTableBody');
         var countEl = $('#convRenameCount');
 
