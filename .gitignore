@@ -6,6 +6,8 @@ inputs/*.xlsx
 inputs/*.txt
 !inputs/.gitkeep
 
+dist/
+
 # Keep web/bundle.js committed so GitHub Pages works out of the box.
 
 # OS
