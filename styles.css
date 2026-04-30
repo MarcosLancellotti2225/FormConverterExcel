@@ -986,3 +986,115 @@ footer {
     text-align: center;
     min-width: 32px;
 }
+
+/* ── Detect Fields: split layout ── */
+.detect-split {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+}
+.detect-split-left {
+    flex: 0 0 35%;
+    max-height: calc(100vh - 260px);
+    overflow-y: auto;
+}
+.detect-split-right {
+    flex: 1;
+    max-height: calc(100vh - 260px);
+    overflow-y: auto;
+}
+
+.detect-preview-container {
+    background: #1a1f26;
+    border-radius: 6px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    overflow-y: auto;
+    max-height: calc(100vh - 340px);
+}
+.detect-preview-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    color: var(--text-dim);
+    font-size: 14px;
+}
+
+.detect-page {
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    position: relative;
+    max-width: 100%;
+}
+.detect-page canvas {
+    display: block;
+    max-width: 100%;
+    height: auto;
+}
+.detect-page-label {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    z-index: 10;
+    pointer-events: none;
+}
+
+.detect-field-overlay {
+    position: absolute;
+    border: 1.5px solid rgba(0, 102, 255, 0.6);
+    background: rgba(0, 102, 255, 0.08);
+    pointer-events: auto;
+    cursor: pointer;
+    z-index: 5;
+}
+.detect-field-overlay:hover {
+    border-color: rgba(0, 102, 255, 1);
+    background: rgba(0, 102, 255, 0.18);
+    z-index: 20;
+}
+.detect-field-name {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    background: rgba(0, 60, 180, 0.85);
+    color: #fff;
+    font-size: 8px;
+    line-height: 1.2;
+    padding: 1px 4px;
+    border-radius: 2px;
+    white-space: nowrap;
+    pointer-events: none;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: 'JetBrains Mono', monospace;
+}
+.detect-field-overlay:hover .detect-field-name {
+    background: rgba(0, 60, 180, 1);
+    max-width: none;
+    z-index: 30;
+}
+
+.detect-field-highlight {
+    border-color: #ff4444 !important;
+    background: rgba(255, 68, 68, 0.2) !important;
+    z-index: 20;
+}
+.detect-field-highlight .detect-field-name {
+    background: rgba(220, 30, 30, 0.9) !important;
+    max-width: none;
+    z-index: 30;
+}
+#detectTableBody tr.detect-row-active td {
+    background: var(--bg-elevated);
+    color: var(--accent);
+}

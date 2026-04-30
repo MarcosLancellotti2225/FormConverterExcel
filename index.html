@@ -437,28 +437,33 @@
                 <div id="detectStatus" class="status"></div>
             </section>
 
-            <section class="panel" id="detectResultPanel" hidden>
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                    <h2 style="margin:0;">Campos detectados</h2>
-                    <span id="detectCount" style="font-size:12px;color:var(--text-muted);"></span>
-                </div>
-                <div class="match-table-wrap" style="max-height:60vh;">
-                    <table class="match-table" id="detectTable">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>AcroForm Actual</th>
-                                <th>Tipo</th>
-                                <th>Página</th>
-                                <th>X</th>
-                                <th>Y</th>
-                                <th>Tamaño</th>
-                            </tr>
-                        </thead>
-                        <tbody id="detectTableBody"></tbody>
-                    </table>
-                </div>
-            </section>
+            <div id="detectResultPanel" class="detect-split" hidden>
+                <section class="panel detect-split-left">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                        <h2 style="margin:0;">Campos detectados</h2>
+                        <span id="detectCount" style="font-size:12px;color:var(--text-muted);"></span>
+                    </div>
+                    <div class="match-table-wrap" style="max-height:calc(100vh - 300px);">
+                        <table class="match-table" id="detectTable">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>AcroForm Actual</th>
+                                    <th>Tipo</th>
+                                    <th>Pág</th>
+                                </tr>
+                            </thead>
+                            <tbody id="detectTableBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+                <section class="panel detect-split-right">
+                    <h2>Preview</h2>
+                    <div id="detectPreview" class="detect-preview-container">
+                        <div class="detect-preview-placeholder">Detectá campos para ver el preview</div>
+                    </div>
+                </section>
+            </div>
         </div>
 
     </main>

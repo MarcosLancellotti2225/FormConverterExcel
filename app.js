@@ -48,7 +48,7 @@
         $('#detectFieldsFlow').hidden = mode !== 'detect-fields';
         $('#btnBackToHome').hidden = !mode;
         var main = document.querySelector('main');
-        if (mode === 'convert-pdf') {
+        if (mode === 'convert-pdf' || mode === 'detect-fields') {
             main.classList.add('wide-mode');
         } else {
             main.classList.remove('wide-mode');
@@ -1472,6 +1472,12 @@
         $('#btnDetectExcel').addEventListener('click', downloadDetectExcel);
         $('#btnDetectCopy').addEventListener('click', copyDetectToClipboard);
         $('#btnDetectToEditor').addEventListener('click', passDetectToEditor);
+        $('#detectPreview').addEventListener('click', function(e) {
+            var overlay = e.target.closest('.detect-field-overlay');
+            if (overlay && overlay.dataset.fieldIdx != null) {
+                highlightDetectField(parseInt(overlay.dataset.fieldIdx, 10));
+            }
+        });
     }
 
     async function runDetect() {
@@ -1497,6 +1503,16 @@
             $('#detectCount').textContent = result.stats.total + ' campos';
             $('#btnDetectExcel').hidden = false;
             $('#btnDetectCopy').hidden = false;
+
+            statusEl.textContent += ' — Cargando preview...';
+            var pdfBytes = await detectState.pdf.arrayBuffer();
+            if (detectState._preview) detectState._preview.destroy();
+            detectState._preview = await InsPipelineBundle.renderDetectPreview(
+                new Uint8Array(pdfBytes), $('#detectPreview'), result.fields
+            );
+            statusEl.textContent = '✓ ' + result.stats.total + ' campos detectados en ' +
+                result.stats.pages + ' página' + (result.stats.pages > 1 ? 's' : '') +
+                ' — ' + Math.round(t1 - t0) + 'ms';
             $('#btnDetectToEditor').hidden = false;
         } catch (err) {
             console.error(err);
@@ -1511,15 +1527,32 @@
         for (var i = 0; i < fields.length; i++) {
             var f = fields[i];
             var tr = document.createElement('tr');
+            tr.dataset.idx = i;
             tr.innerHTML =
                 '<td style="color:var(--text-dim);text-align:right;">' + (i + 1) + '</td>' +
                 '<td style="font-family:monospace;font-size:0.8rem;">' + escapeHtml(f.name) + '</td>' +
                 '<td>' + escapeHtml(f.type) + '</td>' +
-                '<td style="text-align:center;">' + f.page + '</td>' +
-                '<td style="text-align:right;">' + f.x + '</td>' +
-                '<td style="text-align:right;">' + f.y + '</td>' +
-                '<td>' + f.width + 'x' + f.height + '</td>';
+                '<td style="text-align:center;">' + f.page + '</td>';
+            tr.addEventListener('click', (function(idx) {
+                return function() { highlightDetectField(idx); };
+            })(i));
             tbody.appendChild(tr);
+        }
+    }
+
+    function highlightDetectField(idx) {
+        $$('#detectTableBody tr').forEach(function(tr) { tr.classList.remove('detect-row-active'); });
+        var row = $('#detectTableBody tr[data-idx="' + idx + '"]');
+        if (row) {
+            row.classList.add('detect-row-active');
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        $$('.detect-field-overlay').forEach(function(el) { el.classList.remove('detect-field-highlight'); });
+        var overlay = $('.detect-field-overlay[data-field-idx="' + idx + '"]');
+        if (overlay) {
+            overlay.classList.add('detect-field-highlight');
+            overlay.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }
 

@@ -451,6 +451,90 @@ async function runDetectFields(inputs) {
     return detectFields(pdfBytes);
 }
 
+async function renderDetectPreview(pdfBytes, container, fields) {
+    const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.mjs');
+    container.innerHTML = '';
+
+    const webWorker = new Worker('pdf.worker.min.mjs', { type: 'module' });
+    const pdfWorker = new pdfjsLib.PDFWorker({ port: webWorker });
+
+    let doc;
+    try {
+        doc = await pdfjsLib.getDocument({ data: pdfBytes.slice(), worker: pdfWorker }).promise;
+    } catch (err) {
+        container.innerHTML = '<div style="padding:2rem;color:#868e96;">Error al cargar PDF: ' + err.message + '</div>';
+        webWorker.terminate();
+        return { destroy() {} };
+    }
+
+    const numPages = doc.numPages;
+    const fieldsByPage = {};
+    for (let fi = 0; fi < fields.length; fi++) {
+        const f = fields[fi];
+        if (!fieldsByPage[f.page]) fieldsByPage[f.page] = [];
+        fieldsByPage[f.page].push({ field: f, globalIdx: fi });
+    }
+
+    for (let p = 1; p <= numPages; p++) {
+        const page = await doc.getPage(p);
+        const baseViewport = page.getViewport({ scale: 1 });
+        const containerWidth = container.clientWidth - 32;
+        const scale = Math.max(containerWidth / baseViewport.width, 1);
+        const viewport = page.getViewport({ scale });
+
+        const pageDiv = document.createElement('div');
+        pageDiv.className = 'detect-page';
+        pageDiv.style.width = Math.floor(viewport.width) + 'px';
+        pageDiv.style.position = 'relative';
+
+        const label = document.createElement('div');
+        label.className = 'detect-page-label';
+        label.textContent = 'Página ' + p + ' de ' + numPages;
+        pageDiv.appendChild(label);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        pageDiv.appendChild(canvas);
+
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+        const pageHeight = baseViewport.height;
+        const pageFields = fieldsByPage[p] || [];
+        for (const { field: f, globalIdx } of pageFields) {
+            const overlay = document.createElement('div');
+            overlay.className = 'detect-field-overlay';
+            overlay.dataset.fieldIdx = globalIdx;
+            const left = f.x * scale;
+            const top = (pageHeight - f.y - f.height) * scale;
+            const w = f.width * scale;
+            const h = f.height * scale;
+            overlay.style.left = left + 'px';
+            overlay.style.top = top + 'px';
+            overlay.style.width = w + 'px';
+            overlay.style.height = h + 'px';
+
+            const nameTag = document.createElement('div');
+            nameTag.className = 'detect-field-name';
+            nameTag.textContent = f.name;
+            overlay.appendChild(nameTag);
+
+            pageDiv.appendChild(overlay);
+        }
+
+        container.appendChild(pageDiv);
+    }
+
+    return {
+        numPages,
+        destroy() {
+            pdfWorker.destroy();
+            webWorker.terminate();
+            container.innerHTML = '';
+        },
+    };
+}
+
 function detectFieldsToXlsx(fields) {
     const XLSX = require('xlsx');
     const rows = [['AcroForm Actual']];
@@ -466,7 +550,7 @@ function detectFieldsToXlsx(fields) {
 }
 
 if (typeof window !== 'undefined') {
-    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx };
+    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview };
 }
 
-module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx };
+module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview };
