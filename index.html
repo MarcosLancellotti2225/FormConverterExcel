@@ -31,6 +31,12 @@
                 <p>Cargá la matriz del cliente + el PDF original. Genera en un solo paso la matriz normalizada (22 columnas) y el PDF con AcroForms renombrados.</p>
                 <button class="primary">Empezar</button>
             </div>
+            <div class="mode-card" data-mode="detect-fields">
+                <div class="mode-icon">🔍</div>
+                <h2>Detector de Campos PDF</h2>
+                <p>Cargá un PDF y detecta todos los campos AcroForm ordenados visualmente. Exportá la lista como Excel o pasala al Editor.</p>
+                <button class="primary">Empezar</button>
+            </div>
             <div class="mode-card" data-mode="convert-pdf-v2">
                 <div class="mode-icon">V2</div>
                 <h2>Convertir PDF v2</h2>
@@ -403,6 +409,56 @@
                 <button id="v2WarningsToggle" class="v2-warnings-toggle" hidden>▼ Warnings</button>
             </div>
             <div id="v2WarningsPanel" class="v2-warnings-panel" hidden></div>
+        </div>
+
+        <!-- ============ DETECT FIELDS FLOW ============ -->
+        <div id="detectFieldsFlow" hidden>
+            <section class="panel">
+                <h2>1. Cargar PDF</h2>
+                <p class="hint">Arrastrá o seleccioná un PDF. Se detectan todos los campos AcroForm y se ordenan visualmente (arriba→abajo, izquierda→derecha).</p>
+                <div class="inputs-grid">
+                    <label class="file-slot required" data-slot="detect-pdf">
+                        <span class="label">PDF original</span>
+                        <span class="desc">El PDF con campos AcroForm</span>
+                        <input type="file" accept=".pdf" id="detectPdfInput">
+                        <span class="file-status" id="detectPdfStatus"></span>
+                    </label>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>2. Resultado</h2>
+                <div class="actions">
+                    <button id="btnDetect" class="primary" disabled>Detectar campos</button>
+                    <button id="btnDetectExcel" class="secondary btn-sm" hidden>Descargar Excel</button>
+                    <button id="btnDetectCopy" class="secondary btn-sm" hidden>Copiar al portapapeles</button>
+                    <button id="btnDetectToEditor" class="secondary btn-sm" hidden>Pasar al Editor de Matriz →</button>
+                </div>
+                <div id="detectStatus" class="status"></div>
+            </section>
+
+            <section class="panel" id="detectResultPanel" hidden>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                    <h2 style="margin:0;">Campos detectados</h2>
+                    <span id="detectCount" style="font-size:12px;color:var(--text-muted);"></span>
+                </div>
+                <div class="match-table-wrap" style="max-height:60vh;">
+                    <table class="match-table" id="detectTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>AcroForm Actual</th>
+                                <th>Tipo</th>
+                                <th>Página</th>
+                                <th>X</th>
+                                <th>Y</th>
+                                <th>Tamaño</th>
+                            </tr>
+                        </thead>
+                        <tbody id="detectTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
         </div>
 
     </main>

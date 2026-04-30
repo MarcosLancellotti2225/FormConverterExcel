@@ -8,6 +8,7 @@ const { runPipelineAll, runEnrichAll } = require('./pipeline');
 const { analyzePdf, generatePdf } = require('./pdf-converter/pipeline-convert-pdf');
 const { runEnrichPipeline } = require('./enricher/pipeline-enrich');
 const matrixEditor = require('./matrix-editor/pipeline-edit');
+const { detectFields } = require('./pdf-detect/index');
 
 async function fileToUint8Array(file) {
     const ab = await file.arrayBuffer();
@@ -443,8 +444,29 @@ function renderPdfPreviewV2(pdfBytes, container) {
     return renderPdfPreview(pdfBytes, container, pdfjsLib);
 }
 
-if (typeof window !== 'undefined') {
-    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2 };
+async function runDetectFields(inputs) {
+    const { pdfFile } = inputs;
+    if (!pdfFile) throw new Error('Cargá un PDF');
+    const pdfBytes = await fileToUint8Array(pdfFile);
+    return detectFields(pdfBytes);
 }
 
-module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2 };
+function detectFieldsToXlsx(fields) {
+    const XLSX = require('xlsx');
+    const rows = [['AcroForm Actual']];
+    for (const f of fields) {
+        rows.push([f.name]);
+    }
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: 40 }];
+    XLSX.utils.book_append_sheet(wb, ws, 'AcroForm');
+    const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+    return new Uint8Array(buf);
+}
+
+if (typeof window !== 'undefined') {
+    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx };
+}
+
+module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx };

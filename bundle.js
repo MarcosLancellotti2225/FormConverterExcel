@@ -93749,6 +93749,191 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     }
   });
 
+  // src/pdf-detect/lib/pdf-reader.js
+  var require_pdf_reader = __commonJS({
+    "src/pdf-detect/lib/pdf-reader.js"(exports, module) {
+      "use strict";
+      var { PDFDocument, PDFName, PDFHexString, PDFString } = require_cjs();
+      function readStringValue(val) {
+        if (!val) return "";
+        if (typeof val === "string") return val;
+        if (typeof val.decodeText === "function") return val.decodeText();
+        if (typeof val.asString === "function") return val.asString();
+        if (val instanceof PDFHexString) return val.decodeText();
+        if (val instanceof PDFString) return val.decodeText();
+        return String(val);
+      }
+      function resolveFieldType(dict, context) {
+        const ft = dict.get(PDFName.of("FT"));
+        if (ft) {
+          const ftStr = ft.encodedName ? ft.encodedName.replace("/", "") : String(ft);
+          if (ftStr === "Btn") {
+            const ff = dict.get(PDFName.of("Ff"));
+            const flags = ff ? typeof ff.numberValue === "function" ? ff.numberValue() : Number(ff) : 0;
+            if (flags & 1 << 16) return "Radio";
+            if (flags & 1 << 15) return "Pushbutton";
+            return "Checkbox";
+          }
+          if (ftStr === "Tx") return "Text";
+          if (ftStr === "Ch") return "Choice";
+          if (ftStr === "Sig") return "Signature";
+          return ftStr;
+        }
+        return "Unknown";
+      }
+      function getInheritedFieldType(dict, context) {
+        let type = resolveFieldType(dict, context);
+        if (type !== "Unknown") return type;
+        let parentRef = dict.get(PDFName.of("Parent"));
+        while (parentRef) {
+          const parent = context.lookup(parentRef);
+          if (!parent || typeof parent.get !== "function") break;
+          type = resolveFieldType(parent, context);
+          if (type !== "Unknown") return type;
+          parentRef = parent.get(PDFName.of("Parent"));
+        }
+        return "Text";
+      }
+      function getWidgetRect(dict, context) {
+        const rectVal = dict.get(PDFName.of("Rect"));
+        if (!rectVal) return { x: 0, y: 0, width: 0, height: 0 };
+        const rect = context.lookup(rectVal);
+        if (!rect || typeof rect.size !== "function") return { x: 0, y: 0, width: 0, height: 0 };
+        const nums = [];
+        for (let i = 0; i < rect.size(); i++) {
+          const v = rect.get(i);
+          const n = context.lookup(v);
+          nums.push(typeof n === "number" ? n : n && typeof n.numberValue === "function" ? n.numberValue() : n && typeof n.value === "function" ? n.value() : Number(n));
+        }
+        if (nums.length < 4) return { x: 0, y: 0, width: 0, height: 0 };
+        const [x1, y1, x2, y2] = nums;
+        return {
+          x: Math.round(Math.min(x1, x2)),
+          y: Math.round(Math.min(y1, y2)),
+          width: Math.round(Math.abs(x2 - x1)),
+          height: Math.round(Math.abs(y2 - y1))
+        };
+      }
+      function getWidgetPage(dict, context, pageRefs) {
+        const pRef = dict.get(PDFName.of("P"));
+        if (pRef) {
+          const resolved = context.lookup(pRef);
+          const ref = pRef.objectNumber !== void 0 ? pRef : context.getObjectRef(resolved);
+          if (ref && ref.objectNumber !== void 0) {
+            const idx = pageRefs.findIndex(
+              (pr) => pr.objectNumber === ref.objectNumber
+            );
+            if (idx >= 0) return idx + 1;
+          }
+        }
+        return 1;
+      }
+      function collectLeaves(fieldsArray, context, parentName, result, pageRefs) {
+        if (!fieldsArray || typeof fieldsArray.size !== "function") return;
+        for (let i = 0; i < fieldsArray.size(); i++) {
+          const ref = fieldsArray.get(i);
+          const dict = context.lookup(ref);
+          if (!dict || typeof dict.get !== "function") continue;
+          const tVal = dict.get(PDFName.of("T"));
+          const partialName = tVal ? readStringValue(tVal) : "";
+          const fullName = parentName ? parentName + "." + partialName : partialName;
+          const kidsRef = dict.get(PDFName.of("Kids"));
+          if (kidsRef) {
+            const kids = context.lookup(kidsRef);
+            if (kids && typeof kids.size === "function" && kids.size() > 0) {
+              const firstKid = context.lookup(kids.get(0));
+              const firstKidHasT = firstKid && firstKid.get && firstKid.get(PDFName.of("T"));
+              if (firstKidHasT) {
+                collectLeaves(kids, context, fullName, result, pageRefs);
+                continue;
+              }
+            }
+          }
+          const type = getInheritedFieldType(dict, context);
+          const rect = getWidgetRect(dict, context);
+          const page = getWidgetPage(dict, context, pageRefs);
+          result.push({
+            name: fullName,
+            type,
+            page,
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height
+          });
+        }
+      }
+      async function readPdfFields(pdfBytes) {
+        const doc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+        const context = doc.context;
+        const pages = doc.getPages();
+        const pageRefs = pages.map((p) => p.ref);
+        const acroFormRef = doc.catalog.get(PDFName.of("AcroForm"));
+        if (!acroFormRef) return [];
+        const acroForm = context.lookup(acroFormRef);
+        const fieldsRef = acroForm.get(PDFName.of("Fields"));
+        const fieldsArray = fieldsRef ? context.lookup(fieldsRef) : null;
+        if (!fieldsArray) return [];
+        const leaves = [];
+        collectLeaves(fieldsArray, context, "", leaves, pageRefs);
+        return leaves;
+      }
+      module.exports = { readPdfFields };
+    }
+  });
+
+  // src/pdf-detect/lib/visual-sorter.js
+  var require_visual_sorter = __commonJS({
+    "src/pdf-detect/lib/visual-sorter.js"(exports, module) {
+      "use strict";
+      var Y_TOLERANCE = 5;
+      function sortVisually(fields) {
+        const sorted = fields.slice();
+        sorted.sort(function(a, b) {
+          if (a.page !== b.page) return a.page - b.page;
+          if (Math.abs(a.y - b.y) > Y_TOLERANCE) return b.y - a.y;
+          return a.x - b.x;
+        });
+        let row = 1;
+        for (let i = 0; i < sorted.length; i++) {
+          if (i === 0) {
+            sorted[i]._visualRow = row;
+            continue;
+          }
+          const prev = sorted[i - 1];
+          const cur = sorted[i];
+          if (cur.page !== prev.page || Math.abs(cur.y - prev.y) > Y_TOLERANCE) {
+            row++;
+          }
+          cur._visualRow = row;
+        }
+        return sorted;
+      }
+      module.exports = { sortVisually };
+    }
+  });
+
+  // src/pdf-detect/index.js
+  var require_pdf_detect = __commonJS({
+    "src/pdf-detect/index.js"(exports, module) {
+      "use strict";
+      var { readPdfFields } = require_pdf_reader();
+      var { sortVisually } = require_visual_sorter();
+      async function detectFields(pdfBytes) {
+        const rawFields = await readPdfFields(pdfBytes);
+        const sorted = sortVisually(rawFields);
+        return {
+          fields: sorted,
+          stats: {
+            total: sorted.length,
+            pages: new Set(sorted.map((f) => f.page)).size
+          }
+        };
+      }
+      module.exports = { detectFields };
+    }
+  });
+
   // src/matrix-editor/process-formulario.js
   var require_process_formulario = __commonJS({
     "src/matrix-editor/process-formulario.js"(exports, module) {
@@ -95034,6 +95219,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       var { analyzePdf, generatePdf } = require_pipeline_convert_pdf();
       var { runEnrichPipeline } = require_pipeline_enrich();
       var matrixEditor = require_pipeline_edit();
+      var { detectFields } = require_pdf_detect();
       async function fileToUint8Array(file) {
         const ab = await file.arrayBuffer();
         return new Uint8Array(ab);
@@ -95406,10 +95592,29 @@ ${pagesHtml}</body>
         const { renderPdfPreview } = require_pdf_preview();
         return renderPdfPreview(pdfBytes, container, pdfjsLib);
       }
-      if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2 };
+      async function runDetectFields(inputs) {
+        const { pdfFile } = inputs;
+        if (!pdfFile) throw new Error("Carg\xE1 un PDF");
+        const pdfBytes = await fileToUint8Array(pdfFile);
+        return detectFields(pdfBytes);
       }
-      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2 };
+      function detectFieldsToXlsx(fields) {
+        const XLSX = require_xlsx();
+        const rows = [["AcroForm Actual"]];
+        for (const f of fields) {
+          rows.push([f.name]);
+        }
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        ws["!cols"] = [{ wch: 40 }];
+        XLSX.utils.book_append_sheet(wb, ws, "AcroForm");
+        const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+        return new Uint8Array(buf);
+      }
+      if (typeof window !== "undefined") {
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx };
+      }
+      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx };
     }
   });
   return require_browser();

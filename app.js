@@ -17,6 +17,7 @@
         initConvertPdfV2Flow();
         initPdfToHtmlFlow();
         initMatrixEditorFlow();
+        initDetectFieldsFlow();
 
         // Procesar Formulario INS is the only visible mode — auto-enter it.
         selectMode('matrix-editor');
@@ -44,6 +45,7 @@
         $('#pdfToHtmlFlow').hidden = mode !== 'pdf-to-html';
         $('#enrichJsonFlow').hidden = mode !== 'enrich-json';
         $('#matrixEditorFlow').hidden = mode !== 'matrix-editor';
+        $('#detectFieldsFlow').hidden = mode !== 'detect-fields';
         $('#btnBackToHome').hidden = !mode;
         var main = document.querySelector('main');
         if (mode === 'convert-pdf') {
@@ -1442,6 +1444,107 @@
             analyzed.push({ row: row, idx: i, issues: issues });
         }
         return { analyzed: analyzed, stats: stats };
+    }
+
+    // ==================== DETECT FIELDS FLOW ====================
+
+    var detectState = {
+        pdf: null,
+        fields: null,
+        stats: null
+    };
+
+    function initDetectFieldsFlow() {
+        $('#detectPdfInput').addEventListener('change', function(e) {
+            detectState.pdf = e.target.files[0] || null;
+            var el = $('#detectPdfStatus');
+            var slot = el.closest('.file-slot');
+            if (detectState.pdf) {
+                slot.classList.add('loaded');
+                el.textContent = '✓ ' + detectState.pdf.name + ' (' + formatSize(detectState.pdf.size) + ')';
+            } else {
+                slot.classList.remove('loaded');
+                el.textContent = '';
+            }
+            $('#btnDetect').disabled = !detectState.pdf;
+        });
+        $('#btnDetect').addEventListener('click', runDetect);
+        $('#btnDetectExcel').addEventListener('click', downloadDetectExcel);
+        $('#btnDetectCopy').addEventListener('click', copyDetectToClipboard);
+        $('#btnDetectToEditor').addEventListener('click', passDetectToEditor);
+    }
+
+    async function runDetect() {
+        var statusEl = $('#detectStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Detectando campos AcroForm...';
+
+        try {
+            var t0 = performance.now();
+            var result = await InsPipelineBundle.runDetectFields({ pdfFile: detectState.pdf });
+            var t1 = performance.now();
+
+            detectState.fields = result.fields;
+            detectState.stats = result.stats;
+
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ ' + result.stats.total + ' campos detectados en ' +
+                result.stats.pages + ' página' + (result.stats.pages > 1 ? 's' : '') +
+                ' — ' + Math.round(t1 - t0) + 'ms';
+
+            renderDetectTable(result.fields);
+            $('#detectResultPanel').hidden = false;
+            $('#detectCount').textContent = result.stats.total + ' campos';
+            $('#btnDetectExcel').hidden = false;
+            $('#btnDetectCopy').hidden = false;
+            $('#btnDetectToEditor').hidden = false;
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
+    }
+
+    function renderDetectTable(fields) {
+        var tbody = $('#detectTableBody');
+        tbody.innerHTML = '';
+        for (var i = 0; i < fields.length; i++) {
+            var f = fields[i];
+            var tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td style="color:var(--text-dim);text-align:right;">' + (i + 1) + '</td>' +
+                '<td style="font-family:monospace;font-size:0.8rem;">' + escapeHtml(f.name) + '</td>' +
+                '<td>' + escapeHtml(f.type) + '</td>' +
+                '<td style="text-align:center;">' + f.page + '</td>' +
+                '<td style="text-align:right;">' + f.x + '</td>' +
+                '<td style="text-align:right;">' + f.y + '</td>' +
+                '<td>' + f.width + 'x' + f.height + '</td>';
+            tbody.appendChild(tr);
+        }
+    }
+
+    function downloadDetectExcel() {
+        if (!detectState.fields) return;
+        var buf = InsPipelineBundle.detectFieldsToXlsx(detectState.fields);
+        var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        var name = (detectState.pdf ? detectState.pdf.name.replace(/\.pdf$/i, '') : 'campos') + '_acroform.xlsx';
+        InsPipelineBundle.downloadBlob(blob, name);
+    }
+
+    function copyDetectToClipboard() {
+        if (!detectState.fields) return;
+        var text = detectState.fields.map(function(f) { return f.name; }).join('\n');
+        navigator.clipboard.writeText(text).then(function() {
+            $('#detectStatus').textContent = '✓ ' + detectState.fields.length + ' nombres copiados al portapapeles';
+        });
+    }
+
+    function passDetectToEditor() {
+        if (!detectState.fields) return;
+        // Store the detected fields for the editor to pick up
+        window._detectedAcroFields = detectState.fields.map(function(f) { return f.name; });
+        selectMode('matrix-editor');
+        $('#detectStatus').textContent = '→ Pasados ' + detectState.fields.length + ' campos al Editor de Matriz';
     }
 
     // ==================== INIT ====================

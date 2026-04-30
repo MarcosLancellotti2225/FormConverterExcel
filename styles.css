@@ -435,6 +435,11 @@ details summary:hover { color: var(--text); }
     font-size: 1rem;
     letter-spacing: -0.02em;
 }
+.mode-card[data-mode="detect-fields"] .mode-icon {
+    background: linear-gradient(135deg, #38bdf8, #818cf8);
+    color: #0d1117;
+    font-size: 1.5rem;
+}
 .mode-card[data-mode="convert-pdf"] .mode-icon {
     background: linear-gradient(135deg, var(--accent-amber), var(--accent-red));
     color: #0d1117;
