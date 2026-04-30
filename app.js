@@ -45,6 +45,12 @@
         $('#enrichJsonFlow').hidden = mode !== 'enrich-json';
         $('#matrixEditorFlow').hidden = mode !== 'matrix-editor';
         $('#btnBackToHome').hidden = !mode;
+        var main = document.querySelector('main');
+        if (mode === 'convert-pdf') {
+            main.classList.add('wide-mode');
+        } else {
+            main.classList.remove('wide-mode');
+        }
     }
 
     function formatSize(n) {

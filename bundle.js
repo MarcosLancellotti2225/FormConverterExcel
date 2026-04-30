@@ -95059,7 +95059,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           const page = await doc.getPage(p);
           const baseVp = page.getViewport({ scale: 1 });
           const cw = container.clientWidth - 24;
-          const scale = Math.min(cw / baseVp.width, 1.5);
+          const scale = Math.max(cw / baseVp.width, 1);
           const viewport = page.getViewport({ scale });
           const pageDiv = document.createElement("div");
           pageDiv.className = "preview-page";
