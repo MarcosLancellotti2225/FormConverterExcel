@@ -37,12 +37,7 @@
                 <p>Cargá un PDF y detecta todos los campos AcroForm ordenados visualmente. Exportá la lista como Excel o pasala al Editor.</p>
                 <button class="primary">Empezar</button>
             </div>
-            <div class="mode-card" data-mode="convert-pdf-v2" hidden>
-                <div class="mode-icon">V2</div>
-                <h2>Convertir PDF v2</h2>
-                <p>Cargá un PDF original + el Excel de mapeo (22 columnas). Genera el PDF renombrado + JSON enriquecido para Lovable.</p>
-                <button class="primary">Empezar</button>
-            </div>
+
             <div class="mode-card" data-mode="convert-pdf">
                 <div class="mode-icon">PDF</div>
                 <h2>Convertir PDF</h2>
@@ -88,31 +83,36 @@
                 <h2>2. Convertir</h2>
                 <div class="actions">
                     <button id="btnConvertDirect" class="primary" disabled>Convertir PDF</button>
+                    <button id="btnDownloadConverted" class="primary" hidden>Descargar PDF renombrado</button>
                 </div>
                 <div id="convStatus" class="status"></div>
             </section>
 
-            <section class="panel" id="convRenamePanel" hidden>
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                    <h2 style="margin:0;">Antes → Después</h2>
-                    <span id="convRenameCount" style="font-size:12px;color:var(--text-muted);"></span>
-                </div>
-                <p class="hint">Mapeo directo: cómo se llamaban en el PDF original vs cómo quedan en el PDF renombrado.</p>
-                <div class="match-table-wrap" style="max-height:60vh;">
-                    <table class="match-table" id="convRenameTable">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>AcroForm Actual</th>
-                                <th></th>
-                                <th>AcroForm Propuesto</th>
-                                <th>Estado</th>
-                            </tr>
-                        </thead>
-                        <tbody id="convRenameTableBody"></tbody>
-                    </table>
-                </div>
-            </section>
+            <div id="convResultPanel" class="detect-split" hidden>
+                <section class="panel detect-split-left">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                        <h2 style="margin:0;">Antes → Después</h2>
+                        <span id="convRenameCount" style="font-size:12px;color:var(--text-muted);"></span>
+                    </div>
+                    <div class="match-table-wrap" style="max-height:calc(100vh - 300px);">
+                        <table class="match-table" id="convRenameTable">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>AcroForm Actual</th>
+                                    <th></th>
+                                    <th>AcroForm Propuesto</th>
+                                </tr>
+                            </thead>
+                            <tbody id="convRenameTableBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+                <section class="panel detect-split-right">
+                    <h2>Preview (PDF renombrado)</h2>
+                    <div id="convPreview" class="detect-preview-container"></div>
+                </section>
+            </div>
 
             <section class="panel" id="convWarningsPanel" hidden>
                 <h2>Warnings</h2>
@@ -303,57 +303,6 @@
                 <div id="mtxExportStatus" class="status"></div>
             </section>
         </div>
-        <!-- ============ CONVERT PDF V2 FLOW ============ -->
-        <div id="convertPdfV2Flow" hidden>
-            <div class="v2-inputs-bar">
-                <div class="file-slot">
-                    <label>PDF original</label>
-                    <input type="file" accept=".pdf" id="v2PdfInput">
-                    <span class="file-status" id="v2PdfStatus"></span>
-                </div>
-                <div class="file-slot">
-                    <label>Excel matriz (22 cols)</label>
-                    <input type="file" accept=".xlsx,.xls" id="v2ExcelInput">
-                    <span class="file-status" id="v2ExcelStatus"></span>
-                </div>
-                <button id="btnV2Process" class="btn-process" disabled>▶ Procesar</button>
-                <button id="btnV2Download" class="v2-download-btn" disabled>Descargar zip</button>
-            </div>
-
-            <div id="v2PreviewContainer" class="v2-preview-container">
-                <div class="v2-preview-placeholder">Cargá un PDF para ver el preview</div>
-            </div>
-
-            <div id="v2RenameTablePanel" class="v2-rename-panel" hidden>
-                <div class="v2-rename-header">
-                    <h3>Mapeo de campos</h3>
-                    <span id="v2RenameCount" class="v2-rename-count"></span>
-                    <button id="v2RenameToggle" class="v2-rename-toggle">▲ Ocultar</button>
-                </div>
-                <div class="v2-rename-table-wrap">
-                    <table class="v2-rename-table">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>Nombre en PDF (original)</th>
-                                <th></th>
-                                <th>Nombre propuesto (Excel)</th>
-                                <th>Estado</th>
-                            </tr>
-                        </thead>
-                        <tbody id="v2RenameTableBody"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="v2-status-bar">
-                <span id="v2PageInfo" class="v2-page-info"></span>
-                <span id="v2ResultInfo" class="v2-result-info"></span>
-                <button id="v2WarningsToggle" class="v2-warnings-toggle" hidden>▼ Warnings</button>
-            </div>
-            <div id="v2WarningsPanel" class="v2-warnings-panel" hidden></div>
-        </div>
-
         <!-- ============ DETECT FIELDS FLOW ============ -->
         <div id="detectFieldsFlow" hidden>
             <section class="panel">

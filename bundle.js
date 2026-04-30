@@ -95627,9 +95627,15 @@ ${pagesHtml}</body>
         return renderPdfPreview(pdfBytes, container, pdfjsLib);
       }
       async function runDetectFields(inputs) {
-        const { pdfFile } = inputs;
-        if (!pdfFile) throw new Error("Carg\xE1 un PDF");
-        const pdfBytes = await fileToUint8Array(pdfFile);
+        const { pdfFile, pdfBytes: rawBytes } = inputs;
+        let pdfBytes;
+        if (rawBytes) {
+          pdfBytes = rawBytes;
+        } else if (pdfFile) {
+          pdfBytes = await fileToUint8Array(pdfFile);
+        } else {
+          throw new Error("Carg\xE1 un PDF");
+        }
         return detectFields(pdfBytes);
       }
       async function renderDetectPreview(pdfBytes, container, fields) {

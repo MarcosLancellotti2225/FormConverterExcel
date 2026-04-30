@@ -420,6 +420,7 @@ details summary:hover { color: var(--text); }
     transition: border-color 0.2s, transform 0.15s;
     cursor: pointer;
 }
+.mode-card[hidden] { display: none; }
 .mode-card:hover {
     border-color: var(--accent);
     transform: translateY(-2px);
