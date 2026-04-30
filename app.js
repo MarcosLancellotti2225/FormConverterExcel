@@ -19,8 +19,7 @@
         initMatrixEditorFlow();
         initDetectFieldsFlow();
 
-        // Procesar Formulario INS is the only visible mode — auto-enter it.
-        selectMode('matrix-editor');
+        selectMode(null);
     }
 
     function wireModeSelector() {
