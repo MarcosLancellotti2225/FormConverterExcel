@@ -627,8 +627,66 @@ async function runAddFields(pdfBytes, newFields) {
     return addFieldToPdf(pdfBytes, newFields);
 }
 
-if (typeof window !== 'undefined') {
-    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields };
+async function generateLabeledPdf(pdfBytes) {
+    const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
+    const { detectFields: detect } = require('./pdf-detect/index');
+
+    const detected = await detect(pdfBytes);
+    const fields = detected.fields;
+
+    const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const pages = pdfDoc.getPages();
+
+    const fieldsByPage = {};
+    for (const f of fields) {
+        if (!fieldsByPage[f.page]) fieldsByPage[f.page] = [];
+        fieldsByPage[f.page].push(f);
+    }
+
+    for (let pi = 0; pi < pages.length; pi++) {
+        const page = pages[pi];
+        const pageFields = fieldsByPage[pi + 1] || [];
+        const pageHeight = page.getHeight();
+
+        for (const f of pageFields) {
+            const x = f.x;
+            const y = f.y;
+            const w = f.width;
+            const h = f.height;
+
+            page.drawRectangle({
+                x: x, y: y, width: w, height: h,
+                borderColor: rgb(0.64, 0.44, 0.97),
+                borderWidth: 1,
+                opacity: 0,
+            });
+
+            const fontSize = Math.max(5, Math.min(8, h * 0.6));
+            const labelY = y + h + 2;
+            const textWidth = font.widthOfTextAtSize(f.name, fontSize);
+
+            page.drawRectangle({
+                x: x, y: labelY - 1, width: textWidth + 4, height: fontSize + 3,
+                color: rgb(0.64, 0.44, 0.97),
+                opacity: 0.85,
+            });
+
+            page.drawText(f.name, {
+                x: x + 2, y: labelY + 1,
+                size: fontSize,
+                font: font,
+                color: rgb(1, 1, 1),
+            });
+        }
+    }
+
+    const savedBytes = await pdfDoc.save();
+    return new Uint8Array(savedBytes);
 }
 
-module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields };
+if (typeof window !== 'undefined') {
+    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf };
+}
+
+module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf };

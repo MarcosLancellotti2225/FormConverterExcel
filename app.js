@@ -332,6 +332,7 @@
         $('#btnConvertDirect').addEventListener('click', runConvertDirect);
         $('#btnDownloadConverted').addEventListener('click', downloadConverted);
         $('#btnExportImage').addEventListener('click', exportConvImage);
+        $('#btnExportLabeledPdf').addEventListener('click', exportLabeledPdf);
         $('#btnApplyEdits').addEventListener('click', applyConvEdits);
         $('#btnAddField').addEventListener('click', enterDrawMode);
         $('#btnCancelAddField').addEventListener('click', exitDrawMode);
@@ -506,6 +507,7 @@
                 result.renamedCount + ' campos renombrados.';
 
             $('#btnDownloadConverted').hidden = false;
+            $('#btnExportLabeledPdf').hidden = false;
             $('#btnExportImage').hidden = false;
             $('#btnAddField').hidden = false;
             convState.addedFields = [];
@@ -537,8 +539,14 @@
     }
 
     function downloadConverted() {
-        if (!convState.resultPdfBytes) return;
-        var blob = new Blob([convState.resultPdfBytes], { type: 'application/pdf' });
+        if (!convState.resultPdfBytes) {
+            $('#convStatus').textContent = '✗ No hay PDF para descargar. Convertí primero.';
+            return;
+        }
+        var bytes = convState.resultPdfBytes instanceof Uint8Array
+            ? convState.resultPdfBytes
+            : new Uint8Array(convState.resultPdfBytes);
+        var blob = new Blob([bytes], { type: 'application/pdf' });
         var fileName = (convState.pdf ? convState.pdf.name.replace(/\.pdf$/i, '') : 'converted') + '_renamed.pdf';
         InsPipelineBundle.downloadBlob(blob, fileName);
     }
@@ -602,6 +610,30 @@
 
             statusEl.className = 'status active success';
             statusEl.textContent = '✓ ' + pages.length + ' imagen(es) exportada(s).';
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
+    }
+
+    async function exportLabeledPdf() {
+        if (!convState.resultPdfBytes) return;
+        var statusEl = $('#convStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Generando PDF con labels...';
+
+        try {
+            var bytes = convState.resultPdfBytes instanceof Uint8Array
+                ? convState.resultPdfBytes
+                : new Uint8Array(convState.resultPdfBytes);
+            var labeled = await InsPipelineBundle.generateLabeledPdf(bytes);
+            var blob = new Blob([labeled], { type: 'application/pdf' });
+            var fileName = (convState.pdf ? convState.pdf.name.replace(/\.pdf$/i, '') : 'pdf') + '_con_labels.pdf';
+            InsPipelineBundle.downloadBlob(blob, fileName);
+
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ PDF con labels descargado.';
         } catch (err) {
             console.error(err);
             statusEl.className = 'status active error';
