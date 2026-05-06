@@ -147,17 +147,20 @@
             <div id="convResultPanel" class="detect-split" hidden>
                 <section class="panel detect-split-left">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                        <h2 style="margin:0;">Antes → Después</h2>
-                        <span id="convRenameCount" style="font-size:12px;color:var(--text-muted);"></span>
+                        <h2 style="margin:0;">Campos</h2>
+                        <div style="display:flex;align-items:center;gap:0.5rem;">
+                            <span id="convRenameCount" style="font-size:12px;color:var(--text-muted);"></span>
+                            <button id="btnApplyEdits" class="secondary btn-sm">Aplicar cambios</button>
+                        </div>
                     </div>
                     <div class="match-table-wrap" style="max-height:calc(100vh - 300px);">
                         <table class="match-table" id="convRenameTable">
                             <thead>
                                 <tr>
                                     <th>#</th>
-                                    <th>AcroForm Actual</th>
+                                    <th>Nombre actual</th>
                                     <th></th>
-                                    <th>AcroForm Propuesto</th>
+                                    <th>Nombre nuevo</th>
                                 </tr>
                             </thead>
                             <tbody id="convRenameTableBody"></tbody>
@@ -455,7 +458,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=6"></script>
-    <script src="app.js?v=6"></script>
+    <script src="bundle.js?v=7"></script>
+    <script src="app.js?v=7"></script>
 </body>
 </html>

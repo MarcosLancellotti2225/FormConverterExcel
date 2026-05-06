@@ -1162,6 +1162,7 @@ footer {
     font-size: 0.85rem;
 }
 
+.conv-edit-name,
 #convManualTableBody input {
     background: transparent;
     border: 1px solid var(--border);
@@ -1173,6 +1174,7 @@ footer {
     width: 100%;
     min-width: 180px;
 }
+.conv-edit-name:focus,
 #convManualTableBody input:focus {
     outline: none;
     border-color: var(--accent);

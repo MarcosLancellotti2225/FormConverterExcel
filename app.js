@@ -298,6 +298,7 @@
         pdf: null,
         excel: null,
         mode: '22col',
+        originalPdfBytes: null,
         resultPdfBytes: null,
         preview: null,
         drawMode: false,
@@ -305,7 +306,8 @@
         customHeaders: null,
         customRows: null,
         detectedFields: null,
-        manualRenames: {}
+        manualRenames: {},
+        allFieldEntries: []
     };
 
     function initConvertPdfFlow() {
@@ -330,6 +332,7 @@
         $('#btnConvertDirect').addEventListener('click', runConvertDirect);
         $('#btnDownloadConverted').addEventListener('click', downloadConverted);
         $('#btnExportImage').addEventListener('click', exportConvImage);
+        $('#btnApplyEdits').addEventListener('click', applyConvEdits);
         $('#btnAddField').addEventListener('click', enterDrawMode);
         $('#btnCancelAddField').addEventListener('click', exitDrawMode);
         initDrawHandlers();
@@ -493,6 +496,10 @@
 
             var t1 = performance.now();
             convState.resultPdfBytes = result.pdfBytes;
+            if (!convState.originalPdfBytes) {
+                var ab = await convState.pdf.arrayBuffer();
+                convState.originalPdfBytes = new Uint8Array(ab);
+            }
 
             statusEl.className = 'status active success';
             statusEl.textContent = '✓ PDF convertido en ' + Math.round(t1 - t0) + 'ms — ' +
@@ -503,7 +510,18 @@
             $('#btnAddField').hidden = false;
             convState.addedFields = [];
 
-            renderConvRenameTable(result.renamedFields, result.excelRows);
+            var origFields = await InsPipelineBundle.runDetectFields({ pdfBytes: convState.originalPdfBytes });
+            var renamedMap = {};
+            if (result.renamedFields) {
+                for (var ri = 0; ri < result.renamedFields.length; ri++) {
+                    renamedMap[result.renamedFields[ri].oldName] = result.renamedFields[ri].newName;
+                }
+            }
+            convState.allFieldEntries = origFields.fields.map(function(f) {
+                return { oldName: f.name, newName: renamedMap[f.name] || '', type: f.type, page: f.page };
+            });
+
+            renderConvAllFieldsTable(convState.allFieldEntries);
             renderConvWarnings(result.warnings);
             $('#convResultPanel').hidden = false;
 
@@ -600,30 +618,66 @@
         );
     }
 
-    function renderConvRenameTable(renamedFields, excelRows) {
-        var panel = $('#convResultPanel');
+    function renderConvAllFieldsTable(entries) {
         var tbody = $('#convRenameTableBody');
         var countEl = $('#convRenameCount');
-
-        if (!renamedFields || !renamedFields.length) {
-            panel.hidden = true;
-            return;
-        }
-
-        countEl.textContent = renamedFields.length + ' renombrados';
-        panel.hidden = false;
+        var renamed = entries.filter(function(e) { return !!e.newName; }).length;
+        countEl.textContent = entries.length + ' campos, ' + renamed + ' renombrados';
         tbody.innerHTML = '';
 
-        for (var i = 0; i < renamedFields.length; i++) {
-            var f = renamedFields[i];
+        for (var i = 0; i < entries.length; i++) {
+            var e = entries[i];
             var tr = document.createElement('tr');
             tr.innerHTML =
                 '<td style="color:var(--text-dim);text-align:right;width:30px;">' + (i + 1) + '</td>' +
-                '<td style="font-family:monospace;font-size:0.8rem;color:var(--accent-red);word-break:break-all;">' + escapeHtml(f.oldName) + '</td>' +
+                '<td style="font-family:monospace;font-size:0.8rem;word-break:break-all;">' + escapeHtml(e.oldName) + '</td>' +
                 '<td style="text-align:center;color:var(--accent);font-weight:bold;">→</td>' +
-                '<td style="font-family:monospace;font-size:0.8rem;color:var(--accent-green);word-break:break-all;">' + escapeHtml(f.newName) + '</td>' +
-                '<td style="font-size:0.7rem;white-space:nowrap;color:var(--accent-green);">✓</td>';
+                '<td><input type="text" class="conv-edit-name" data-idx="' + i + '" value="' + escapeHtml(e.newName) + '" placeholder="' + escapeHtml(e.oldName) + '"></td>';
             tbody.appendChild(tr);
+        }
+
+        tbody.addEventListener('input', function(e) {
+            if (e.target.classList.contains('conv-edit-name')) {
+                var idx = parseInt(e.target.dataset.idx, 10);
+                if (convState.allFieldEntries[idx]) {
+                    convState.allFieldEntries[idx].newName = e.target.value.trim();
+                }
+            }
+        });
+    }
+
+    async function applyConvEdits() {
+        var statusEl = $('#convStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Aplicando cambios...';
+
+        try {
+            var renameMap = [];
+            for (var i = 0; i < convState.allFieldEntries.length; i++) {
+                var e = convState.allFieldEntries[i];
+                if (e.newName && e.newName !== e.oldName) {
+                    renameMap.push({ oldName: e.oldName, newName: e.newName });
+                }
+            }
+
+            var t0 = performance.now();
+            var result = await InsPipelineBundle.runConvertManual({
+                pdfFile: new File([convState.originalPdfBytes], convState.pdf.name, { type: 'application/pdf' }),
+                renameMap: renameMap
+            });
+            var t1 = performance.now();
+
+            convState.resultPdfBytes = result.pdfBytes;
+
+            statusEl.textContent = '⟳ Actualizando preview...';
+            await renderConvPreview(result.pdfBytes);
+
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ ' + result.renamedCount + ' campos renombrados en ' + Math.round(t1 - t0) + 'ms. Listo.';
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
         }
     }
 
