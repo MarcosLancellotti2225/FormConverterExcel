@@ -1511,6 +1511,7 @@
         });
         $('#btnDetect').addEventListener('click', runDetect);
         $('#btnDetectExcel').addEventListener('click', downloadDetectExcel);
+        $('#btnDetectLabeledPdf').addEventListener('click', downloadDetectLabeledPdf);
         $('#btnDetectCopy').addEventListener('click', copyDetectToClipboard);
         $('#btnDetectToEditor').addEventListener('click', passDetectToEditor);
         $('#detectPreview').addEventListener('click', function(e) {
@@ -1543,6 +1544,7 @@
             $('#detectResultPanel').hidden = false;
             $('#detectCount').textContent = result.stats.total + ' campos';
             $('#btnDetectExcel').hidden = false;
+            $('#btnDetectLabeledPdf').hidden = false;
             $('#btnDetectCopy').hidden = false;
 
             statusEl.textContent += ' — Cargando preview...';
@@ -1603,6 +1605,26 @@
         var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         var name = (detectState.pdf ? detectState.pdf.name.replace(/\.pdf$/i, '') : 'campos') + '_acroform.xlsx';
         InsPipelineBundle.downloadBlob(blob, name);
+    }
+
+    async function downloadDetectLabeledPdf() {
+        if (!detectState.pdf) return;
+        var statusEl = $('#detectStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Generando PDF con labels...';
+        try {
+            var pdfBytes = new Uint8Array(await detectState.pdf.arrayBuffer());
+            var labeled = await InsPipelineBundle.generateLabeledPdf(pdfBytes);
+            var blob = new Blob([labeled], { type: 'application/pdf' });
+            var name = (detectState.pdf.name.replace(/\.pdf$/i, '') || 'campos') + '_con_labels.pdf';
+            InsPipelineBundle.downloadBlob(blob, name);
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ PDF con labels descargado.';
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
     }
 
     function copyDetectToClipboard() {
