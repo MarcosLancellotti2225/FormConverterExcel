@@ -297,28 +297,138 @@
     var convState = {
         pdf: null,
         excel: null,
+        mode: '22col',
         resultPdfBytes: null,
         preview: null,
         drawMode: false,
-        addedFields: []
+        addedFields: [],
+        customHeaders: null,
+        customRows: null,
+        detectedFields: null,
+        manualRenames: {}
     };
 
     function initConvertPdfFlow() {
         $('#convPdfInput').addEventListener('change', function(e) {
             convState.pdf = e.target.files[0] || null;
             updateConvFileStatus('convPdfStatus', convState.pdf);
+            if (convState.mode === 'manual' && convState.pdf) loadManualFields();
             refreshConvButton();
         });
         $('#convExcelInput').addEventListener('change', function(e) {
             convState.excel = e.target.files[0] || null;
             updateConvFileStatus('convExcelStatus', convState.excel);
+            if (convState.mode === 'custom' && convState.excel) loadCustomExcel();
             refreshConvButton();
+        });
+        $$('input[name="convMode"]').forEach(function(radio) {
+            radio.addEventListener('change', function() {
+                convState.mode = this.value;
+                onConvModeChange();
+            });
         });
         $('#btnConvertDirect').addEventListener('click', runConvertDirect);
         $('#btnDownloadConverted').addEventListener('click', downloadConverted);
+        $('#btnExportImage').addEventListener('click', exportConvImage);
         $('#btnAddField').addEventListener('click', enterDrawMode);
         $('#btnCancelAddField').addEventListener('click', exitDrawMode);
         initDrawHandlers();
+    }
+
+    function onConvModeChange() {
+        var mode = convState.mode;
+        var excelSection = $('#convExcelSection');
+        var columnPicker = $('#convColumnPicker');
+        var manualPanel = $('#convManualPanel');
+
+        excelSection.hidden = mode === 'manual';
+        columnPicker.hidden = true;
+        manualPanel.hidden = true;
+        convState.customHeaders = null;
+        convState.customRows = null;
+        convState.detectedFields = null;
+
+        if (mode === '22col') {
+            $('#convExcelLabel').textContent = 'Matriz Excel (22 columnas)';
+            $('#convExcelDesc').textContent = 'Con columnas AcroForm Actual → AcroForm Propuesto';
+        } else if (mode === 'custom') {
+            $('#convExcelLabel').textContent = 'Excel personalizado';
+            $('#convExcelDesc').textContent = 'Cualquier .xlsx — después elegís las columnas';
+            if (convState.excel) loadCustomExcel();
+        } else if (mode === 'manual') {
+            if (convState.pdf) loadManualFields();
+        }
+        refreshConvButton();
+    }
+
+    async function loadCustomExcel() {
+        try {
+            var parsed = await InsPipelineBundle.parseExcelHeaders(convState.excel);
+            convState.customHeaders = parsed.headers;
+            convState.customRows = parsed.rows;
+
+            var selActual = $('#convColActual');
+            var selPropuesto = $('#convColPropuesto');
+            selActual.innerHTML = '';
+            selPropuesto.innerHTML = '';
+            for (var i = 0; i < parsed.headers.length; i++) {
+                var h = parsed.headers[i];
+                selActual.innerHTML += '<option value="' + h.index + '">' + escapeHtml(h.name) + '</option>';
+                selPropuesto.innerHTML += '<option value="' + h.index + '">' + escapeHtml(h.name) + '</option>';
+            }
+            if (parsed.headers.length > 1) selPropuesto.selectedIndex = 1;
+            $('#convColumnPicker').hidden = false;
+            refreshConvButton();
+        } catch (err) {
+            $('#convStatus').className = 'status active error';
+            $('#convStatus').textContent = '✗ ' + err.message;
+        }
+    }
+
+    async function loadManualFields() {
+        var statusEl = $('#convStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Detectando campos AcroForm...';
+        try {
+            var result = await InsPipelineBundle.runDetectFields({ pdfFile: convState.pdf });
+            convState.detectedFields = result.fields;
+            convState.manualRenames = {};
+            renderManualTable(result.fields);
+            $('#convManualPanel').hidden = false;
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ ' + result.fields.length + ' campos detectados. Editá los nombres y dale a Convertir.';
+            refreshConvButton();
+        } catch (err) {
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
+    }
+
+    function renderManualTable(fields) {
+        var tbody = $('#convManualTableBody');
+        tbody.innerHTML = '';
+        for (var i = 0; i < fields.length; i++) {
+            var f = fields[i];
+            var tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td style="color:var(--text-dim);text-align:right;">' + (i + 1) + '</td>' +
+                '<td style="font-family:monospace;font-size:0.8rem;">' + escapeHtml(f.name) + '</td>' +
+                '<td>' + escapeHtml(f.type) + '</td>' +
+                '<td style="text-align:center;">' + f.page + '</td>' +
+                '<td><input type="text" data-field="' + escapeHtml(f.name) + '" placeholder="' + escapeHtml(f.name) + '"></td>';
+            tbody.appendChild(tr);
+        }
+        tbody.addEventListener('input', function(e) {
+            if (e.target.tagName === 'INPUT') {
+                var fieldName = e.target.dataset.field;
+                var newVal = e.target.value.trim();
+                if (newVal) {
+                    convState.manualRenames[fieldName] = newVal;
+                } else {
+                    delete convState.manualRenames[fieldName];
+                }
+            }
+        });
     }
 
     function updateConvFileStatus(id, file) {
@@ -334,29 +444,62 @@
     }
 
     function refreshConvButton() {
-        $('#btnConvertDirect').disabled = !(convState.pdf && convState.excel);
+        var mode = convState.mode;
+        var ok = false;
+        if (mode === '22col') ok = !!(convState.pdf && convState.excel);
+        else if (mode === 'custom') ok = !!(convState.pdf && convState.excel && convState.customHeaders);
+        else if (mode === 'manual') ok = !!(convState.pdf && convState.detectedFields);
+        $('#btnConvertDirect').disabled = !ok;
     }
 
     async function runConvertDirect() {
         var statusEl = $('#convStatus');
         statusEl.className = 'status active';
-        statusEl.textContent = '⟳ Convirtiendo PDF (bypass directo)...';
+        statusEl.textContent = '⟳ Convirtiendo PDF...';
 
         try {
             var t0 = performance.now();
-            var result = await InsPipelineBundle.runConvertDirect({
-                pdfFile: convState.pdf,
-                excelFile: convState.excel
-            });
-            var t1 = performance.now();
+            var result;
 
+            if (convState.mode === '22col') {
+                result = await InsPipelineBundle.runConvertDirect({
+                    pdfFile: convState.pdf,
+                    excelFile: convState.excel
+                });
+            } else if (convState.mode === 'custom') {
+                var colActual = parseInt($('#convColActual').value, 10);
+                var colPropuesto = parseInt($('#convColPropuesto').value, 10);
+                var renameMap = [];
+                for (var i = 0; i < convState.customRows.length; i++) {
+                    var row = convState.customRows[i];
+                    var oldName = String(row[colActual] || '').trim();
+                    var newName = String(row[colPropuesto] || '').trim();
+                    if (oldName) renameMap.push({ oldName: oldName, newName: newName || oldName });
+                }
+                result = await InsPipelineBundle.runConvertCustom({
+                    pdfFile: convState.pdf,
+                    renameMap: renameMap
+                });
+            } else {
+                var manualMap = [];
+                for (var key in convState.manualRenames) {
+                    manualMap.push({ oldName: key, newName: convState.manualRenames[key] });
+                }
+                result = await InsPipelineBundle.runConvertManual({
+                    pdfFile: convState.pdf,
+                    renameMap: manualMap
+                });
+            }
+
+            var t1 = performance.now();
             convState.resultPdfBytes = result.pdfBytes;
 
             statusEl.className = 'status active success';
             statusEl.textContent = '✓ PDF convertido en ' + Math.round(t1 - t0) + 'ms — ' +
-                result.renamedCount + '/' + result.excelRows + ' campos renombrados.';
+                result.renamedCount + ' campos renombrados.';
 
             $('#btnDownloadConverted').hidden = false;
+            $('#btnExportImage').hidden = false;
             $('#btnAddField').hidden = false;
             convState.addedFields = [];
 
@@ -367,7 +510,7 @@
             statusEl.textContent += ' Cargando preview...';
             await renderConvPreview(result.pdfBytes);
             statusEl.textContent = '✓ PDF convertido en ' + Math.round(t1 - t0) + 'ms — ' +
-                result.renamedCount + '/' + result.excelRows + ' campos renombrados. Listo para descargar.';
+                result.renamedCount + ' campos renombrados. Listo.';
         } catch (err) {
             console.error(err);
             statusEl.className = 'status active error';
@@ -380,6 +523,72 @@
         var blob = new Blob([convState.resultPdfBytes], { type: 'application/pdf' });
         var fileName = (convState.pdf ? convState.pdf.name.replace(/\.pdf$/i, '') : 'converted') + '_renamed.pdf';
         InsPipelineBundle.downloadBlob(blob, fileName);
+    }
+
+    async function exportConvImage() {
+        if (!convState.resultPdfBytes) return;
+        var statusEl = $('#convStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Generando imagen...';
+
+        try {
+            var container = $('#convPreview');
+            var pages = $$('.detect-page', container);
+            if (!pages.length) { statusEl.textContent = '✗ No hay preview.'; return; }
+
+            for (var p = 0; p < pages.length; p++) {
+                var pageDiv = pages[p];
+                var canvas = pageDiv.querySelector('canvas');
+                if (!canvas) continue;
+
+                var imgCanvas = document.createElement('canvas');
+                imgCanvas.width = canvas.width;
+                imgCanvas.height = canvas.height;
+                var ctx = imgCanvas.getContext('2d');
+                ctx.drawImage(canvas, 0, 0);
+
+                var overlays = $$('.detect-field-overlay', pageDiv);
+                var pdfScale = parseFloat(pageDiv.dataset.pdfScale) || 1;
+                for (var oi = 0; oi < overlays.length; oi++) {
+                    var ov = overlays[oi];
+                    var ox = parseFloat(ov.style.left) * (canvas.width / pageDiv.offsetWidth);
+                    var oy = parseFloat(ov.style.top) * (canvas.height / pageDiv.offsetHeight);
+                    var ow = parseFloat(ov.style.width) * (canvas.width / pageDiv.offsetWidth);
+                    var oh = parseFloat(ov.style.height) * (canvas.height / pageDiv.offsetHeight);
+
+                    ctx.strokeStyle = 'rgba(163, 113, 247, 0.7)';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(ox, oy, ow, oh);
+
+                    var nameEl = ov.querySelector('.detect-field-name');
+                    if (nameEl) {
+                        var label = nameEl.textContent;
+                        var fontSize = Math.max(10, Math.min(14, oh * 0.7));
+                        ctx.font = fontSize + 'px monospace';
+                        ctx.fillStyle = 'rgba(163, 113, 247, 0.9)';
+                        var textW = ctx.measureText(label).width;
+                        ctx.fillStyle = 'rgba(13, 17, 23, 0.85)';
+                        ctx.fillRect(ox, oy - fontSize - 4, textW + 6, fontSize + 4);
+                        ctx.fillStyle = '#a371f7';
+                        ctx.fillText(label, ox + 3, oy - 4);
+                    }
+                }
+
+                (function(pageNum) {
+                    imgCanvas.toBlob(function(blob) {
+                        var fileName = (convState.pdf ? convState.pdf.name.replace(/\.pdf$/i, '') : 'pdf') + '_page' + pageNum + '.png';
+                        InsPipelineBundle.downloadBlob(blob, fileName);
+                    }, 'image/png');
+                })(p + 1);
+            }
+
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ ' + pages.length + ' imagen(es) exportada(s).';
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
     }
 
     async function renderConvPreview(renamedPdfBytes) {
@@ -401,7 +610,7 @@
             return;
         }
 
-        countEl.textContent = renamedFields.length + ' renombrados de ' + excelRows + ' filas del Excel';
+        countEl.textContent = renamedFields.length + ' renombrados';
         panel.hidden = false;
         tbody.innerHTML = '';
 
@@ -413,7 +622,7 @@
                 '<td style="font-family:monospace;font-size:0.8rem;color:var(--accent-red);word-break:break-all;">' + escapeHtml(f.oldName) + '</td>' +
                 '<td style="text-align:center;color:var(--accent);font-weight:bold;">→</td>' +
                 '<td style="font-family:monospace;font-size:0.8rem;color:var(--accent-green);word-break:break-all;">' + escapeHtml(f.newName) + '</td>' +
-                '<td style="font-size:0.7rem;white-space:nowrap;color:var(--accent-green);">✓ Renombrado</td>';
+                '<td style="font-size:0.7rem;white-space:nowrap;color:var(--accent-green);">✓</td>';
             tbody.appendChild(tr);
         }
     }

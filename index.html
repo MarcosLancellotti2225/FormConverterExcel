@@ -68,7 +68,6 @@
         <div id="convertPdfFlow" hidden>
             <section class="panel">
                 <h2>1. Archivos</h2>
-                <p class="hint">Cargá el PDF original y la Matriz Excel de 22 columnas con las columnas "AcroForm Actual" y "AcroForm Propuesto".</p>
                 <div class="inputs-grid">
                     <label class="file-slot required" data-slot="conv-pdf">
                         <span class="label">PDF original</span>
@@ -76,12 +75,60 @@
                         <input type="file" accept=".pdf" id="convPdfInput">
                         <span class="file-status" id="convPdfStatus"></span>
                     </label>
-                    <label class="file-slot required" data-slot="conv-excel">
-                        <span class="label">Matriz Excel (22 columnas)</span>
-                        <span class="desc">Con columnas AcroForm Actual → AcroForm Propuesto</span>
-                        <input type="file" accept=".xlsx,.xls" id="convExcelInput">
-                        <span class="file-status" id="convExcelStatus"></span>
-                    </label>
+                </div>
+
+                <div class="conv-mode-selector" style="margin-top:1rem;">
+                    <p class="hint" style="margin-bottom:0.5rem;">Modo de mapeo:</p>
+                    <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+                        <label class="conv-mode-option"><input type="radio" name="convMode" value="22col" checked> Matriz 22 columnas</label>
+                        <label class="conv-mode-option"><input type="radio" name="convMode" value="custom"> Excel personalizado</label>
+                        <label class="conv-mode-option"><input type="radio" name="convMode" value="manual"> Sin Excel (manual)</label>
+                    </div>
+                </div>
+
+                <div id="convExcelSection" style="margin-top:1rem;">
+                    <div class="inputs-grid">
+                        <label class="file-slot required" data-slot="conv-excel">
+                            <span class="label" id="convExcelLabel">Matriz Excel (22 columnas)</span>
+                            <span class="desc" id="convExcelDesc">Con columnas AcroForm Actual → AcroForm Propuesto</span>
+                            <input type="file" accept=".xlsx,.xls" id="convExcelInput">
+                            <span class="file-status" id="convExcelStatus"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div id="convColumnPicker" class="panel" hidden style="margin-top:1rem;padding:1rem;">
+                    <h3 style="margin:0 0 0.5rem;font-size:0.9rem;">Seleccioná las columnas</h3>
+                    <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:end;">
+                        <div>
+                            <label class="hint" style="display:block;margin-bottom:4px;">Nombre actual (en PDF)</label>
+                            <select id="convColActual" style="min-width:200px;"></select>
+                        </div>
+                        <div style="font-size:1.2rem;color:var(--accent);padding-bottom:4px;">→</div>
+                        <div>
+                            <label class="hint" style="display:block;margin-bottom:4px;">Nombre nuevo (propuesto)</label>
+                            <select id="convColPropuesto" style="min-width:200px;"></select>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel" id="convManualPanel" hidden>
+                <h2>Renombrar campos</h2>
+                <p class="hint">Editá la columna "Nombre nuevo" para cada campo que quieras renombrar. Dejá vacío para mantener el nombre original.</p>
+                <div class="match-table-wrap" style="max-height:400px;">
+                    <table class="match-table" id="convManualTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>AcroForm Actual</th>
+                                <th>Tipo</th>
+                                <th>Pág</th>
+                                <th>Nombre nuevo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="convManualTableBody"></tbody>
+                    </table>
                 </div>
             </section>
 
@@ -90,6 +137,7 @@
                 <div class="actions">
                     <button id="btnConvertDirect" class="primary" disabled>Convertir PDF</button>
                     <button id="btnDownloadConverted" class="primary" hidden>Descargar PDF renombrado</button>
+                    <button id="btnExportImage" class="secondary btn-sm" hidden>Exportar como imagen</button>
                     <button id="btnAddField" class="secondary btn-sm" hidden>+ Agregar campo</button>
                     <button id="btnCancelAddField" class="secondary btn-sm" hidden style="color:var(--accent-red);">Cancelar dibujo</button>
                 </div>
@@ -407,7 +455,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=5"></script>
-    <script src="app.js?v=5"></script>
+    <script src="bundle.js?v=6"></script>
+    <script src="app.js?v=6"></script>
 </body>
 </html>

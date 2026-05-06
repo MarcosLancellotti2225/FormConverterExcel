@@ -1141,3 +1141,40 @@ footer {
     white-space: nowrap;
     line-height: 14px;
 }
+
+.conv-mode-option {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.conv-mode-option input[type="radio"] { accent-color: var(--accent); }
+.conv-mode-option:has(input:checked) { color: var(--text); font-weight: 500; }
+
+#convColumnPicker select {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-size: 0.85rem;
+}
+
+#convManualTableBody input {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--accent-green);
+    font-family: monospace;
+    font-size: 0.8rem;
+    padding: 2px 6px;
+    width: 100%;
+    min-width: 180px;
+}
+#convManualTableBody input:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--bg-elevated);
+}

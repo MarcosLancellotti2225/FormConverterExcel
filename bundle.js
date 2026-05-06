@@ -95692,6 +95692,46 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const excelBuffer = await fileToUint8Array(excelFile);
         return convertDirect(pdfBytes, excelBuffer);
       }
+      async function parseExcelHeaders(excelFile) {
+        const XLSX = require_xlsx();
+        const buffer = await fileToUint8Array(excelFile);
+        const wb = XLSX.read(buffer, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+        if (rawRows.length < 2) throw new Error("El Excel est\xE1 vac\xEDo");
+        const headers = rawRows[0].map((h, i) => ({ index: i, name: String(h || "Columna " + (i + 1)) }));
+        return { headers, rows: rawRows.slice(1), sheetName: wb.SheetNames[0] };
+      }
+      async function runConvertCustom(inputs) {
+        const { pdfFile, renameMap } = inputs;
+        if (!pdfFile) throw new Error("Carg\xE1 el PDF original");
+        const pdfBytes = await fileToUint8Array(pdfFile);
+        const { rewritePdf } = require_pdf_rewriter();
+        const entries = renameMap.filter((e) => e.oldName && e.newName && e.oldName !== e.newName);
+        const result = await rewritePdf(pdfBytes, entries);
+        return {
+          pdfBytes: result.pdfBytes,
+          warnings: result.warnings || [],
+          renamedCount: result.renamedCount || 0,
+          renamedFields: result.renamedFields || [],
+          excelRows: renameMap.length
+        };
+      }
+      async function runConvertManual(inputs) {
+        const { pdfFile, renameMap } = inputs;
+        if (!pdfFile) throw new Error("Carg\xE1 el PDF original");
+        const pdfBytes = await fileToUint8Array(pdfFile);
+        const { rewritePdf } = require_pdf_rewriter();
+        const entries = renameMap.filter((e) => e.oldName && e.newName && e.oldName !== e.newName);
+        const result = await rewritePdf(pdfBytes, entries);
+        return {
+          pdfBytes: result.pdfBytes,
+          warnings: result.warnings || [],
+          renamedCount: result.renamedCount || 0,
+          renamedFields: result.renamedFields || [],
+          excelRows: entries.length
+        };
+      }
       async function renderPreview(pdfBytes, matches, container) {
         const pdfjsLib = (init_pdf(), __toCommonJS(pdf_exports));
         const webWorker = new Worker("pdf.worker.min.mjs", { type: "module" });
@@ -96093,9 +96133,9 @@ ${pagesHtml}</body>
         return addFieldToPdf(pdfBytes, newFields);
       }
       if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields };
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields };
       }
-      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields };
+      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields };
     }
   });
   return require_browser();
