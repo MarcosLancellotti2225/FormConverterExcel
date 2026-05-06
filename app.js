@@ -616,6 +616,50 @@
         convState.preview = await InsPipelineBundle.renderDetectPreview(
             new Uint8Array(renamedPdfBytes), container, detectResult.fields
         );
+        wireConvPreviewClicks(detectResult.fields);
+    }
+
+    function wireConvPreviewClicks(previewFields) {
+        var container = $('#convPreview');
+        container.addEventListener('click', function handler(e) {
+            if (convState.drawMode) return;
+            var overlay = e.target.closest('.detect-field-overlay');
+            if (!overlay) return;
+            var idx = parseInt(overlay.dataset.fieldIdx, 10);
+            if (isNaN(idx) || !previewFields[idx]) return;
+
+            var clickedName = previewFields[idx].name;
+            var tableIdx = findTableIdxByName(clickedName);
+            if (tableIdx < 0) return;
+
+            highlightConvPair(tableIdx, idx);
+        });
+    }
+
+    function findTableIdxByName(name) {
+        for (var i = 0; i < convState.allFieldEntries.length; i++) {
+            var e = convState.allFieldEntries[i];
+            if (e.newName === name || e.oldName === name) return i;
+        }
+        return -1;
+    }
+
+    function highlightConvPair(tableIdx, overlayIdx) {
+        $$('#convRenameTableBody tr').forEach(function(tr) { tr.classList.remove('detect-row-active'); });
+        $$('.detect-field-overlay', $('#convPreview')).forEach(function(el) { el.classList.remove('detect-field-highlight'); });
+
+        var row = $('#convRenameTableBody tr:nth-child(' + (tableIdx + 1) + ')');
+        if (row) {
+            row.classList.add('detect-row-active');
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            var input = row.querySelector('.conv-edit-name');
+            if (input) input.focus();
+        }
+
+        if (overlayIdx != null) {
+            var ov = $('.detect-field-overlay[data-field-idx="' + overlayIdx + '"]', $('#convPreview'));
+            if (ov) ov.classList.add('detect-field-highlight');
+        }
     }
 
     function renderConvAllFieldsTable(entries) {
@@ -628,9 +672,10 @@
         for (var i = 0; i < entries.length; i++) {
             var e = entries[i];
             var tr = document.createElement('tr');
+            tr.dataset.tableIdx = i;
             tr.innerHTML =
                 '<td style="color:var(--text-dim);text-align:right;width:30px;">' + (i + 1) + '</td>' +
-                '<td style="font-family:monospace;font-size:0.8rem;word-break:break-all;">' + escapeHtml(e.oldName) + '</td>' +
+                '<td class="conv-old-name" style="font-family:monospace;font-size:0.8rem;word-break:break-all;cursor:pointer;">' + escapeHtml(e.oldName) + '</td>' +
                 '<td style="text-align:center;color:var(--accent);font-weight:bold;">→</td>' +
                 '<td><input type="text" class="conv-edit-name" data-idx="' + i + '" value="' + escapeHtml(e.newName) + '" placeholder="' + escapeHtml(e.oldName) + '"></td>';
             tbody.appendChild(tr);
@@ -644,6 +689,31 @@
                 }
             }
         });
+
+        tbody.addEventListener('click', function(e) {
+            if (e.target.closest('.conv-edit-name')) return;
+            var tr = e.target.closest('tr');
+            if (!tr || tr.dataset.tableIdx == null) return;
+            var tableIdx = parseInt(tr.dataset.tableIdx, 10);
+            var entry = convState.allFieldEntries[tableIdx];
+            if (!entry) return;
+            var fieldName = entry.newName || entry.oldName;
+            var overlayIdx = findOverlayIdxByName(fieldName);
+            highlightConvPair(tableIdx, overlayIdx);
+            if (overlayIdx != null) {
+                var ov = $('.detect-field-overlay[data-field-idx="' + overlayIdx + '"]', $('#convPreview'));
+                if (ov) ov.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        });
+    }
+
+    function findOverlayIdxByName(name) {
+        var overlays = $$('.detect-field-overlay', $('#convPreview'));
+        for (var i = 0; i < overlays.length; i++) {
+            var nameEl = overlays[i].querySelector('.detect-field-name');
+            if (nameEl && nameEl.textContent === name) return parseInt(overlays[i].dataset.fieldIdx, 10);
+        }
+        return null;
     }
 
     async function applyConvEdits() {
