@@ -767,15 +767,27 @@
                 pdfFile: new File([convState.originalPdfBytes], convState.pdf.name, { type: 'application/pdf' }),
                 renameMap: renameMap
             });
-            var t1 = performance.now();
 
-            convState.resultPdfBytes = result.pdfBytes;
+            var pdfBytes = result.pdfBytes;
+
+            if (convState.addedFields.length > 0) {
+                statusEl.textContent = '⟳ Re-agregando ' + convState.addedFields.length + ' campo(s) creado(s)...';
+                var addResult = await InsPipelineBundle.runAddFields(
+                    new Uint8Array(pdfBytes), convState.addedFields
+                );
+                pdfBytes = addResult.pdfBytes;
+            }
+
+            var t1 = performance.now();
+            convState.resultPdfBytes = pdfBytes;
 
             statusEl.textContent = '⟳ Actualizando preview...';
-            await renderConvPreview(result.pdfBytes);
+            await renderConvPreview(pdfBytes);
 
             statusEl.className = 'status active success';
-            statusEl.textContent = '✓ ' + result.renamedCount + ' campos renombrados en ' + Math.round(t1 - t0) + 'ms. Listo.';
+            statusEl.textContent = '✓ ' + result.renamedCount + ' renombrados' +
+                (convState.addedFields.length ? ' + ' + convState.addedFields.length + ' agregado(s)' : '') +
+                ' en ' + Math.round(t1 - t0) + 'ms. Listo.';
         } catch (err) {
             console.error(err);
             statusEl.className = 'status active error';
