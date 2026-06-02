@@ -333,6 +333,7 @@
         $('#btnDownloadConverted').addEventListener('click', downloadConverted);
         $('#btnExportImage').addEventListener('click', exportConvImage);
         $('#btnExportLabeledPdf').addEventListener('click', exportLabeledPdf);
+        $('#btnExportMapExcel').addEventListener('click', exportMapExcel);
         $('#btnApplyEdits').addEventListener('click', applyConvEdits);
         $('#btnAddField').addEventListener('click', enterDrawMode);
         $('#btnCancelAddField').addEventListener('click', exitDrawMode);
@@ -509,6 +510,7 @@
             $('#btnDownloadConverted').hidden = false;
             $('#btnExportLabeledPdf').hidden = false;
             $('#btnExportImage').hidden = false;
+            $('#btnExportMapExcel').hidden = false;
             $('#btnAddField').hidden = false;
             convState.addedFields = [];
 
@@ -639,6 +641,24 @@
             statusEl.className = 'status active error';
             statusEl.textContent = '✗ ' + err.message;
         }
+    }
+
+    function exportMapExcel() {
+        if (!convState.allFieldEntries || !convState.allFieldEntries.length) return;
+        var entries = convState.allFieldEntries.map(function(e) {
+            return {
+                oldName: e.oldName,
+                newName: e.newName || e.oldName,
+                type: e.type || '',
+                page: e.page || ''
+            };
+        });
+        var buf = InsPipelineBundle.renameMapToXlsx(entries);
+        var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        var fileName = (convState.pdf ? convState.pdf.name.replace(/\.pdf$/i, '') : 'mapeo') + '_mapeo.xlsx';
+        InsPipelineBundle.downloadBlob(blob, fileName);
+        $('#convStatus').className = 'status active success';
+        $('#convStatus').textContent = '✓ Mapeo Excel descargado.';
     }
 
     async function renderConvPreview(renamedPdfBytes) {
