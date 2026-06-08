@@ -95734,6 +95734,13 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const result = await generatePdf(pdfBytes, finalMatches);
         return result;
       }
+      async function parseExcel22Col(excelFile) {
+        const { parseExcelFor22Col } = require_name_resolver();
+        const buffer = await fileToUint8Array(excelFile);
+        const parsed = parseExcelFor22Col(buffer);
+        if (!parsed) throw new Error('No se encontraron columnas "AcroForm Actual" y "AcroForm Propuesto" en el Excel');
+        return parsed.map((r2) => ({ oldName: r2.acroActual, newName: r2.acroPropuesto }));
+      }
       async function runConvertDirect(inputs) {
         const { pdfFile, excelFile } = inputs;
         if (!pdfFile) throw new Error("Carg\xE1 el PDF original");
@@ -96253,9 +96260,9 @@ ${pagesHtml}</body>
         return new Uint8Array(savedBytes);
       }
       if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf };
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf };
       }
-      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf };
+      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf };
     }
   });
   return require_browser();

@@ -449,6 +449,131 @@
         $('#btnConvertDirect').disabled = !ok;
     }
 
+    function normalizeFieldName(name) {
+        return String(name || '').toLowerCase()
+            .replace(/[\s._\-]+/g, '')
+            .replace(/[áàä]/g, 'a').replace(/[éèë]/g, 'e')
+            .replace(/[íìï]/g, 'i').replace(/[óòö]/g, 'o')
+            .replace(/[úùü]/g, 'u').replace(/ñ/g, 'n');
+    }
+
+    function levenshtein(a, b) {
+        if (a.length === 0) return b.length;
+        if (b.length === 0) return a.length;
+        var matrix = [];
+        for (var i = 0; i <= b.length; i++) matrix[i] = [i];
+        for (var j = 0; j <= a.length; j++) matrix[0][j] = j;
+        for (var i = 1; i <= b.length; i++) {
+            for (var j = 1; j <= a.length; j++) {
+                var cost = b.charAt(i - 1) === a.charAt(j - 1) ? 0 : 1;
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j] + 1,
+                    matrix[i][j - 1] + 1,
+                    matrix[i - 1][j - 1] + cost
+                );
+            }
+        }
+        return matrix[b.length][a.length];
+    }
+
+    function similarity(a, b) {
+        var maxLen = Math.max(a.length, b.length);
+        if (maxLen === 0) return 1;
+        return 1 - levenshtein(a, b) / maxLen;
+    }
+
+    function smartMatchExcelToPdf(excelEntries, pdfFields) {
+        var pdfByNorm = {};
+        var pdfNames = [];
+        for (var i = 0; i < pdfFields.length; i++) {
+            var f = pdfFields[i];
+            var norm = normalizeFieldName(f.name);
+            pdfByNorm[norm] = f.name;
+            pdfNames.push({ name: f.name, norm: norm, type: f.type, page: f.page });
+        }
+
+        var usedPdf = {};
+        var results = [];
+
+        for (var i = 0; i < pdfNames.length; i++) {
+            var pdf = pdfNames[i];
+            var bestMatch = null;
+            var bestScore = 0;
+            var matchType = 'none';
+
+            for (var j = 0; j < excelEntries.length; j++) {
+                var ex = excelEntries[j];
+                if (usedPdf[ex.oldName + '→' + j]) continue;
+
+                if (ex.oldName === pdf.name) {
+                    bestMatch = ex;
+                    bestScore = 1;
+                    matchType = 'exact';
+                    break;
+                }
+
+                var normEx = normalizeFieldName(ex.oldName);
+                if (normEx === pdf.norm) {
+                    if (bestScore < 0.95) {
+                        bestMatch = ex;
+                        bestScore = 0.95;
+                        matchType = 'normalized';
+                    }
+                    continue;
+                }
+
+                var sim = similarity(normEx, pdf.norm);
+                if (sim > bestScore && sim >= 0.7) {
+                    bestMatch = ex;
+                    bestScore = sim;
+                    matchType = 'fuzzy';
+                }
+            }
+
+            if (bestMatch) {
+                usedPdf[bestMatch.oldName] = true;
+                results.push({
+                    oldName: pdf.name,
+                    newName: bestMatch.newName || '',
+                    excelName: bestMatch.oldName,
+                    type: pdf.type,
+                    page: pdf.page,
+                    matchType: matchType,
+                    matchScore: bestScore
+                });
+            } else {
+                results.push({
+                    oldName: pdf.name,
+                    newName: '',
+                    excelName: '',
+                    type: pdf.type,
+                    page: pdf.page,
+                    matchType: 'none',
+                    matchScore: 0
+                });
+            }
+        }
+
+        return results;
+    }
+
+    function buildExcelEntries(mode) {
+        var entries = [];
+        if (mode === '22col') {
+            return null;
+        } else if (mode === 'custom') {
+            var colActual = parseInt($('#convColActual').value, 10);
+            var colPropuesto = parseInt($('#convColPropuesto').value, 10);
+            for (var i = 0; i < convState.customRows.length; i++) {
+                var row = convState.customRows[i];
+                var oldName = String(row[colActual] || '').trim();
+                var newName = String(row[colPropuesto] || '').trim();
+                if (oldName) entries.push({ oldName: oldName, newName: newName || oldName });
+            }
+        }
+        return entries;
+    }
+
     async function runConvertDirect() {
         var statusEl = $('#convStatus');
         statusEl.className = 'status active';
@@ -456,81 +581,132 @@
 
         try {
             var t0 = performance.now();
-            var result;
 
-            if (convState.mode === '22col') {
-                result = await InsPipelineBundle.runConvertDirect({
-                    pdfFile: convState.pdf,
-                    excelFile: convState.excel
-                });
-            } else if (convState.mode === 'custom') {
-                var colActual = parseInt($('#convColActual').value, 10);
-                var colPropuesto = parseInt($('#convColPropuesto').value, 10);
-                var renameMap = [];
-                for (var i = 0; i < convState.customRows.length; i++) {
-                    var row = convState.customRows[i];
-                    var oldName = String(row[colActual] || '').trim();
-                    var newName = String(row[colPropuesto] || '').trim();
-                    if (oldName) renameMap.push({ oldName: oldName, newName: newName || oldName });
-                }
-                result = await InsPipelineBundle.runConvertCustom({
-                    pdfFile: convState.pdf,
-                    renameMap: renameMap
-                });
-            } else {
-                var manualMap = [];
-                for (var key in convState.manualRenames) {
-                    manualMap.push({ oldName: key, newName: convState.manualRenames[key] });
-                }
-                result = await InsPipelineBundle.runConvertManual({
-                    pdfFile: convState.pdf,
-                    renameMap: manualMap
-                });
-            }
-
-            var t1 = performance.now();
-            convState.resultPdfBytes = result.pdfBytes;
             if (!convState.originalPdfBytes) {
                 var ab = await convState.pdf.arrayBuffer();
                 convState.originalPdfBytes = new Uint8Array(ab);
             }
 
-            statusEl.className = 'status active success';
-            statusEl.textContent = '✓ PDF convertido en ' + Math.round(t1 - t0) + 'ms — ' +
-                result.renamedCount + ' campos renombrados.';
+            if (convState.mode === 'manual') {
+                var manualMap = [];
+                for (var key in convState.manualRenames) {
+                    manualMap.push({ oldName: key, newName: convState.manualRenames[key] });
+                }
+                var result = await InsPipelineBundle.runConvertManual({
+                    pdfFile: convState.pdf,
+                    renameMap: manualMap
+                });
 
+                var t1 = performance.now();
+                convState.resultPdfBytes = result.pdfBytes;
+
+                statusEl.className = 'status active success';
+                statusEl.textContent = '✓ PDF convertido en ' + Math.round(t1 - t0) + 'ms — ' +
+                    result.renamedCount + ' campos renombrados.';
+
+                var origFields = await InsPipelineBundle.runDetectFields({ pdfBytes: convState.originalPdfBytes });
+                var renamedMap = {};
+                if (result.renamedFields) {
+                    for (var ri = 0; ri < result.renamedFields.length; ri++) {
+                        renamedMap[result.renamedFields[ri].oldName] = result.renamedFields[ri].newName;
+                    }
+                }
+                convState.allFieldEntries = origFields.fields.map(function(f) {
+                    return { oldName: f.name, newName: renamedMap[f.name] || '', type: f.type, page: f.page, matchType: renamedMap[f.name] ? 'exact' : 'none', matchScore: renamedMap[f.name] ? 1 : 0 };
+                });
+
+                finishConvertUI(result, t0);
+                return;
+            }
+
+            statusEl.textContent = '⟳ Detectando campos del PDF...';
+            var origFields = await InsPipelineBundle.runDetectFields({ pdfBytes: convState.originalPdfBytes });
+            var pdfFields = origFields.fields;
+
+            statusEl.textContent = '⟳ Parseando Excel y matcheando...';
+            var excelEntries;
+
+            if (convState.mode === '22col') {
+                var parsed = await InsPipelineBundle.parseExcel22Col(convState.excel);
+                excelEntries = parsed;
+            } else {
+                excelEntries = buildExcelEntries('custom');
+            }
+
+            var matched = smartMatchExcelToPdf(excelEntries, pdfFields);
+
+            var exactCount = 0, normCount = 0, fuzzyCount = 0, noneCount = 0;
+            for (var i = 0; i < matched.length; i++) {
+                if (matched[i].matchType === 'exact') exactCount++;
+                else if (matched[i].matchType === 'normalized') normCount++;
+                else if (matched[i].matchType === 'fuzzy') fuzzyCount++;
+                else noneCount++;
+            }
+
+            var renameMap = [];
+            for (var i = 0; i < matched.length; i++) {
+                var m = matched[i];
+                if (m.newName && m.newName !== m.oldName) {
+                    renameMap.push({ oldName: m.oldName, newName: m.newName });
+                }
+            }
+
+            var result = await InsPipelineBundle.runConvertManual({
+                pdfFile: new File([convState.originalPdfBytes], convState.pdf.name, { type: 'application/pdf' }),
+                renameMap: renameMap
+            });
+
+            convState.resultPdfBytes = result.pdfBytes;
+            convState.allFieldEntries = matched;
+            convState.addedFields = [];
+            convState.deletedFields = new Set();
+
+            var t1 = performance.now();
+            var matchMsg = exactCount + ' exactos';
+            if (normCount) matchMsg += ', ' + normCount + ' normalizados';
+            if (fuzzyCount) matchMsg += ', ' + fuzzyCount + ' fuzzy';
+            if (noneCount) matchMsg += ', ' + noneCount + ' sin match';
+
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ ' + result.renamedCount + ' renombrados (' + matchMsg + ') en ' + Math.round(t1 - t0) + 'ms.';
+
+            renderConvAllFieldsTable(convState.allFieldEntries);
+            renderConvWarnings(result.warnings);
+            $('#convResultPanel').hidden = false;
             $('#btnDownloadConverted').hidden = false;
             $('#btnExportLabeledPdf').hidden = false;
             $('#btnExportImage').hidden = false;
             $('#btnExportMapExcel').hidden = false;
             $('#btnAddField').hidden = false;
-            convState.addedFields = [];
-            convState.deletedFields = new Set();
-
-            var origFields = await InsPipelineBundle.runDetectFields({ pdfBytes: convState.originalPdfBytes });
-            var renamedMap = {};
-            if (result.renamedFields) {
-                for (var ri = 0; ri < result.renamedFields.length; ri++) {
-                    renamedMap[result.renamedFields[ri].oldName] = result.renamedFields[ri].newName;
-                }
-            }
-            convState.allFieldEntries = origFields.fields.map(function(f) {
-                return { oldName: f.name, newName: renamedMap[f.name] || '', type: f.type, page: f.page };
-            });
-
-            renderConvAllFieldsTable(convState.allFieldEntries);
-            renderConvWarnings(result.warnings);
-            $('#convResultPanel').hidden = false;
 
             statusEl.textContent += ' Cargando preview...';
             await renderConvPreview(result.pdfBytes);
-            statusEl.textContent = '✓ PDF convertido en ' + Math.round(t1 - t0) + 'ms — ' +
-                result.renamedCount + ' campos renombrados. Listo.';
+            statusEl.textContent = '✓ ' + result.renamedCount + ' renombrados (' + matchMsg + ') en ' + Math.round(t1 - t0) + 'ms. Listo.';
         } catch (err) {
             console.error(err);
             statusEl.className = 'status active error';
             statusEl.textContent = '✗ ' + err.message;
         }
+    }
+
+    async function finishConvertUI(result, t0) {
+        var t1 = performance.now();
+        renderConvAllFieldsTable(convState.allFieldEntries);
+        renderConvWarnings(result.warnings);
+        $('#convResultPanel').hidden = false;
+        $('#btnDownloadConverted').hidden = false;
+        $('#btnExportLabeledPdf').hidden = false;
+        $('#btnExportImage').hidden = false;
+        $('#btnExportMapExcel').hidden = false;
+        $('#btnAddField').hidden = false;
+        convState.addedFields = [];
+        convState.deletedFields = new Set();
+
+        var statusEl = $('#convStatus');
+        statusEl.textContent += ' Cargando preview...';
+        await renderConvPreview(result.pdfBytes);
+        statusEl.textContent = '✓ PDF convertido en ' + Math.round(t1 - t0) + 'ms — ' +
+            result.renamedCount + ' campos renombrados. Listo.';
     }
 
     function downloadConverted() {
@@ -707,24 +883,50 @@
         }
     }
 
+    function matchBadgeHtml(entry) {
+        if (!entry.matchType || entry.matchType === 'none') return '<span class="conv-match-badge conv-match-none" title="Sin match en Excel">✗</span>';
+        if (entry.matchType === 'exact') return '<span class="conv-match-badge conv-match-exact" title="Match exacto">✓</span>';
+        if (entry.matchType === 'normalized') return '<span class="conv-match-badge conv-match-norm" title="Match normalizado (diferencias de caso/puntuación)">≈</span>';
+        if (entry.matchType === 'fuzzy') return '<span class="conv-match-badge conv-match-fuzzy" title="Match fuzzy (' + Math.round((entry.matchScore || 0) * 100) + '%)">~</span>';
+        return '';
+    }
+
     function renderConvAllFieldsTable(entries) {
         var tbody = $('#convRenameTableBody');
         var countEl = $('#convRenameCount');
         var renamed = entries.filter(function(e) { return !!e.newName; }).length;
         var deleted = convState.deletedFields.size;
+        var hasMatchInfo = entries.some(function(e) { return !!e.matchType; });
         countEl.textContent = entries.length + ' campos, ' + renamed + ' renombrados' +
             (deleted ? ', ' + deleted + ' a eliminar' : '');
         tbody.innerHTML = '';
+
+        var thead = $('#convRenameTableHead');
+        if (thead) {
+            thead.innerHTML = hasMatchInfo
+                ? '<tr><th>#</th><th></th><th>Nombre actual (PDF)</th><th></th><th>Nombre nuevo</th><th></th></tr>'
+                : '<tr><th>#</th><th>Nombre actual (PDF)</th><th></th><th>Nombre nuevo</th><th></th></tr>';
+        }
 
         for (var i = 0; i < entries.length; i++) {
             var e = entries[i];
             var isDeleted = convState.deletedFields.has(e.oldName);
             var tr = document.createElement('tr');
             tr.dataset.tableIdx = i;
-            if (isDeleted) tr.className = 'conv-row-deleted';
+            var rowClass = isDeleted ? 'conv-row-deleted' : '';
+            if (!isDeleted && e.matchType === 'none') rowClass = 'conv-row-nomatch';
+            if (!isDeleted && e.matchType === 'fuzzy') rowClass = 'conv-row-fuzzy';
+            if (rowClass) tr.className = rowClass;
+
+            var matchCol = hasMatchInfo ? '<td style="width:28px;text-align:center;">' + matchBadgeHtml(e) + '</td>' : '';
+            var excelHint = (e.excelName && e.excelName !== e.oldName)
+                ? '<div class="conv-excel-hint" title="Nombre en Excel: ' + escapeHtml(e.excelName) + '">Excel: ' + escapeHtml(e.excelName) + '</div>'
+                : '';
+
             tr.innerHTML =
                 '<td style="color:var(--text-dim);text-align:right;width:30px;">' + (i + 1) + '</td>' +
-                '<td class="conv-old-name" style="font-family:monospace;font-size:0.8rem;word-break:break-all;cursor:pointer;">' + escapeHtml(e.oldName) + '</td>' +
+                matchCol +
+                '<td class="conv-old-name" style="font-family:monospace;font-size:0.8rem;word-break:break-all;cursor:pointer;">' + escapeHtml(e.oldName) + excelHint + '</td>' +
                 '<td style="text-align:center;color:var(--accent);font-weight:bold;">→</td>' +
                 '<td><input type="text" class="conv-edit-name" data-idx="' + i + '" value="' + escapeHtml(e.newName) + '" placeholder="' + escapeHtml(e.oldName) + '"' + (isDeleted ? ' disabled' : '') + '></td>' +
                 '<td style="width:32px;text-align:center;">' +

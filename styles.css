@@ -1260,7 +1260,34 @@ footer {
 }
 
 #convRenameTable {
-    min-width: 500px;
+    min-width: 520px;
+}
+
+.conv-match-badge {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    line-height: 20px;
+    text-align: center;
+    border-radius: 50%;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: default;
+}
+.conv-match-exact { background: rgba(63,185,80,0.2); color: var(--accent-green); }
+.conv-match-norm { background: rgba(57,197,207,0.2); color: var(--accent-teal); }
+.conv-match-fuzzy { background: rgba(210,153,34,0.2); color: var(--accent-amber); }
+.conv-match-none { background: rgba(248,81,73,0.15); color: var(--accent-red); font-size: 0.65rem; }
+
+.conv-row-nomatch td { background: rgba(248,81,73,0.04); }
+.conv-row-fuzzy td { background: rgba(210,153,34,0.04); }
+
+.conv-excel-hint {
+    font-size: 0.65rem;
+    color: var(--accent-amber);
+    margin-top: 2px;
+    opacity: 0.8;
+    font-style: italic;
 }
 
 .conv-delete-btn {
