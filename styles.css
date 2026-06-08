@@ -401,8 +401,8 @@ details summary:hover { color: var(--text); }
 /* Mode selector grid */
 .mode-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 1.5rem;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 2rem;
     min-height: 50vh;
     align-items: stretch;
 }
@@ -411,12 +411,12 @@ details summary:hover { color: var(--text); }
     background: var(--bg-panel);
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 2.5rem 2rem;
+    padding: 3rem 2.5rem;
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
-    gap: 1rem;
+    gap: 1.25rem;
     transition: border-color 0.2s, transform 0.15s;
     cursor: pointer;
 }
@@ -427,13 +427,13 @@ details summary:hover { color: var(--text); }
 }
 
 .mode-icon {
-    width: 64px;
-    height: 64px;
-    border-radius: 12px;
+    width: 80px;
+    height: 80px;
+    border-radius: 14px;
     display: grid;
     place-items: center;
     font-weight: 700;
-    font-size: 1rem;
+    font-size: 1.25rem;
     letter-spacing: -0.02em;
 }
 .mode-card[data-mode="detect-fields"] .mode-icon {
@@ -461,15 +461,15 @@ details summary:hover { color: var(--text); }
 
 .mode-card h2 {
     margin: 0;
-    font-size: 1.25rem;
+    font-size: 1.4rem;
     font-weight: 600;
 }
 .mode-card p {
     margin: 0;
     color: var(--text-muted);
-    font-size: 0.85rem;
+    font-size: 0.9rem;
     line-height: 1.6;
-    max-width: 320px;
+    max-width: 400px;
 }
 
 .topbar-right {
@@ -483,10 +483,7 @@ details summary:hover { color: var(--text); }
     font-size: 0.8rem;
 }
 
-@media (max-width: 1100px) {
-    .mode-grid { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 600px) {
+@media (max-width: 700px) {
     .mode-grid { grid-template-columns: 1fr; min-height: auto; }
 }
 
@@ -494,7 +491,12 @@ details summary:hover { color: var(--text); }
 .match-table-wrap {
     overflow: auto;
     margin-top: 0.75rem;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
 }
+.match-table-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+.match-table-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.match-table-wrap::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
 
 .match-table thead th {
     position: sticky;
@@ -1179,6 +1181,10 @@ footer {
     outline: none;
     border-color: var(--accent);
     background: var(--bg-elevated);
+}
+
+#convRenameTable {
+    min-width: 500px;
 }
 
 .conv-delete-btn {
