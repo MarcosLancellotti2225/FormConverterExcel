@@ -12,13 +12,8 @@
     function init() {
         wireModeSelector();
         wireBackButton();
-        initEnrichJsonFlow();
         initConvertPdfFlow();
-
-        initPdfToHtmlFlow();
-        initMatrixEditorFlow();
         initDetectFieldsFlow();
-        initGenerateMatrixFlow();
 
         selectMode(null);
     }
@@ -41,11 +36,6 @@
         currentMode = mode;
         $('#modeSelector').hidden = !!mode;
         $('#convertPdfFlow').hidden = mode !== 'convert-pdf';
-
-        $('#pdfToHtmlFlow').hidden = mode !== 'pdf-to-html';
-        $('#enrichJsonFlow').hidden = mode !== 'enrich-json';
-        $('#matrixEditorFlow').hidden = mode !== 'matrix-editor';
-        $('#generateMatrixFlow').hidden = mode !== 'generate-matrix';
         $('#detectFieldsFlow').hidden = mode !== 'detect-fields';
         $('#btnBackToHome').hidden = !mode;
         var main = document.querySelector('main');

@@ -25,12 +25,6 @@
     <main>
         <!-- ============ MODE SELECTOR ============ -->
         <div id="modeSelector" class="mode-grid">
-            <div class="mode-card" data-mode="matrix-editor" hidden>
-                <div class="mode-icon">INS</div>
-                <h2>Procesar Formulario INS</h2>
-                <p>Cargá la matriz del cliente + el PDF original. Genera en un solo paso la matriz normalizada (22 columnas) y el PDF con AcroForms renombrados.</p>
-                <button class="primary">Empezar</button>
-            </div>
             <div class="mode-card" data-mode="detect-fields">
                 <div class="mode-icon">🔍</div>
                 <h2>Detector de Campos</h2>
@@ -43,13 +37,6 @@
                 </ul>
                 <button class="primary">Empezar</button>
             </div>
-
-            <div class="mode-card" data-mode="generate-matrix" hidden>
-                <div class="mode-icon">📋</div>
-                <h2>Generador de Matriz</h2>
-                <p>Cargá la matriz del cliente + los PDFs. Genera un Excel de 22 columnas por PDF con AcroForm Actual, Propuesto sugerido y todos los datos.</p>
-                <button class="primary">Empezar</button>
-            </div>
             <div class="mode-card" data-mode="convert-pdf">
                 <div class="mode-icon">PDF</div>
                 <h2>Convertir PDF</h2>
@@ -60,18 +47,6 @@
                     <li>Dibujar nuevos campos sobre el PDF</li>
                     <li>Exportar imagen, PDF con labels, mapeo Excel</li>
                 </ul>
-                <button class="primary">Empezar</button>
-            </div>
-            <div class="mode-card" data-mode="enrich-json" hidden>
-                <div class="mode-icon">JSON</div>
-                <h2>Enriquecer JSON</h2>
-                <p>Toma un JSON exportado de Lovable y lo enriquece con tipos, reglas, secciones, opciones y prefillKeys desde el Excel y catalogos.</p>
-                <button class="primary">Empezar</button>
-            </div>
-            <div class="mode-card" data-mode="pdf-to-html" hidden>
-                <div class="mode-icon">HTML</div>
-                <h2>PDF a HTML</h2>
-                <p>Convierte un PDF con campos AcroForm a un formulario HTML editable con el PDF de fondo, usando el Excel como diccionario.</p>
                 <button class="primary">Empezar</button>
             </div>
         </div>
@@ -197,221 +172,6 @@
             </section>
         </div>
 
-        <!-- ============ PDF TO HTML FLOW ============ -->
-        <div id="pdfToHtmlFlow" hidden>
-            <section class="panel">
-                <h2>1. Archivos</h2>
-                <p class="hint">Subi el PDF y la Matriz Excel. Se genera un HTML identico al PDF con los campos editables.</p>
-
-                <div class="inputs-grid">
-                    <label class="file-slot required" data-slot="html-pdf">
-                        <span class="label">PDF original</span>
-                        <span class="desc">El PDF con campos AcroForm</span>
-                        <input type="file" accept=".pdf" id="htmlPdfInput">
-                        <span class="file-status" id="htmlPdfStatus"></span>
-                    </label>
-
-                    <label class="file-slot required" data-slot="html-excel">
-                        <span class="label">Matriz Excel</span>
-                        <span class="desc">Columnas: Nombre en PDF, Nombre del Campo en PDF</span>
-                        <input type="file" accept=".xlsx,.xls" id="htmlExcelInput">
-                        <span class="file-status" id="htmlExcelStatus"></span>
-                    </label>
-                </div>
-            </section>
-
-            <section class="panel">
-                <h2>2. Generar</h2>
-                <div class="actions">
-                    <button id="btnGenerateHtmlDirect" class="primary" disabled>Generar HTML</button>
-                </div>
-                <div id="htmlStatus" class="status"></div>
-            </section>
-        </div>
-
-        <!-- ============ ENRICH JSON FLOW ============ -->
-        <div id="enrichJsonFlow" hidden>
-            <section class="panel instructivo">
-                <details>
-                    <summary><strong>Instructivo rapido</strong> (click para expandir)</summary>
-                    <ol>
-                        <li><strong>Convertir PDF (Etapa 1):</strong> Usa el modo "Convertir PDF" para renombrar los campos AcroForm.</li>
-                        <li><strong>Cargar en Lovable:</strong> Subi el PDF renombrado a Lovable y exporta el JSON de plantilla.</li>
-                        <li><strong>Subir aqui:</strong> Carga el JSON de Lovable + la Matriz Excel + Catalogos + JSON cliente.</li>
-                        <li><strong>Procesar:</strong> Click en "Procesar" para enriquecer el JSON.</li>
-                        <li><strong>Descargar:</strong> Descarga el JSON enriquecido y re-importalo en Lovable.</li>
-                    </ol>
-                </details>
-            </section>
-
-            <section class="panel">
-                <h2>1. Archivos</h2>
-                <p class="hint">Todos los archivos son necesarios para el mejor resultado.</p>
-
-                <div class="inputs-grid">
-                    <label class="file-slot required" data-slot="enrich-lovable">
-                        <span class="label">JSON de Lovable</span>
-                        <span class="desc">Exportado desde Lovable (plantilla cruda)</span>
-                        <input type="file" accept=".json" id="enrichLovableInput">
-                        <span class="file-status" id="enrichLovableStatus"></span>
-                    </label>
-
-                    <label class="file-slot required" data-slot="enrich-matrix">
-                        <span class="label">Matriz Excel</span>
-                        <span class="desc">Con campos, tipos, reglas y secciones</span>
-                        <input type="file" accept=".xlsx,.xls" id="enrichMatrixInput">
-                        <span class="file-status" id="enrichMatrixStatus"></span>
-                    </label>
-
-                    <label class="file-slot" data-slot="enrich-catalogs">
-                        <span class="label">Catalogos Excel</span>
-                        <span class="desc">Opciones de selects (pais, moneda, etc.)</span>
-                        <input type="file" accept=".xlsx,.xls" id="enrichCatalogsInput">
-                        <span class="file-status" id="enrichCatalogsStatus"></span>
-                    </label>
-
-                    <label class="file-slot" data-slot="enrich-client">
-                        <span class="label">JSON ejemplo cliente</span>
-                        <span class="desc">Para validar prefillKey (.txt o .json)</span>
-                        <input type="file" accept=".txt,.json" id="enrichClientInput">
-                        <span class="file-status" id="enrichClientStatus"></span>
-                    </label>
-                </div>
-            </section>
-
-            <section class="panel">
-                <h2>2. Procesar</h2>
-                <div class="actions">
-                    <button id="btnEnrich" class="primary" disabled>Procesar</button>
-                    <button id="btnDownloadEnriched" class="primary" hidden>Descargar JSON enriquecido</button>
-                    <button id="btnEnrichDebug" class="secondary btn-sm" hidden>Exportar debug JSON</button>
-                </div>
-                <div id="enrichStatus" class="status"></div>
-            </section>
-
-            <section class="panel" id="enrichStatsPanel" hidden>
-                <h2>3. Resultado</h2>
-                <div id="enrichStats" class="enrich-stats"></div>
-            </section>
-
-            <section class="panel" id="enrichWarningsPanel" hidden>
-                <h2>Warnings</h2>
-                <details open>
-                    <summary id="enrichWarningsSummary"></summary>
-                    <pre id="enrichWarningsLog"></pre>
-                </details>
-            </section>
-        </div>
-
-        <!-- ============ MATRIX EDITOR FLOW ============ -->
-        <div id="matrixEditorFlow" hidden>
-            <section class="panel">
-                <h2>1. Cargar Archivos</h2>
-                <p class="hint">Cargá la matriz del cliente y al menos un PDF (1-3). Los catálogos son opcionales.</p>
-                <div class="inputs-grid" style="grid-template-columns: 1fr 1fr 1fr;">
-                    <label class="file-slot required" data-slot="mtx-excel">
-                        <span class="label">Matriz Excel</span>
-                        <span class="desc">El Excel original del cliente</span>
-                        <input type="file" accept=".xlsx,.xls" id="mtxExcelInput">
-                        <span class="file-status" id="mtxExcelStatus"></span>
-                    </label>
-                    <label class="file-slot required" data-slot="mtx-pdf">
-                        <span class="label">PDF Formularios</span>
-                        <span class="desc">1 a 3 PDFs originales del INS</span>
-                        <input type="file" accept=".pdf" id="mtxPdfInput" multiple>
-                        <span class="file-status" id="mtxPdfStatus"></span>
-                    </label>
-                    <label class="file-slot" data-slot="mtx-catalogos">
-                        <span class="label">Catálogos Excel</span>
-                        <span class="desc">Opcional — opciones de combos y radios</span>
-                        <input type="file" accept=".xlsx,.xls" id="mtxCatalogosInput">
-                        <span class="file-status" id="mtxCatalogosStatus"></span>
-                    </label>
-                </div>
-            </section>
-
-            <section class="panel">
-                <h2>2. Procesar</h2>
-                <p class="hint">Genera un .zip con la matriz normalizada de 22 columnas y el PDF con AcroForms renombrados según convención.</p>
-                <div class="actions">
-                    <button id="btnMtxProcess" class="primary" disabled>Procesar formulario</button>
-                </div>
-                <div id="mtxProcessStatus" class="status"></div>
-                <div id="mtxProcessSummary" class="stat-grid" hidden></div>
-            </section>
-
-            <section class="panel" id="mtxAdvancedPanel">
-                <h2>Herramientas avanzadas</h2>
-                <p class="hint">Inspección y limpieza manual de la matriz (no requeridas para el flujo principal).</p>
-                <div class="actions">
-                    <button id="btnMtxAnalyze" class="primary" disabled>Analizar Matriz</button>
-                </div>
-                <div id="mtxStatus" class="status"></div>
-            </section>
-
-            <section class="panel" id="mtxResultPanel" hidden>
-                <h2>Inspección de la matriz</h2>
-                <div id="mtxStats" class="stat-grid"></div>
-                <div id="mtxCrossStats" class="stat-grid" hidden></div>
-                <div class="mtx-actions">
-                    <button id="btnMtxSplitAll" class="secondary btn-sm" disabled>Separar filas ambiguas</button>
-                    <button id="btnMtxDerivePdf" class="secondary btn-sm" disabled>Auto-rellenar Nombre Campo PDF</button>
-                    <button id="btnMtxNormOblig" class="secondary btn-sm" disabled>Normalizar Obligatorio</button>
-                    <button id="btnMtxAcceptAll" class="secondary btn-sm" disabled>Aceptar matches automaticos</button>
-                    <button id="btnMtxReset" class="secondary btn-sm" disabled>Reset</button>
-                </div>
-                <div class="mtx-table-wrap">
-                    <table id="mtxTable" class="mtx-table">
-                        <thead id="mtxTableHead"></thead>
-                        <tbody id="mtxTableBody"></tbody>
-                    </table>
-                </div>
-            </section>
-
-            <section class="panel" id="mtxExportPanel" hidden>
-                <h2>Exportar matriz ajustada (opcional)</h2>
-                <p class="hint">Si solo querés la matriz ajustada del cliente sin pasar por el flujo principal.</p>
-                <div class="actions" style="display:flex;gap:0.75rem;flex-wrap:wrap;">
-                    <button id="btnMtxExport" class="secondary">Descargar Matriz Ajustada (.xlsx)</button>
-                </div>
-                <div id="mtxExportStatus" class="status"></div>
-            </section>
-        </div>
-        <!-- ============ GENERATE MATRIX FLOW ============ -->
-        <div id="generateMatrixFlow" hidden>
-            <section class="panel">
-                <h2>1. Archivos</h2>
-                <p class="hint">Cargá la matriz del cliente (13 columnas) y los PDFs asociados (1 a 3). Se genera un Excel de 22 columnas por cada PDF.</p>
-                <div class="inputs-grid">
-                    <label class="file-slot required" data-slot="gen-excel">
-                        <span class="label">Matriz del cliente</span>
-                        <span class="desc">Excel con las 13 columnas del cliente</span>
-                        <input type="file" accept=".xlsx,.xls" id="genExcelInput">
-                        <span class="file-status" id="genExcelStatus"></span>
-                    </label>
-                    <label class="file-slot required" data-slot="gen-pdfs">
-                        <span class="label">PDFs del formulario</span>
-                        <span class="desc">1 a 3 PDFs (Vida Colectiva, Protección Crediticia, etc.)</span>
-                        <input type="file" accept=".pdf" id="genPdfInput" multiple>
-                        <span class="file-status" id="genPdfStatus"></span>
-                    </label>
-                </div>
-            </section>
-
-            <section class="panel">
-                <h2>2. Generar</h2>
-                <div class="actions">
-                    <button id="btnGenerate" class="primary" disabled>Generar Matrices 22 columnas</button>
-                </div>
-                <div id="genStatus" class="status"></div>
-            </section>
-
-            <section class="panel" id="genResultPanel" hidden>
-                <h2>3. Resultado</h2>
-                <div id="genResults"></div>
-            </section>
-        </div>
-
         <!-- ============ DETECT FIELDS FLOW ============ -->
         <div id="detectFieldsFlow" hidden>
             <section class="panel">
@@ -474,7 +234,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=16"></script>
-    <script src="app.js?v=16"></script>
+    <script src="bundle.js?v=17"></script>
+    <script src="app.js?v=17"></script>
 </body>
 </html>
