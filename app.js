@@ -328,6 +328,7 @@
         $('#btnApplyEdits').addEventListener('click', applyConvEdits);
         $('#btnAddField').addEventListener('click', enterDrawMode);
         $('#btnCancelAddField').addEventListener('click', exitDrawMode);
+        $('#convSearchField').addEventListener('input', filterConvTable);
         initDrawHandlers();
     }
 
@@ -773,6 +774,32 @@
             convState.deletedFields.add(entry.oldName);
         }
         renderConvAllFieldsTable(convState.allFieldEntries);
+        filterConvTable();
+    }
+
+    function filterConvTable() {
+        var query = $('#convSearchField').value.toLowerCase().trim();
+        var rows = $$('#convRenameTableBody tr');
+        var visible = 0;
+        for (var i = 0; i < rows.length; i++) {
+            var idx = parseInt(rows[i].dataset.tableIdx, 10);
+            var entry = convState.allFieldEntries[idx];
+            if (!entry) continue;
+            var match = !query ||
+                entry.oldName.toLowerCase().indexOf(query) !== -1 ||
+                (entry.newName && entry.newName.toLowerCase().indexOf(query) !== -1);
+            rows[i].style.display = match ? '' : 'none';
+            if (match) visible++;
+        }
+        var countEl = $('#convRenameCount');
+        if (query) {
+            countEl.textContent = visible + '/' + convState.allFieldEntries.length + ' mostrados';
+        } else {
+            var renamed = convState.allFieldEntries.filter(function(e) { return !!e.newName; }).length;
+            var deleted = convState.deletedFields.size;
+            countEl.textContent = convState.allFieldEntries.length + ' campos, ' + renamed + ' renombrados' +
+                (deleted ? ', ' + deleted + ' a eliminar' : '');
+        }
     }
 
     function findOverlayIdxByName(name) {

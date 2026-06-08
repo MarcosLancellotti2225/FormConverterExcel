@@ -1239,6 +1239,26 @@ footer {
     background: var(--bg-elevated);
 }
 
+.conv-search-input {
+    width: 100%;
+    padding: 0.45rem 0.7rem;
+    margin: 0.5rem 0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.8rem;
+    font-family: 'JetBrains Mono', monospace;
+    transition: border-color 0.15s;
+}
+.conv-search-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+.conv-search-input::placeholder {
+    color: var(--text-dim);
+}
+
 #convRenameTable {
     min-width: 500px;
 }
