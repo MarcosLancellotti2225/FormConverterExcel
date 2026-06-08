@@ -13,7 +13,7 @@
             <div class="logo">INS</div>
             <div class="titles">
                 <h1>Form Tools</h1>
-                <p>Convertir PDFs + Generar JSON Lovable</p>
+                <p>Herramientas para formularios PDF</p>
             </div>
         </div>
         <div class="topbar-right">
@@ -33,8 +33,14 @@
             </div>
             <div class="mode-card" data-mode="detect-fields">
                 <div class="mode-icon">🔍</div>
-                <h2>Detector de Campos PDF</h2>
-                <p>Cargá un PDF y detecta todos los campos AcroForm ordenados visualmente. Exportá la lista como Excel o pasala al Editor.</p>
+                <h2>Detector de Campos</h2>
+                <p>Analiza un PDF y lista todos los campos AcroForm con su tipo, página y posición.</p>
+                <ul class="mode-features">
+                    <li>Preview interactivo con overlays</li>
+                    <li>Exportar lista como Excel</li>
+                    <li>Descargar PDF con labels visibles</li>
+                    <li>Click en campo ↔ tabla sincronizado</li>
+                </ul>
                 <button class="primary">Empezar</button>
             </div>
 
@@ -47,7 +53,13 @@
             <div class="mode-card" data-mode="convert-pdf">
                 <div class="mode-icon">PDF</div>
                 <h2>Convertir PDF</h2>
-                <p>Cargá un PDF + la Matriz de 22 columnas. Renombra los campos AcroForm usando el mapeo directo AcroForm Actual → Propuesto.</p>
+                <p>Renombrá, agregá o eliminá campos AcroForm de un PDF con preview en vivo.</p>
+                <ul class="mode-features">
+                    <li>3 modos: Matriz 22 col, Excel custom, Manual</li>
+                    <li>Editor de nombres con borrado por campo</li>
+                    <li>Dibujar nuevos campos sobre el PDF</li>
+                    <li>Exportar imagen, PDF con labels, mapeo Excel</li>
+                </ul>
                 <button class="primary">Empezar</button>
             </div>
             <div class="mode-card" data-mode="enrich-json" hidden>
@@ -462,7 +474,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=14"></script>
-    <script src="app.js?v=14"></script>
+    <script src="bundle.js?v=15"></script>
+    <script src="app.js?v=15"></script>
 </body>
 </html>

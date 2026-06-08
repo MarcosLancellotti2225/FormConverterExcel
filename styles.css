@@ -403,47 +403,75 @@ details summary:hover { color: var(--text); }
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 2rem;
-    min-height: 50vh;
+    min-height: 60vh;
     align-items: stretch;
+    align-content: center;
+    max-width: 900px;
+    margin: 0 auto;
+    width: 100%;
 }
 
 .mode-card {
     background: var(--bg-panel);
     border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 3rem 2.5rem;
+    border-radius: 16px;
+    padding: 2.5rem 2rem 2rem;
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
-    gap: 1.25rem;
-    transition: border-color 0.2s, transform 0.15s;
+    gap: 1rem;
+    transition: border-color 0.25s, transform 0.2s, box-shadow 0.25s;
     cursor: pointer;
+    position: relative;
+    overflow: hidden;
 }
 .mode-card[hidden] { display: none; }
+.mode-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0;
+    transition: opacity 0.25s;
+}
 .mode-card:hover {
     border-color: var(--accent);
-    transform: translateY(-2px);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 32px rgba(163, 113, 247, 0.12), 0 2px 8px rgba(0,0,0,0.3);
+}
+.mode-card:hover::before {
+    opacity: 1;
 }
 
 .mode-icon {
-    width: 80px;
-    height: 80px;
-    border-radius: 14px;
+    width: 72px;
+    height: 72px;
+    border-radius: 16px;
     display: grid;
     place-items: center;
     font-weight: 700;
     font-size: 1.25rem;
     letter-spacing: -0.02em;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
 }
 .mode-card[data-mode="detect-fields"] .mode-icon {
     background: linear-gradient(135deg, #38bdf8, #818cf8);
     color: #0d1117;
-    font-size: 1.5rem;
+    font-size: 1.6rem;
+}
+.mode-card[data-mode="detect-fields"]::before {
+    background: linear-gradient(90deg, transparent, #38bdf8, #818cf8, transparent);
 }
 .mode-card[data-mode="convert-pdf"] .mode-icon {
     background: linear-gradient(135deg, var(--accent-amber), var(--accent-red));
     color: #0d1117;
+}
+.mode-card[data-mode="convert-pdf"]::before {
+    background: linear-gradient(90deg, transparent, var(--accent-amber), var(--accent-red), transparent);
 }
 .mode-card[data-mode="enrich-json"] .mode-icon,
 .mode-card[data-mode="generate-json"] .mode-icon {
@@ -461,15 +489,45 @@ details summary:hover { color: var(--text); }
 
 .mode-card h2 {
     margin: 0;
-    font-size: 1.4rem;
+    font-size: 1.3rem;
     font-weight: 600;
 }
 .mode-card p {
     margin: 0;
     color: var(--text-muted);
+    font-size: 0.85rem;
+    line-height: 1.5;
+    max-width: 360px;
+}
+
+.mode-features {
+    list-style: none;
+    padding: 0;
+    margin: 0.25rem 0 0.5rem;
+    text-align: left;
+    width: 100%;
+    max-width: 300px;
+}
+.mode-features li {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    padding: 0.3rem 0;
+    padding-left: 1.4rem;
+    position: relative;
+    line-height: 1.4;
+}
+.mode-features li::before {
+    content: '›';
+    position: absolute;
+    left: 0.4rem;
+    color: var(--accent);
+    font-weight: 700;
     font-size: 0.9rem;
-    line-height: 1.6;
-    max-width: 400px;
+}
+
+.mode-card .primary {
+    margin-top: auto;
+    min-width: 140px;
 }
 
 .topbar-right {
