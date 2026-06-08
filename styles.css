@@ -406,8 +406,6 @@ details summary:hover { color: var(--text); }
     min-height: 60vh;
     align-items: stretch;
     align-content: center;
-    max-width: 900px;
-    margin: 0 auto;
     width: 100%;
 }
 
