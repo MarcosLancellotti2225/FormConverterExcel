@@ -329,6 +329,10 @@
         $('#btnAddField').addEventListener('click', enterDrawMode);
         $('#btnCancelAddField').addEventListener('click', exitDrawMode);
         $('#convSearchField').addEventListener('input', filterConvTable);
+        $('#btnBulkEdit').addEventListener('click', openBulkEditor);
+        $('#btnBulkCopy').addEventListener('click', bulkCopyAll);
+        $('#btnBulkApply').addEventListener('click', bulkApplyText);
+        $('#btnBulkClose').addEventListener('click', closeBulkEditor);
         initDrawHandlers();
     }
 
@@ -1002,6 +1006,66 @@
             countEl.textContent = convState.allFieldEntries.length + ' campos, ' + renamed + ' renombrados' +
                 (deleted ? ', ' + deleted + ' a eliminar' : '');
         }
+    }
+
+    function openBulkEditor() {
+        var panel = $('#convBulkPanel');
+        var ta = $('#convBulkTextarea');
+        var lines = [];
+        for (var i = 0; i < convState.allFieldEntries.length; i++) {
+            var e = convState.allFieldEntries[i];
+            if (convState.deletedFields.has(e.oldName)) continue;
+            lines.push(e.oldName + '\t' + (e.newName || ''));
+        }
+        ta.value = lines.join('\n');
+        panel.hidden = false;
+        ta.focus();
+    }
+
+    function closeBulkEditor() {
+        $('#convBulkPanel').hidden = true;
+    }
+
+    function bulkCopyAll() {
+        var ta = $('#convBulkTextarea');
+        ta.select();
+        navigator.clipboard.writeText(ta.value).then(function() {
+            $('#convStatus').className = 'status active success';
+            $('#convStatus').textContent = '✓ Mapeo copiado al portapapeles (' + ta.value.split('\n').length + ' líneas). Pegalo en Excel o editá y volvé a pegar acá.';
+        });
+    }
+
+    function bulkApplyText() {
+        var ta = $('#convBulkTextarea');
+        var lines = ta.value.split('\n');
+        var newMap = {};
+
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            if (!line.trim()) continue;
+            var parts = line.split('\t');
+            if (parts.length < 2) parts = line.split(/\s{2,}/);
+            var oldName = (parts[0] || '').trim();
+            var newName = (parts[1] || '').trim();
+            if (oldName) newMap[oldName] = newName;
+        }
+
+        var updated = 0;
+        for (var i = 0; i < convState.allFieldEntries.length; i++) {
+            var e = convState.allFieldEntries[i];
+            if (newMap.hasOwnProperty(e.oldName)) {
+                var val = newMap[e.oldName];
+                if (val !== e.newName) {
+                    e.newName = val;
+                    updated++;
+                }
+            }
+        }
+
+        renderConvAllFieldsTable(convState.allFieldEntries);
+        closeBulkEditor();
+        $('#convStatus').className = 'status active success';
+        $('#convStatus').textContent = '✓ Bulk edit: ' + updated + ' campo(s) actualizados. Hacé click en "Aplicar cambios" para renombrar el PDF.';
     }
 
     function findOverlayIdxByName(name) {

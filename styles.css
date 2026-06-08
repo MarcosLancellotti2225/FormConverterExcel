@@ -1282,6 +1282,50 @@ footer {
 .conv-row-nomatch td { background: rgba(248,81,73,0.04); }
 .conv-row-fuzzy td { background: rgba(210,153,34,0.04); }
 
+.conv-bulk-panel {
+    background: var(--bg);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+.conv-bulk-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin: 0 0 0.5rem;
+    line-height: 1.4;
+}
+.conv-bulk-hint code {
+    background: var(--bg-elevated);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.72rem;
+}
+.conv-bulk-actions {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 0.5rem;
+}
+.conv-bulk-textarea {
+    width: 100%;
+    min-height: 200px;
+    max-height: 45vh;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    padding: 0.5rem;
+    resize: vertical;
+    line-height: 1.6;
+    tab-size: 30;
+}
+.conv-bulk-textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
 .conv-excel-hint {
     font-size: 0.65rem;
     color: var(--accent-amber);
