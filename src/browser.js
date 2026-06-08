@@ -153,33 +153,35 @@ async function parseExcelHeaders(excelFile) {
 }
 
 async function runConvertCustom(inputs) {
-    const { pdfFile, renameMap } = inputs;
+    const { pdfFile, renameMap, deleteNames } = inputs;
     if (!pdfFile) throw new Error('Cargá el PDF original');
     const pdfBytes = await fileToUint8Array(pdfFile);
     const { rewritePdf } = require('./pdf-converter/pdf-rewriter');
     const entries = renameMap.filter(e => e.oldName && e.newName && e.oldName !== e.newName);
-    const result = await rewritePdf(pdfBytes, entries);
+    const result = await rewritePdf(pdfBytes, entries, deleteNames);
     return {
         pdfBytes: result.pdfBytes,
         warnings: result.warnings || [],
         renamedCount: result.renamedCount || 0,
         renamedFields: result.renamedFields || [],
+        deletedCount: result.deletedCount || 0,
         excelRows: renameMap.length
     };
 }
 
 async function runConvertManual(inputs) {
-    const { pdfFile, renameMap } = inputs;
+    const { pdfFile, renameMap, deleteNames } = inputs;
     if (!pdfFile) throw new Error('Cargá el PDF original');
     const pdfBytes = await fileToUint8Array(pdfFile);
     const { rewritePdf } = require('./pdf-converter/pdf-rewriter');
     const entries = renameMap.filter(e => e.oldName && e.newName && e.oldName !== e.newName);
-    const result = await rewritePdf(pdfBytes, entries);
+    const result = await rewritePdf(pdfBytes, entries, deleteNames);
     return {
         pdfBytes: result.pdfBytes,
         warnings: result.warnings || [],
         renamedCount: result.renamedCount || 0,
         renamedFields: result.renamedFields || [],
+        deletedCount: result.deletedCount || 0,
         excelRows: entries.length
     };
 }

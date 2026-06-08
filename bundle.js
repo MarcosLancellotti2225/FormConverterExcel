@@ -88345,7 +88345,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           result.push({ dict, fullName, ref });
         }
       }
-      async function rewritePdf(pdfBytes, renameMap) {
+      async function rewritePdf(pdfBytes, renameMap, deleteNames) {
         const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
         const context = pdfDoc.context;
         const warnings = [];
@@ -88353,6 +88353,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         for (const { oldName, newName } of renameMap) {
           nameMap.set(oldName, newName);
         }
+        const deleteSet = new Set(deleteNames || []);
         const acroFormRef = pdfDoc.catalog.get(PDFName.of("AcroForm"));
         if (!acroFormRef) {
           warnings.push({ type: "no_acroform", reason: "PDF has no AcroForm" });
@@ -88368,10 +88369,18 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const leaves = [];
         collectLeavesRaw(fieldsArray, context, "", leaves);
         let renamedCount = 0;
+        let deletedCount = 0;
         const renamedFields = [];
+        const deletedFields = [];
         const newRootFields = PDFArray.withContext(context);
         for (const leaf of leaves) {
           const fullName = leaf.fullName;
+          if (deleteSet.has(fullName)) {
+            deletedCount++;
+            deletedFields.push(fullName);
+            removeWidgetFromPages(leaf.dict, context, pdfDoc);
+            continue;
+          }
           const newName = nameMap.get(fullName);
           collectInherited(leaf.dict, context);
           if (newName) {
@@ -88389,7 +88398,49 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         }
         acroForm.set(PDFName.of("Fields"), newRootFields);
         const newBytes = await pdfDoc.save({ updateFieldAppearances: false });
-        return { pdfBytes: newBytes, warnings, renamedCount, renamedFields };
+        return { pdfBytes: newBytes, warnings, renamedCount, renamedFields, deletedCount, deletedFields };
+      }
+      function removeWidgetFromPages(fieldDict, context, pdfDoc) {
+        const fieldRef = context.getObjectRef(fieldDict);
+        if (!fieldRef) return;
+        const pages = pdfDoc.getPages();
+        for (const page of pages) {
+          const annotsRef = page.node.get(PDFName.of("Annots"));
+          if (!annotsRef) continue;
+          const annots = context.lookup(annotsRef);
+          if (!annots || typeof annots.size !== "function") continue;
+          const newAnnots = PDFArray.withContext(context);
+          for (let i = 0; i < annots.size(); i++) {
+            const ref = annots.get(i);
+            if (ref !== fieldRef && String(ref) !== String(fieldRef)) {
+              newAnnots.push(ref);
+            }
+          }
+          page.node.set(PDFName.of("Annots"), newAnnots);
+        }
+        const kidsRef = fieldDict.get(PDFName.of("Kids"));
+        if (kidsRef) {
+          const kids = context.lookup(kidsRef);
+          if (kids && typeof kids.size === "function") {
+            for (let i = 0; i < kids.size(); i++) {
+              const kidRef = kids.get(i);
+              for (const page of pages) {
+                const annotsRef2 = page.node.get(PDFName.of("Annots"));
+                if (!annotsRef2) continue;
+                const annots2 = context.lookup(annotsRef2);
+                if (!annots2 || typeof annots2.size !== "function") continue;
+                const newAnnots2 = PDFArray.withContext(context);
+                for (let j = 0; j < annots2.size(); j++) {
+                  const ref = annots2.get(j);
+                  if (ref !== kidRef && String(ref) !== String(kidRef)) {
+                    newAnnots2.push(ref);
+                  }
+                }
+                page.node.set(PDFName.of("Annots"), newAnnots2);
+              }
+            }
+          }
+        }
       }
       function collectInherited(dict, context) {
         const INHERITABLE = ["FT", "Ff", "V", "DV", "DA", "DR", "Q"];
@@ -95702,32 +95753,34 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         return { headers, rows: rawRows.slice(1), sheetName: wb.SheetNames[0] };
       }
       async function runConvertCustom(inputs) {
-        const { pdfFile, renameMap } = inputs;
+        const { pdfFile, renameMap, deleteNames } = inputs;
         if (!pdfFile) throw new Error("Carg\xE1 el PDF original");
         const pdfBytes = await fileToUint8Array(pdfFile);
         const { rewritePdf } = require_pdf_rewriter();
         const entries = renameMap.filter((e) => e.oldName && e.newName && e.oldName !== e.newName);
-        const result = await rewritePdf(pdfBytes, entries);
+        const result = await rewritePdf(pdfBytes, entries, deleteNames);
         return {
           pdfBytes: result.pdfBytes,
           warnings: result.warnings || [],
           renamedCount: result.renamedCount || 0,
           renamedFields: result.renamedFields || [],
+          deletedCount: result.deletedCount || 0,
           excelRows: renameMap.length
         };
       }
       async function runConvertManual(inputs) {
-        const { pdfFile, renameMap } = inputs;
+        const { pdfFile, renameMap, deleteNames } = inputs;
         if (!pdfFile) throw new Error("Carg\xE1 el PDF original");
         const pdfBytes = await fileToUint8Array(pdfFile);
         const { rewritePdf } = require_pdf_rewriter();
         const entries = renameMap.filter((e) => e.oldName && e.newName && e.oldName !== e.newName);
-        const result = await rewritePdf(pdfBytes, entries);
+        const result = await rewritePdf(pdfBytes, entries, deleteNames);
         return {
           pdfBytes: result.pdfBytes,
           warnings: result.warnings || [],
           renamedCount: result.renamedCount || 0,
           renamedFields: result.renamedFields || [],
+          deletedCount: result.deletedCount || 0,
           excelRows: entries.length
         };
       }

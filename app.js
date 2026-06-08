@@ -307,7 +307,8 @@
         customRows: null,
         detectedFields: null,
         manualRenames: {},
-        allFieldEntries: []
+        allFieldEntries: [],
+        deletedFields: new Set()
     };
 
     function initConvertPdfFlow() {
@@ -513,6 +514,7 @@
             $('#btnExportMapExcel').hidden = false;
             $('#btnAddField').hidden = false;
             convState.addedFields = [];
+            convState.deletedFields = new Set();
 
             var origFields = await InsPipelineBundle.runDetectFields({ pdfBytes: convState.originalPdfBytes });
             var renamedMap = {};
@@ -718,18 +720,25 @@
         var tbody = $('#convRenameTableBody');
         var countEl = $('#convRenameCount');
         var renamed = entries.filter(function(e) { return !!e.newName; }).length;
-        countEl.textContent = entries.length + ' campos, ' + renamed + ' renombrados';
+        var deleted = convState.deletedFields.size;
+        countEl.textContent = entries.length + ' campos, ' + renamed + ' renombrados' +
+            (deleted ? ', ' + deleted + ' a eliminar' : '');
         tbody.innerHTML = '';
 
         for (var i = 0; i < entries.length; i++) {
             var e = entries[i];
+            var isDeleted = convState.deletedFields.has(e.oldName);
             var tr = document.createElement('tr');
             tr.dataset.tableIdx = i;
+            if (isDeleted) tr.className = 'conv-row-deleted';
             tr.innerHTML =
                 '<td style="color:var(--text-dim);text-align:right;width:30px;">' + (i + 1) + '</td>' +
                 '<td class="conv-old-name" style="font-family:monospace;font-size:0.8rem;word-break:break-all;cursor:pointer;">' + escapeHtml(e.oldName) + '</td>' +
                 '<td style="text-align:center;color:var(--accent);font-weight:bold;">→</td>' +
-                '<td><input type="text" class="conv-edit-name" data-idx="' + i + '" value="' + escapeHtml(e.newName) + '" placeholder="' + escapeHtml(e.oldName) + '"></td>';
+                '<td><input type="text" class="conv-edit-name" data-idx="' + i + '" value="' + escapeHtml(e.newName) + '" placeholder="' + escapeHtml(e.oldName) + '"' + (isDeleted ? ' disabled' : '') + '></td>' +
+                '<td style="width:32px;text-align:center;">' +
+                    '<button class="conv-delete-btn" data-idx="' + i + '" title="' + (isDeleted ? 'Restaurar campo' : 'Eliminar campo') + '">' +
+                    (isDeleted ? '↩' : '✕') + '</button></td>';
             tbody.appendChild(tr);
         }
 
@@ -743,6 +752,12 @@
         });
 
         tbody.addEventListener('click', function(e) {
+            var delBtn = e.target.closest('.conv-delete-btn');
+            if (delBtn) {
+                var idx = parseInt(delBtn.dataset.idx, 10);
+                toggleDeleteField(idx);
+                return;
+            }
             if (e.target.closest('.conv-edit-name')) return;
             var tr = e.target.closest('tr');
             if (!tr || tr.dataset.tableIdx == null) return;
@@ -757,6 +772,17 @@
                 if (ov) ov.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
         });
+    }
+
+    function toggleDeleteField(idx) {
+        var entry = convState.allFieldEntries[idx];
+        if (!entry) return;
+        if (convState.deletedFields.has(entry.oldName)) {
+            convState.deletedFields.delete(entry.oldName);
+        } else {
+            convState.deletedFields.add(entry.oldName);
+        }
+        renderConvAllFieldsTable(convState.allFieldEntries);
     }
 
     function findOverlayIdxByName(name) {
@@ -775,8 +801,10 @@
 
         try {
             var renameMap = [];
+            var deleteNames = Array.from(convState.deletedFields);
             for (var i = 0; i < convState.allFieldEntries.length; i++) {
                 var e = convState.allFieldEntries[i];
+                if (convState.deletedFields.has(e.oldName)) continue;
                 if (e.newName && e.newName !== e.oldName) {
                     renameMap.push({ oldName: e.oldName, newName: e.newName });
                 }
@@ -785,7 +813,8 @@
             var t0 = performance.now();
             var result = await InsPipelineBundle.runConvertManual({
                 pdfFile: new File([convState.originalPdfBytes], convState.pdf.name, { type: 'application/pdf' }),
-                renameMap: renameMap
+                renameMap: renameMap,
+                deleteNames: deleteNames
             });
 
             var pdfBytes = result.pdfBytes;
@@ -801,12 +830,21 @@
             var t1 = performance.now();
             convState.resultPdfBytes = pdfBytes;
 
+            if (deleteNames.length > 0) {
+                convState.allFieldEntries = convState.allFieldEntries.filter(function(e) {
+                    return !convState.deletedFields.has(e.oldName);
+                });
+                convState.deletedFields.clear();
+                renderConvAllFieldsTable(convState.allFieldEntries);
+            }
+
             statusEl.textContent = '⟳ Actualizando preview...';
             await renderConvPreview(pdfBytes);
 
             statusEl.className = 'status active success';
             statusEl.textContent = '✓ ' + result.renamedCount + ' renombrados' +
-                (convState.addedFields.length ? ' + ' + convState.addedFields.length + ' agregado(s)' : '') +
+                (result.deletedCount ? ', ' + result.deletedCount + ' eliminados' : '') +
+                (convState.addedFields.length ? ', ' + convState.addedFields.length + ' agregado(s)' : '') +
                 ' en ' + Math.round(t1 - t0) + 'ms. Listo.';
         } catch (err) {
             console.error(err);
