@@ -333,6 +333,7 @@
         $('#btnBulkCopy').addEventListener('click', bulkCopyAll);
         $('#btnBulkApply').addEventListener('click', bulkApplyText);
         $('#btnBulkClose').addEventListener('click', closeBulkEditor);
+        $('#btnTogglePositions').addEventListener('click', togglePositions);
         initDrawHandlers();
     }
 
@@ -493,7 +494,7 @@
             var f = pdfFields[i];
             var norm = normalizeFieldName(f.name);
             pdfByNorm[norm] = f.name;
-            pdfNames.push({ name: f.name, norm: norm, type: f.type, page: f.page });
+            pdfNames.push({ name: f.name, norm: norm, type: f.type, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height });
         }
 
         var usedPdf = {};
@@ -542,6 +543,7 @@
                     excelName: bestMatch.oldName,
                     type: pdf.type,
                     page: pdf.page,
+                    x: pdf.x, y: pdf.y, width: pdf.width, height: pdf.height,
                     matchType: matchType,
                     matchScore: bestScore
                 });
@@ -552,6 +554,7 @@
                     excelName: '',
                     type: pdf.type,
                     page: pdf.page,
+                    x: pdf.x, y: pdf.y, width: pdf.width, height: pdf.height,
                     matchType: 'none',
                     matchScore: 0
                 });
@@ -616,7 +619,7 @@
                     }
                 }
                 convState.allFieldEntries = origFields.fields.map(function(f) {
-                    return { oldName: f.name, newName: renamedMap[f.name] || '', type: f.type, page: f.page, matchType: renamedMap[f.name] ? 'exact' : 'none', matchScore: renamedMap[f.name] ? 1 : 0 };
+                    return { oldName: f.name, newName: renamedMap[f.name] || '', type: f.type, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height, matchType: renamedMap[f.name] ? 'exact' : 'none', matchScore: renamedMap[f.name] ? 1 : 0 };
                 });
 
                 finishConvertUI(result, t0);
@@ -901,15 +904,19 @@
         var renamed = entries.filter(function(e) { return !!e.newName; }).length;
         var deleted = convState.deletedFields.size;
         var hasMatchInfo = entries.some(function(e) { return !!e.matchType; });
+        var showPos = convState.showPositions || false;
         countEl.textContent = entries.length + ' campos, ' + renamed + ' renombrados' +
             (deleted ? ', ' + deleted + ' a eliminar' : '');
         tbody.innerHTML = '';
 
         var thead = $('#convRenameTableHead');
         if (thead) {
-            thead.innerHTML = hasMatchInfo
-                ? '<tr><th>#</th><th></th><th>Nombre actual (PDF)</th><th></th><th>Nombre nuevo</th><th></th></tr>'
-                : '<tr><th>#</th><th>Nombre actual (PDF)</th><th></th><th>Nombre nuevo</th><th></th></tr>';
+            var cols = '<th>#</th>';
+            if (hasMatchInfo) cols += '<th></th>';
+            cols += '<th>Nombre actual (PDF)</th><th></th><th>Nombre nuevo</th>';
+            if (showPos) cols += '<th>Pág</th><th>X</th><th>Y</th><th>W</th><th>H</th>';
+            cols += '<th></th>';
+            thead.innerHTML = '<tr>' + cols + '</tr>';
         }
 
         for (var i = 0; i < entries.length; i++) {
@@ -927,12 +934,27 @@
                 ? '<div class="conv-excel-hint" title="Nombre en Excel: ' + escapeHtml(e.excelName) + '">Excel: ' + escapeHtml(e.excelName) + '</div>'
                 : '';
 
+            var posCols = '';
+            if (showPos) {
+                var px = typeof e.x === 'number' ? Math.round(e.x * 100) / 100 : '';
+                var py = typeof e.y === 'number' ? Math.round(e.y * 100) / 100 : '';
+                var pw = typeof e.width === 'number' ? Math.round(e.width * 100) / 100 : '';
+                var ph = typeof e.height === 'number' ? Math.round(e.height * 100) / 100 : '';
+                posCols =
+                    '<td class="conv-pos-cell">' + (e.page || '') + '</td>' +
+                    '<td class="conv-pos-cell"><input type="number" step="0.1" class="conv-pos-input" data-idx="' + i + '" data-field="x" value="' + px + '"' + (isDeleted ? ' disabled' : '') + '></td>' +
+                    '<td class="conv-pos-cell"><input type="number" step="0.1" class="conv-pos-input" data-idx="' + i + '" data-field="y" value="' + py + '"' + (isDeleted ? ' disabled' : '') + '></td>' +
+                    '<td class="conv-pos-cell"><input type="number" step="0.1" class="conv-pos-input" data-idx="' + i + '" data-field="width" value="' + pw + '"' + (isDeleted ? ' disabled' : '') + '></td>' +
+                    '<td class="conv-pos-cell"><input type="number" step="0.1" class="conv-pos-input" data-idx="' + i + '" data-field="height" value="' + ph + '"' + (isDeleted ? ' disabled' : '') + '></td>';
+            }
+
             tr.innerHTML =
                 '<td style="color:var(--text-dim);text-align:right;width:30px;">' + (i + 1) + '</td>' +
                 matchCol +
                 '<td class="conv-old-name" style="font-family:monospace;font-size:0.8rem;word-break:break-all;cursor:pointer;">' + escapeHtml(e.oldName) + excelHint + '</td>' +
                 '<td style="text-align:center;color:var(--accent);font-weight:bold;">→</td>' +
                 '<td><input type="text" class="conv-edit-name" data-idx="' + i + '" value="' + escapeHtml(e.newName) + '" placeholder="' + escapeHtml(e.oldName) + '"' + (isDeleted ? ' disabled' : '') + '></td>' +
+                posCols +
                 '<td style="width:32px;text-align:center;">' +
                     '<button class="conv-delete-btn" data-idx="' + i + '" title="' + (isDeleted ? 'Restaurar campo' : 'Eliminar campo') + '">' +
                     (isDeleted ? '↩' : '✕') + '</button></td>';
@@ -944,6 +966,17 @@
                 var idx = parseInt(e.target.dataset.idx, 10);
                 if (convState.allFieldEntries[idx]) {
                     convState.allFieldEntries[idx].newName = e.target.value.trim();
+                }
+            }
+            if (e.target.classList.contains('conv-pos-input')) {
+                var idx = parseInt(e.target.dataset.idx, 10);
+                var field = e.target.dataset.field;
+                if (convState.allFieldEntries[idx] && field) {
+                    var val = parseFloat(e.target.value);
+                    if (!isNaN(val)) {
+                        convState.allFieldEntries[idx][field] = val;
+                        convState.allFieldEntries[idx]._posEdited = true;
+                    }
                 }
             }
         });
@@ -1008,16 +1041,37 @@
         }
     }
 
+    function togglePositions() {
+        convState.showPositions = !convState.showPositions;
+        var btn = $('#btnTogglePositions');
+        btn.classList.toggle('active', convState.showPositions);
+        renderConvAllFieldsTable(convState.allFieldEntries);
+        filterConvTable();
+    }
+
     function openBulkEditor() {
         var panel = $('#convBulkPanel');
         var ta = $('#convBulkTextarea');
+        var hint = panel.querySelector('.conv-bulk-hint');
+        var showPos = convState.showPositions;
         var lines = [];
         for (var i = 0; i < convState.allFieldEntries.length; i++) {
             var e = convState.allFieldEntries[i];
             if (convState.deletedFields.has(e.oldName)) continue;
-            lines.push(e.oldName + '\t' + (e.newName || ''));
+            var line = e.oldName + '\t' + (e.newName || '');
+            if (showPos) {
+                var px = typeof e.x === 'number' ? Math.round(e.x * 100) / 100 : '';
+                var py = typeof e.y === 'number' ? Math.round(e.y * 100) / 100 : '';
+                var pw = typeof e.width === 'number' ? Math.round(e.width * 100) / 100 : '';
+                var ph = typeof e.height === 'number' ? Math.round(e.height * 100) / 100 : '';
+                line += '\t' + px + '\t' + py + '\t' + pw + '\t' + ph;
+            }
+            lines.push(line);
         }
         ta.value = lines.join('\n');
+        hint.innerHTML = showPos
+            ? 'Formato: <code>nombre_pdf TAB nombre_nuevo TAB X TAB Y TAB W TAB H</code>'
+            : 'Formato: <code>nombre_pdf TAB nombre_nuevo</code> (una línea por campo). Copiá a Excel, editá, y pegá de vuelta.';
         panel.hidden = false;
         ta.focus();
     }
@@ -1047,17 +1101,32 @@
             if (parts.length < 2) parts = line.split(/\s{2,}/);
             var oldName = (parts[0] || '').trim();
             var newName = (parts[1] || '').trim();
-            if (oldName) newMap[oldName] = newName;
+            var posData = null;
+            if (parts.length >= 6) {
+                var bx = parseFloat(parts[2]), by = parseFloat(parts[3]);
+                var bw = parseFloat(parts[4]), bh = parseFloat(parts[5]);
+                if (!isNaN(bx) && !isNaN(by) && !isNaN(bw) && !isNaN(bh)) {
+                    posData = { x: bx, y: by, width: bw, height: bh };
+                }
+            }
+            if (oldName) newMap[oldName] = { newName: newName, pos: posData };
         }
 
         var updated = 0;
         for (var i = 0; i < convState.allFieldEntries.length; i++) {
             var e = convState.allFieldEntries[i];
             if (newMap.hasOwnProperty(e.oldName)) {
-                var val = newMap[e.oldName];
-                if (val !== e.newName) {
-                    e.newName = val;
+                var m = newMap[e.oldName];
+                if (m.newName !== e.newName) {
+                    e.newName = m.newName;
                     updated++;
+                }
+                if (m.pos) {
+                    if (e.x !== m.pos.x || e.y !== m.pos.y || e.width !== m.pos.width || e.height !== m.pos.height) {
+                        e.x = m.pos.x; e.y = m.pos.y; e.width = m.pos.width; e.height = m.pos.height;
+                        e._posEdited = true;
+                        updated++;
+                    }
                 }
             }
         }
@@ -1065,7 +1134,7 @@
         renderConvAllFieldsTable(convState.allFieldEntries);
         closeBulkEditor();
         $('#convStatus').className = 'status active success';
-        $('#convStatus').textContent = '✓ Bulk edit: ' + updated + ' campo(s) actualizados. Hacé click en "Aplicar cambios" para renombrar el PDF.';
+        $('#convStatus').textContent = '✓ Bulk edit: ' + updated + ' cambio(s) aplicados. Hacé click en "Aplicar cambios" para guardar en el PDF.';
     }
 
     function findOverlayIdxByName(name) {
@@ -1084,6 +1153,7 @@
 
         try {
             var renameMap = [];
+            var moveMap = [];
             var deleteNames = Array.from(convState.deletedFields);
             for (var i = 0; i < convState.allFieldEntries.length; i++) {
                 var e = convState.allFieldEntries[i];
@@ -1091,13 +1161,17 @@
                 if (e.newName && e.newName !== e.oldName) {
                     renameMap.push({ oldName: e.oldName, newName: e.newName });
                 }
+                if (e._posEdited && typeof e.x === 'number') {
+                    moveMap.push({ fieldName: e.oldName, x: e.x, y: e.y, width: e.width, height: e.height });
+                }
             }
 
             var t0 = performance.now();
             var result = await InsPipelineBundle.runConvertManual({
                 pdfFile: new File([convState.originalPdfBytes], convState.pdf.name, { type: 'application/pdf' }),
                 renameMap: renameMap,
-                deleteNames: deleteNames
+                deleteNames: deleteNames,
+                moveMap: moveMap.length > 0 ? moveMap : undefined
             });
 
             var pdfBytes = result.pdfBytes;
@@ -1126,6 +1200,7 @@
 
             statusEl.className = 'status active success';
             statusEl.textContent = '✓ ' + result.renamedCount + ' renombrados' +
+                (moveMap.length ? ', ' + moveMap.length + ' reposicionados' : '') +
                 (result.deletedCount ? ', ' + result.deletedCount + ' eliminados' : '') +
                 (convState.addedFields.length ? ', ' + convState.addedFields.length + ' agregado(s)' : '') +
                 ' en ' + Math.round(t1 - t0) + 'ms. Listo.';

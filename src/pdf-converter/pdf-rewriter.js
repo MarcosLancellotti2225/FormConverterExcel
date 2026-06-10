@@ -1,6 +1,6 @@
 'use strict';
 
-const { PDFDocument, PDFName, PDFHexString, PDFString, PDFArray } = require('pdf-lib');
+const { PDFDocument, PDFName, PDFHexString, PDFString, PDFArray, PDFNumber } = require('pdf-lib');
 
 const FIELD_TYPE_MAP = {
     PDFTextField: 'Tx',
@@ -50,7 +50,7 @@ function collectLeavesRaw(fieldsArray, context, parentName, result) {
     }
 }
 
-async function rewritePdf(pdfBytes, renameMap, deleteNames) {
+async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap) {
     const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
     const context = pdfDoc.context;
     const warnings = [];
@@ -58,6 +58,13 @@ async function rewritePdf(pdfBytes, renameMap, deleteNames) {
     const nameMap = new Map();
     for (const { oldName, newName } of renameMap) {
         nameMap.set(oldName, newName);
+    }
+
+    const posMap = new Map();
+    if (moveMap) {
+        for (const m of moveMap) {
+            posMap.set(m.fieldName, { x: m.x, y: m.y, width: m.width, height: m.height });
+        }
     }
 
     const deleteSet = new Set(deleteNames || []);
@@ -106,6 +113,17 @@ async function rewritePdf(pdfBytes, renameMap, deleteNames) {
             renamedFields.push({ oldName: fullName, newName });
         } else {
             leaf.dict.set(PDFName.of('T'), PDFHexString.fromText(fullName));
+        }
+
+        const posEntry = posMap.get(fullName) || posMap.get(newName || fullName);
+        if (posEntry) {
+            const rect = PDFArray.withContext(context);
+            rect.push(PDFNumber.of(posEntry.x));
+            rect.push(PDFNumber.of(posEntry.y));
+            rect.push(PDFNumber.of(posEntry.x + posEntry.width));
+            rect.push(PDFNumber.of(posEntry.y + posEntry.height));
+            leaf.dict.set(PDFName.of('Rect'), rect);
+            leaf.dict.delete(PDFName.of('AP'));
         }
 
         leaf.dict.delete(PDFName.of('Parent'));

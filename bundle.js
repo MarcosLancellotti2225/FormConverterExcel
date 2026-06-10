@@ -88311,7 +88311,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
   var require_pdf_rewriter = __commonJS({
     "src/pdf-converter/pdf-rewriter.js"(exports, module) {
       "use strict";
-      var { PDFDocument, PDFName, PDFHexString, PDFString, PDFArray } = require_cjs();
+      var { PDFDocument, PDFName, PDFHexString, PDFString, PDFArray, PDFNumber } = require_cjs();
       function readStringValue(val) {
         if (!val) return "";
         if (typeof val === "string") return val;
@@ -88345,13 +88345,19 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           result.push({ dict, fullName, ref });
         }
       }
-      async function rewritePdf(pdfBytes, renameMap, deleteNames) {
+      async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap) {
         const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
         const context = pdfDoc.context;
         const warnings = [];
         const nameMap = /* @__PURE__ */ new Map();
         for (const { oldName, newName } of renameMap) {
           nameMap.set(oldName, newName);
+        }
+        const posMap = /* @__PURE__ */ new Map();
+        if (moveMap) {
+          for (const m of moveMap) {
+            posMap.set(m.fieldName, { x: m.x, y: m.y, width: m.width, height: m.height });
+          }
         }
         const deleteSet = new Set(deleteNames || []);
         const acroFormRef = pdfDoc.catalog.get(PDFName.of("AcroForm"));
@@ -88389,6 +88395,16 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             renamedFields.push({ oldName: fullName, newName });
           } else {
             leaf.dict.set(PDFName.of("T"), PDFHexString.fromText(fullName));
+          }
+          const posEntry = posMap.get(fullName) || posMap.get(newName || fullName);
+          if (posEntry) {
+            const rect = PDFArray.withContext(context);
+            rect.push(PDFNumber.of(posEntry.x));
+            rect.push(PDFNumber.of(posEntry.y));
+            rect.push(PDFNumber.of(posEntry.x + posEntry.width));
+            rect.push(PDFNumber.of(posEntry.y + posEntry.height));
+            leaf.dict.set(PDFName.of("Rect"), rect);
+            leaf.dict.delete(PDFName.of("AP"));
           }
           leaf.dict.delete(PDFName.of("Parent"));
           ensureFieldType(leaf.dict, context);
@@ -88501,12 +88517,12 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           if (pageIdx < 0 || pageIdx >= pages.length) continue;
           const page = pages[pageIdx];
           const pageRef = pdfDoc.getPage(pageIdx).ref;
-          const { PDFDict, PDFNumber } = require_cjs();
+          const { PDFDict, PDFNumber: PDFNumber2 } = require_cjs();
           const rect = PDFArray.withContext(context);
-          rect.push(PDFNumber.of(f.x));
-          rect.push(PDFNumber.of(f.y));
-          rect.push(PDFNumber.of(f.x + f.width));
-          rect.push(PDFNumber.of(f.y + f.height));
+          rect.push(PDFNumber2.of(f.x));
+          rect.push(PDFNumber2.of(f.y));
+          rect.push(PDFNumber2.of(f.x + f.width));
+          rect.push(PDFNumber2.of(f.y + f.height));
           const fieldDict = context.obj({});
           fieldDict.set(PDFName.of("Type"), PDFName.of("Annot"));
           fieldDict.set(PDFName.of("Subtype"), PDFName.of("Widget"));
@@ -88514,7 +88530,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           fieldDict.set(PDFName.of("T"), PDFHexString.fromText(f.name));
           fieldDict.set(PDFName.of("Rect"), rect);
           fieldDict.set(PDFName.of("P"), pageRef);
-          fieldDict.set(PDFName.of("F"), PDFNumber.of(4));
+          fieldDict.set(PDFName.of("F"), PDFNumber2.of(4));
           const da = "/Helv 10 Tf 0 g";
           fieldDict.set(PDFName.of("DA"), PDFString.of(da));
           const fieldRef = context.register(fieldDict);
@@ -95776,12 +95792,12 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         };
       }
       async function runConvertManual(inputs) {
-        const { pdfFile, renameMap, deleteNames } = inputs;
+        const { pdfFile, renameMap, deleteNames, moveMap } = inputs;
         if (!pdfFile) throw new Error("Carg\xE1 el PDF original");
         const pdfBytes = await fileToUint8Array(pdfFile);
         const { rewritePdf } = require_pdf_rewriter();
         const entries = renameMap.filter((e) => e.oldName && e.newName && e.oldName !== e.newName);
-        const result = await rewritePdf(pdfBytes, entries, deleteNames);
+        const result = await rewritePdf(pdfBytes, entries, deleteNames, moveMap || []);
         return {
           pdfBytes: result.pdfBytes,
           warnings: result.warnings || [],

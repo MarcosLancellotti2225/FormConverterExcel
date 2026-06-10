@@ -178,12 +178,12 @@ async function runConvertCustom(inputs) {
 }
 
 async function runConvertManual(inputs) {
-    const { pdfFile, renameMap, deleteNames } = inputs;
+    const { pdfFile, renameMap, deleteNames, moveMap } = inputs;
     if (!pdfFile) throw new Error('Cargá el PDF original');
     const pdfBytes = await fileToUint8Array(pdfFile);
     const { rewritePdf } = require('./pdf-converter/pdf-rewriter');
     const entries = renameMap.filter(e => e.oldName && e.newName && e.oldName !== e.newName);
-    const result = await rewritePdf(pdfBytes, entries, deleteNames);
+    const result = await rewritePdf(pdfBytes, entries, deleteNames, moveMap || []);
     return {
         pdfBytes: result.pdfBytes,
         warnings: result.warnings || [],
