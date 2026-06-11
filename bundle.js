@@ -88340,12 +88340,16 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
                 collectLeavesRaw(kids, context, fullName, result);
                 continue;
               }
+              if (kids.size() > 1) {
+                result.push({ dict, fullName, ref, kids, widgetCount: kids.size() });
+                continue;
+              }
             }
           }
           result.push({ dict, fullName, ref });
         }
       }
-      async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap) {
+      async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap, typeChanges) {
         const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
         const context = pdfDoc.context;
         const warnings = [];
@@ -88357,6 +88361,12 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         if (moveMap) {
           for (const m of moveMap) {
             posMap.set(m.fieldName, { x: m.x, y: m.y, width: m.width, height: m.height });
+          }
+        }
+        const typeMap = /* @__PURE__ */ new Map();
+        if (typeChanges) {
+          for (const t of typeChanges) {
+            typeMap.set(t.fieldName, t.ftCode);
           }
         }
         const deleteSet = new Set(deleteNames || []);
@@ -88381,6 +88391,56 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const newRootFields = PDFArray.withContext(context);
         for (const leaf of leaves) {
           const fullName = leaf.fullName;
+          if (leaf.widgetCount > 1 && leaf.kids) {
+            for (let wi = 0; wi < leaf.kids.size(); wi++) {
+              const widgetKey = fullName + "#" + wi;
+              const kidRef = leaf.kids.get(wi);
+              const kidDict = context.lookup(kidRef);
+              if (!kidDict || typeof kidDict.get !== "function") continue;
+              if (deleteSet.has(widgetKey) || deleteSet.has(fullName)) {
+                deletedCount++;
+                deletedFields.push(widgetKey);
+                removeWidgetFromPages(kidDict, context, pdfDoc);
+                continue;
+              }
+              collectInherited(leaf.dict, context);
+              const INHERITABLE = ["FT", "Ff", "V", "DV", "DA", "DR", "Q"];
+              for (const key of INHERITABLE) {
+                const pdfKey = PDFName.of(key);
+                if (kidDict.get(pdfKey) === void 0) {
+                  const val = leaf.dict.get(pdfKey);
+                  if (val !== void 0) kidDict.set(pdfKey, val);
+                }
+              }
+              const widgetNewName = nameMap.get(widgetKey) || nameMap.get(fullName);
+              const finalName = widgetNewName || fullName;
+              kidDict.set(PDFName.of("T"), PDFHexString.fromText(finalName));
+              if (widgetNewName) {
+                renamedCount++;
+                renamedFields.push({ oldName: widgetKey, newName: widgetNewName });
+              }
+              const posEntry2 = posMap.get(widgetKey) || posMap.get(finalName);
+              if (posEntry2) {
+                const rect = PDFArray.withContext(context);
+                rect.push(PDFNumber.of(posEntry2.x));
+                rect.push(PDFNumber.of(posEntry2.y));
+                rect.push(PDFNumber.of(posEntry2.x + posEntry2.width));
+                rect.push(PDFNumber.of(posEntry2.y + posEntry2.height));
+                kidDict.set(PDFName.of("Rect"), rect);
+                kidDict.delete(PDFName.of("AP"));
+              }
+              const typeEntry2 = typeMap.get(widgetKey) || typeMap.get(fullName);
+              if (typeEntry2) {
+                kidDict.set(PDFName.of("FT"), PDFName.of(typeEntry2));
+              }
+              kidDict.delete(PDFName.of("Parent"));
+              ensureFieldType(kidDict, context);
+              let kRef = context.getObjectRef(kidDict);
+              if (!kRef) kRef = context.register(kidDict);
+              newRootFields.push(kRef);
+            }
+            continue;
+          }
           if (deleteSet.has(fullName)) {
             deletedCount++;
             deletedFields.push(fullName);
@@ -88405,6 +88465,10 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             rect.push(PDFNumber.of(posEntry.y + posEntry.height));
             leaf.dict.set(PDFName.of("Rect"), rect);
             leaf.dict.delete(PDFName.of("AP"));
+          }
+          const typeEntry = typeMap.get(fullName) || typeMap.get(newName || fullName);
+          if (typeEntry) {
+            leaf.dict.set(PDFName.of("FT"), PDFName.of(typeEntry));
           }
           leaf.dict.delete(PDFName.of("Parent"));
           ensureFieldType(leaf.dict, context);
@@ -93997,6 +94061,29 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
                 collectLeaves(kids, context, fullName, result, pageRefs);
                 continue;
               }
+              if (kids.size() > 1) {
+                const type2 = getInheritedFieldType(dict, context);
+                for (let k = 0; k < kids.size(); k++) {
+                  const kidRef = kids.get(k);
+                  const kidDict = context.lookup(kidRef);
+                  if (!kidDict || typeof kidDict.get !== "function") continue;
+                  const rect2 = getWidgetRect(kidDict, context);
+                  const page2 = getWidgetPage(kidDict, context, pageRefs);
+                  result.push({
+                    name: fullName,
+                    type: type2,
+                    page: page2,
+                    x: rect2.x,
+                    y: rect2.y,
+                    width: rect2.width,
+                    height: rect2.height,
+                    _widgetIndex: k,
+                    _widgetCount: kids.size(),
+                    _isWidget: true
+                  });
+                }
+                continue;
+              }
             }
           }
           const type = getInheritedFieldType(dict, context);
@@ -95792,12 +95879,12 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         };
       }
       async function runConvertManual(inputs) {
-        const { pdfFile, renameMap, deleteNames, moveMap } = inputs;
+        const { pdfFile, renameMap, deleteNames, moveMap, typeChanges } = inputs;
         if (!pdfFile) throw new Error("Carg\xE1 el PDF original");
         const pdfBytes = await fileToUint8Array(pdfFile);
         const { rewritePdf } = require_pdf_rewriter();
         const entries = renameMap.filter((e) => e.oldName && e.newName && e.oldName !== e.newName);
-        const result = await rewritePdf(pdfBytes, entries, deleteNames, moveMap || []);
+        const result = await rewritePdf(pdfBytes, entries, deleteNames, moveMap || [], typeChanges || []);
         return {
           pdfBytes: result.pdfBytes,
           warnings: result.warnings || [],

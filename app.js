@@ -494,7 +494,7 @@
             var f = pdfFields[i];
             var norm = normalizeFieldName(f.name);
             pdfByNorm[norm] = f.name;
-            pdfNames.push({ name: f.name, norm: norm, type: f.type, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height });
+            pdfNames.push({ name: f.name, norm: norm, type: f.type, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height, _isWidget: f._isWidget, _widgetIndex: f._widgetIndex, _widgetCount: f._widgetCount });
         }
 
         var usedPdf = {};
@@ -544,6 +544,7 @@
                     type: pdf.type,
                     page: pdf.page,
                     x: pdf.x, y: pdf.y, width: pdf.width, height: pdf.height,
+                    _isWidget: pdf._isWidget, _widgetIndex: pdf._widgetIndex, _widgetCount: pdf._widgetCount,
                     matchType: matchType,
                     matchScore: bestScore
                 });
@@ -555,6 +556,7 @@
                     type: pdf.type,
                     page: pdf.page,
                     x: pdf.x, y: pdf.y, width: pdf.width, height: pdf.height,
+                    _isWidget: pdf._isWidget, _widgetIndex: pdf._widgetIndex, _widgetCount: pdf._widgetCount,
                     matchType: 'none',
                     matchScore: 0
                 });
@@ -619,7 +621,7 @@
                     }
                 }
                 convState.allFieldEntries = origFields.fields.map(function(f) {
-                    return { oldName: f.name, newName: renamedMap[f.name] || '', type: f.type, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height, matchType: renamedMap[f.name] ? 'exact' : 'none', matchScore: renamedMap[f.name] ? 1 : 0 };
+                    return { oldName: f.name, newName: renamedMap[f.name] || '', type: f.type, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height, _isWidget: f._isWidget, _widgetIndex: f._widgetIndex, _widgetCount: f._widgetCount, matchType: renamedMap[f.name] ? 'exact' : 'none', matchScore: renamedMap[f.name] ? 1 : 0 };
                 });
 
                 finishConvertUI(result, t0);
@@ -898,6 +900,31 @@
         return '';
     }
 
+    var FIELD_TYPE_OPTIONS = [
+        { value: 'Text', label: 'Text', ft: 'Tx' },
+        { value: 'Checkbox', label: 'Checkbox', ft: 'Btn' },
+        { value: 'Radio', label: 'Radio', ft: 'Btn' },
+        { value: 'Choice', label: 'Choice', ft: 'Ch' },
+        { value: 'Signature', label: 'Signature', ft: 'Sig' },
+        { value: 'Pushbutton', label: 'Pushbutton', ft: 'Btn' },
+    ];
+
+    function fieldKeyForEntry(e) {
+        if (e._isWidget && typeof e._widgetIndex === 'number') return e.oldName + '#' + e._widgetIndex;
+        return e.oldName;
+    }
+
+    function typeSelectHtml(idx, currentType, disabled) {
+        var html = '<select class="conv-type-select" data-idx="' + idx + '"' + (disabled ? ' disabled' : '') + '>';
+        for (var t = 0; t < FIELD_TYPE_OPTIONS.length; t++) {
+            var opt = FIELD_TYPE_OPTIONS[t];
+            var sel = (currentType === opt.value) ? ' selected' : '';
+            html += '<option value="' + opt.value + '"' + sel + '>' + opt.label + '</option>';
+        }
+        html += '</select>';
+        return html;
+    }
+
     function renderConvAllFieldsTable(entries) {
         var tbody = $('#convRenameTableBody');
         var countEl = $('#convRenameCount');
@@ -905,15 +932,19 @@
         var deleted = convState.deletedFields.size;
         var hasMatchInfo = entries.some(function(e) { return !!e.matchType; });
         var showPos = convState.showPositions || false;
-        countEl.textContent = entries.length + ' campos, ' + renamed + ' renombrados' +
-            (deleted ? ', ' + deleted + ' a eliminar' : '');
+        var widgets = entries.filter(function(e) { return e._isWidget; }).length;
+        var countText = entries.length + ' campos';
+        if (widgets) countText += ' (' + widgets + ' widgets)';
+        countText += ', ' + renamed + ' renombrados';
+        if (deleted) countText += ', ' + deleted + ' a eliminar';
+        countEl.textContent = countText;
         tbody.innerHTML = '';
 
         var thead = $('#convRenameTableHead');
         if (thead) {
             var cols = '<th>#</th>';
             if (hasMatchInfo) cols += '<th></th>';
-            cols += '<th>Nombre actual (PDF)</th><th></th><th>Nombre nuevo</th>';
+            cols += '<th>Nombre actual (PDF)</th><th></th><th>Nombre nuevo</th><th>Tipo</th>';
             if (showPos) cols += '<th>Pág</th><th>X</th><th>Y</th><th>W</th><th>H</th>';
             cols += '<th></th>';
             thead.innerHTML = '<tr>' + cols + '</tr>';
@@ -921,17 +952,22 @@
 
         for (var i = 0; i < entries.length; i++) {
             var e = entries[i];
-            var isDeleted = convState.deletedFields.has(e.oldName);
+            var entryKey = fieldKeyForEntry(e);
+            var isDeleted = convState.deletedFields.has(entryKey) || convState.deletedFields.has(e.oldName);
             var tr = document.createElement('tr');
             tr.dataset.tableIdx = i;
             var rowClass = isDeleted ? 'conv-row-deleted' : '';
             if (!isDeleted && e.matchType === 'none') rowClass = 'conv-row-nomatch';
             if (!isDeleted && e.matchType === 'fuzzy') rowClass = 'conv-row-fuzzy';
+            if (!isDeleted && e._isWidget) rowClass = (rowClass ? rowClass + ' ' : '') + 'conv-row-widget';
             if (rowClass) tr.className = rowClass;
 
             var matchCol = hasMatchInfo ? '<td style="width:28px;text-align:center;">' + matchBadgeHtml(e) + '</td>' : '';
             var excelHint = (e.excelName && e.excelName !== e.oldName)
                 ? '<div class="conv-excel-hint" title="Nombre en Excel: ' + escapeHtml(e.excelName) + '">Excel: ' + escapeHtml(e.excelName) + '</div>'
+                : '';
+            var widgetBadge = e._isWidget
+                ? '<span class="conv-widget-badge" title="Widget ' + e._widgetIndex + ' de ' + e._widgetCount + '">#' + e._widgetIndex + '</span>'
                 : '';
 
             var posCols = '';
@@ -951,9 +987,10 @@
             tr.innerHTML =
                 '<td style="color:var(--text-dim);text-align:right;width:30px;">' + (i + 1) + '</td>' +
                 matchCol +
-                '<td class="conv-old-name" style="font-family:monospace;font-size:0.8rem;word-break:break-all;cursor:pointer;">' + escapeHtml(e.oldName) + excelHint + '</td>' +
+                '<td class="conv-old-name" style="font-family:monospace;font-size:0.8rem;word-break:break-all;cursor:pointer;">' + escapeHtml(e.oldName) + widgetBadge + excelHint + '</td>' +
                 '<td style="text-align:center;color:var(--accent);font-weight:bold;">→</td>' +
                 '<td><input type="text" class="conv-edit-name" data-idx="' + i + '" value="' + escapeHtml(e.newName) + '" placeholder="' + escapeHtml(e.oldName) + '"' + (isDeleted ? ' disabled' : '') + '></td>' +
+                '<td class="conv-type-cell">' + typeSelectHtml(i, e._newType || e.type, isDeleted) + '</td>' +
                 posCols +
                 '<td style="width:32px;text-align:center;">' +
                     '<button class="conv-delete-btn" data-idx="' + i + '" title="' + (isDeleted ? 'Restaurar campo' : 'Eliminar campo') + '">' +
@@ -977,6 +1014,16 @@
                         convState.allFieldEntries[idx][field] = val;
                         convState.allFieldEntries[idx]._posEdited = true;
                     }
+                }
+            }
+        });
+
+        tbody.addEventListener('change', function(e) {
+            if (e.target.classList.contains('conv-type-select')) {
+                var idx = parseInt(e.target.dataset.idx, 10);
+                if (convState.allFieldEntries[idx]) {
+                    convState.allFieldEntries[idx]._newType = e.target.value;
+                    convState.allFieldEntries[idx]._typeEdited = true;
                 }
             }
         });
@@ -1007,10 +1054,11 @@
     function toggleDeleteField(idx) {
         var entry = convState.allFieldEntries[idx];
         if (!entry) return;
-        if (convState.deletedFields.has(entry.oldName)) {
-            convState.deletedFields.delete(entry.oldName);
+        var key = fieldKeyForEntry(entry);
+        if (convState.deletedFields.has(key)) {
+            convState.deletedFields.delete(key);
         } else {
-            convState.deletedFields.add(entry.oldName);
+            convState.deletedFields.add(key);
         }
         renderConvAllFieldsTable(convState.allFieldEntries);
         filterConvTable();
@@ -1154,15 +1202,24 @@
         try {
             var renameMap = [];
             var moveMap = [];
+            var typeChanges = [];
             var deleteNames = Array.from(convState.deletedFields);
             for (var i = 0; i < convState.allFieldEntries.length; i++) {
                 var e = convState.allFieldEntries[i];
-                if (convState.deletedFields.has(e.oldName)) continue;
+                var key = fieldKeyForEntry(e);
+                if (convState.deletedFields.has(key)) continue;
                 if (e.newName && e.newName !== e.oldName) {
-                    renameMap.push({ oldName: e.oldName, newName: e.newName });
+                    renameMap.push({ oldName: key, newName: e.newName });
                 }
                 if (e._posEdited && typeof e.x === 'number') {
-                    moveMap.push({ fieldName: e.oldName, x: e.x, y: e.y, width: e.width, height: e.height });
+                    moveMap.push({ fieldName: key, x: e.x, y: e.y, width: e.width, height: e.height });
+                }
+                if (e._typeEdited && e._newType) {
+                    var ftCode = 'Tx';
+                    for (var t = 0; t < FIELD_TYPE_OPTIONS.length; t++) {
+                        if (FIELD_TYPE_OPTIONS[t].value === e._newType) { ftCode = FIELD_TYPE_OPTIONS[t].ft; break; }
+                    }
+                    typeChanges.push({ fieldName: key, ftCode: ftCode });
                 }
             }
 
@@ -1171,7 +1228,8 @@
                 pdfFile: new File([convState.originalPdfBytes], convState.pdf.name, { type: 'application/pdf' }),
                 renameMap: renameMap,
                 deleteNames: deleteNames,
-                moveMap: moveMap.length > 0 ? moveMap : undefined
+                moveMap: moveMap.length > 0 ? moveMap : undefined,
+                typeChanges: typeChanges.length > 0 ? typeChanges : undefined
             });
 
             var pdfBytes = result.pdfBytes;

@@ -43,6 +43,11 @@ function collectLeavesRaw(fieldsArray, context, parentName, result) {
                     collectLeavesRaw(kids, context, fullName, result);
                     continue;
                 }
+
+                if (kids.size() > 1) {
+                    result.push({ dict, fullName, ref, kids, widgetCount: kids.size() });
+                    continue;
+                }
             }
         }
 
@@ -50,7 +55,7 @@ function collectLeavesRaw(fieldsArray, context, parentName, result) {
     }
 }
 
-async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap) {
+async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap, typeChanges) {
     const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
     const context = pdfDoc.context;
     const warnings = [];
@@ -64,6 +69,13 @@ async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap) {
     if (moveMap) {
         for (const m of moveMap) {
             posMap.set(m.fieldName, { x: m.x, y: m.y, width: m.width, height: m.height });
+        }
+    }
+
+    const typeMap = new Map();
+    if (typeChanges) {
+        for (const t of typeChanges) {
+            typeMap.set(t.fieldName, t.ftCode);
         }
     }
 
@@ -96,6 +108,64 @@ async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap) {
     for (const leaf of leaves) {
         const fullName = leaf.fullName;
 
+        if (leaf.widgetCount > 1 && leaf.kids) {
+            for (let wi = 0; wi < leaf.kids.size(); wi++) {
+                const widgetKey = fullName + '#' + wi;
+                const kidRef = leaf.kids.get(wi);
+                const kidDict = context.lookup(kidRef);
+                if (!kidDict || typeof kidDict.get !== 'function') continue;
+
+                if (deleteSet.has(widgetKey) || deleteSet.has(fullName)) {
+                    deletedCount++;
+                    deletedFields.push(widgetKey);
+                    removeWidgetFromPages(kidDict, context, pdfDoc);
+                    continue;
+                }
+
+                collectInherited(leaf.dict, context);
+                const INHERITABLE = ['FT', 'Ff', 'V', 'DV', 'DA', 'DR', 'Q'];
+                for (const key of INHERITABLE) {
+                    const pdfKey = PDFName.of(key);
+                    if (kidDict.get(pdfKey) === undefined) {
+                        const val = leaf.dict.get(pdfKey);
+                        if (val !== undefined) kidDict.set(pdfKey, val);
+                    }
+                }
+
+                const widgetNewName = nameMap.get(widgetKey) || nameMap.get(fullName);
+                const finalName = widgetNewName || fullName;
+                kidDict.set(PDFName.of('T'), PDFHexString.fromText(finalName));
+                if (widgetNewName) {
+                    renamedCount++;
+                    renamedFields.push({ oldName: widgetKey, newName: widgetNewName });
+                }
+
+                const posEntry = posMap.get(widgetKey) || posMap.get(finalName);
+                if (posEntry) {
+                    const rect = PDFArray.withContext(context);
+                    rect.push(PDFNumber.of(posEntry.x));
+                    rect.push(PDFNumber.of(posEntry.y));
+                    rect.push(PDFNumber.of(posEntry.x + posEntry.width));
+                    rect.push(PDFNumber.of(posEntry.y + posEntry.height));
+                    kidDict.set(PDFName.of('Rect'), rect);
+                    kidDict.delete(PDFName.of('AP'));
+                }
+
+                const typeEntry = typeMap.get(widgetKey) || typeMap.get(fullName);
+                if (typeEntry) {
+                    kidDict.set(PDFName.of('FT'), PDFName.of(typeEntry));
+                }
+
+                kidDict.delete(PDFName.of('Parent'));
+                ensureFieldType(kidDict, context);
+
+                let kRef = context.getObjectRef(kidDict);
+                if (!kRef) kRef = context.register(kidDict);
+                newRootFields.push(kRef);
+            }
+            continue;
+        }
+
         if (deleteSet.has(fullName)) {
             deletedCount++;
             deletedFields.push(fullName);
@@ -124,6 +194,11 @@ async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap) {
             rect.push(PDFNumber.of(posEntry.y + posEntry.height));
             leaf.dict.set(PDFName.of('Rect'), rect);
             leaf.dict.delete(PDFName.of('AP'));
+        }
+
+        const typeEntry = typeMap.get(fullName) || typeMap.get(newName || fullName);
+        if (typeEntry) {
+            leaf.dict.set(PDFName.of('FT'), PDFName.of(typeEntry));
         }
 
         leaf.dict.delete(PDFName.of('Parent'));

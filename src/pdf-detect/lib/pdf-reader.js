@@ -118,6 +118,28 @@ function collectLeaves(fieldsArray, context, parentName, result, pageRefs) {
                     collectLeaves(kids, context, fullName, result, pageRefs);
                     continue;
                 }
+
+                if (kids.size() > 1) {
+                    const type = getInheritedFieldType(dict, context);
+                    for (let k = 0; k < kids.size(); k++) {
+                        const kidRef = kids.get(k);
+                        const kidDict = context.lookup(kidRef);
+                        if (!kidDict || typeof kidDict.get !== 'function') continue;
+                        const rect = getWidgetRect(kidDict, context);
+                        const page = getWidgetPage(kidDict, context, pageRefs);
+                        result.push({
+                            name: fullName,
+                            type,
+                            page,
+                            x: rect.x, y: rect.y,
+                            width: rect.width, height: rect.height,
+                            _widgetIndex: k,
+                            _widgetCount: kids.size(),
+                            _isWidget: true,
+                        });
+                    }
+                    continue;
+                }
             }
         }
 
@@ -129,10 +151,8 @@ function collectLeaves(fieldsArray, context, parentName, result, pageRefs) {
             name: fullName,
             type,
             page,
-            x: rect.x,
-            y: rect.y,
-            width: rect.width,
-            height: rect.height,
+            x: rect.x, y: rect.y,
+            width: rect.width, height: rect.height,
         });
     }
 }
