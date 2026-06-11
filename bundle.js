@@ -88311,7 +88311,38 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
   var require_pdf_rewriter = __commonJS({
     "src/pdf-converter/pdf-rewriter.js"(exports, module) {
       "use strict";
-      var { PDFDocument, PDFName, PDFHexString, PDFString, PDFArray, PDFNumber } = require_cjs();
+      var { PDFDocument, PDFName, PDFHexString, PDFString, PDFArray, PDFNumber, PDFBool } = require_cjs();
+      var FF_MULTILINE = 1 << 12;
+      function applyFieldProps(dict, prop) {
+        let touched = false;
+        if (prop.fontSize !== void 0 && prop.fontSize !== null && prop.fontSize !== "") {
+          const size = Number(prop.fontSize);
+          if (!isNaN(size)) {
+            let da = "";
+            const daVal = dict.get(PDFName.of("DA"));
+            if (daVal) da = readStringValue(daVal);
+            if (da && /\/\S+\s+[\d.]+\s+Tf/.test(da)) {
+              da = da.replace(/(\/\S+\s+)([\d.]+)(\s+Tf)/, "$1" + size + "$3");
+            } else {
+              da = "/Helv " + size + " Tf 0 g";
+            }
+            dict.set(PDFName.of("DA"), PDFString.of(da));
+            touched = true;
+          }
+        }
+        if (prop.multiline !== void 0) {
+          let ff = 0;
+          const ffVal = dict.get(PDFName.of("Ff"));
+          if (ffVal && typeof ffVal.asNumber === "function") ff = ffVal.asNumber();
+          else if (typeof ffVal === "number") ff = ffVal;
+          if (prop.multiline) ff |= FF_MULTILINE;
+          else ff &= ~FF_MULTILINE;
+          dict.set(PDFName.of("Ff"), PDFNumber.of(ff));
+          touched = true;
+        }
+        if (touched) dict.delete(PDFName.of("AP"));
+        return touched;
+      }
       function readStringValue(val) {
         if (!val) return "";
         if (typeof val === "string") return val;
@@ -88349,10 +88380,11 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           result.push({ dict, fullName, ref });
         }
       }
-      async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap, typeChanges) {
+      async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap, typeChanges, propChanges) {
         const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
         const context = pdfDoc.context;
         const warnings = [];
+        let needAppearances = false;
         const nameMap = /* @__PURE__ */ new Map();
         for (const { oldName, newName } of renameMap) {
           nameMap.set(oldName, newName);
@@ -88367,6 +88399,12 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         if (typeChanges) {
           for (const t of typeChanges) {
             typeMap.set(t.fieldName, t.ftCode);
+          }
+        }
+        const propMap = /* @__PURE__ */ new Map();
+        if (propChanges) {
+          for (const p of propChanges) {
+            propMap.set(p.fieldName, { fontSize: p.fontSize, multiline: p.multiline });
           }
         }
         const deleteSet = new Set(deleteNames || []);
@@ -88447,6 +88485,8 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
               if (typeEntry2) {
                 kidDict.set(PDFName.of("FT"), PDFName.of(typeEntry2));
               }
+              const propEntry2 = propMap.get(widgetKey) || propMap.get(fullName);
+              if (propEntry2 && applyFieldProps(kidDict, propEntry2)) needAppearances = true;
               kidDict.delete(PDFName.of("Parent"));
               ensureFieldType(kidDict, context);
               let kRef = context.getObjectRef(kidDict);
@@ -88484,6 +88524,8 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           if (typeEntry) {
             leaf.dict.set(PDFName.of("FT"), PDFName.of(typeEntry));
           }
+          const propEntry = propMap.get(uniqueKey) || propMap.get(fullName);
+          if (propEntry && applyFieldProps(leaf.dict, propEntry)) needAppearances = true;
           leaf.dict.delete(PDFName.of("Parent"));
           ensureFieldType(leaf.dict, context);
           let ref = context.getObjectRef(leaf.dict);
@@ -88491,6 +88533,9 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           newRootFields.push(ref);
         }
         acroForm.set(PDFName.of("Fields"), newRootFields);
+        if (needAppearances) {
+          acroForm.set(PDFName.of("NeedAppearances"), PDFBool.True);
+        }
         const newBytes = await pdfDoc.save({ updateFieldAppearances: false });
         return { pdfBytes: newBytes, warnings, renamedCount, renamedFields, deletedCount, deletedFields };
       }
@@ -95911,12 +95956,12 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         };
       }
       async function runConvertManual(inputs) {
-        const { pdfFile, renameMap, deleteNames, moveMap, typeChanges } = inputs;
+        const { pdfFile, renameMap, deleteNames, moveMap, typeChanges, propChanges } = inputs;
         if (!pdfFile) throw new Error("Carg\xE1 el PDF original");
         const pdfBytes = await fileToUint8Array(pdfFile);
         const { rewritePdf } = require_pdf_rewriter();
         const entries = renameMap.filter((e) => e.oldName && e.newName && e.oldName !== e.newName);
-        const result = await rewritePdf(pdfBytes, entries, deleteNames, moveMap || [], typeChanges || []);
+        const result = await rewritePdf(pdfBytes, entries, deleteNames, moveMap || [], typeChanges || [], propChanges || []);
         return {
           pdfBytes: result.pdfBytes,
           warnings: result.warnings || [],

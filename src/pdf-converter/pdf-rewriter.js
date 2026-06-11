@@ -1,6 +1,48 @@
 'use strict';
 
-const { PDFDocument, PDFName, PDFHexString, PDFString, PDFArray, PDFNumber } = require('pdf-lib');
+const { PDFDocument, PDFName, PDFHexString, PDFString, PDFArray, PDFNumber, PDFBool } = require('pdf-lib');
+
+const FF_MULTILINE = 1 << 12; // bit 13 of the Tx field flags
+
+/**
+ * Apply per-field visual properties (font size + multiline) to a field/widget dict.
+ * - fontSize 0 means "auto-size" (the viewer shrinks/grows text to fit the box).
+ * - multiline toggles bit 13 of the Tx field flags so text wraps inside the box.
+ * Returns true if anything changed (so the caller can flag NeedAppearances).
+ */
+function applyFieldProps(dict, prop) {
+    let touched = false;
+
+    if (prop.fontSize !== undefined && prop.fontSize !== null && prop.fontSize !== '') {
+        const size = Number(prop.fontSize);
+        if (!isNaN(size)) {
+            let da = '';
+            const daVal = dict.get(PDFName.of('DA'));
+            if (daVal) da = readStringValue(daVal);
+            if (da && /\/\S+\s+[\d.]+\s+Tf/.test(da)) {
+                da = da.replace(/(\/\S+\s+)([\d.]+)(\s+Tf)/, '$1' + size + '$3');
+            } else {
+                da = '/Helv ' + size + ' Tf 0 g';
+            }
+            dict.set(PDFName.of('DA'), PDFString.of(da));
+            touched = true;
+        }
+    }
+
+    if (prop.multiline !== undefined) {
+        let ff = 0;
+        const ffVal = dict.get(PDFName.of('Ff'));
+        if (ffVal && typeof ffVal.asNumber === 'function') ff = ffVal.asNumber();
+        else if (typeof ffVal === 'number') ff = ffVal;
+        if (prop.multiline) ff |= FF_MULTILINE;
+        else ff &= ~FF_MULTILINE;
+        dict.set(PDFName.of('Ff'), PDFNumber.of(ff));
+        touched = true;
+    }
+
+    if (touched) dict.delete(PDFName.of('AP'));
+    return touched;
+}
 
 const FIELD_TYPE_MAP = {
     PDFTextField: 'Tx',
@@ -55,10 +97,11 @@ function collectLeavesRaw(fieldsArray, context, parentName, result) {
     }
 }
 
-async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap, typeChanges) {
+async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap, typeChanges, propChanges) {
     const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
     const context = pdfDoc.context;
     const warnings = [];
+    let needAppearances = false;
 
     const nameMap = new Map();
     for (const { oldName, newName } of renameMap) {
@@ -76,6 +119,13 @@ async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap, typeChanges
     if (typeChanges) {
         for (const t of typeChanges) {
             typeMap.set(t.fieldName, t.ftCode);
+        }
+    }
+
+    const propMap = new Map();
+    if (propChanges) {
+        for (const p of propChanges) {
+            propMap.set(p.fieldName, { fontSize: p.fontSize, multiline: p.multiline });
         }
     }
 
@@ -172,6 +222,9 @@ async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap, typeChanges
                     kidDict.set(PDFName.of('FT'), PDFName.of(typeEntry));
                 }
 
+                const propEntry = propMap.get(widgetKey) || propMap.get(fullName);
+                if (propEntry && applyFieldProps(kidDict, propEntry)) needAppearances = true;
+
                 kidDict.delete(PDFName.of('Parent'));
                 ensureFieldType(kidDict, context);
 
@@ -217,6 +270,9 @@ async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap, typeChanges
             leaf.dict.set(PDFName.of('FT'), PDFName.of(typeEntry));
         }
 
+        const propEntry = propMap.get(uniqueKey) || propMap.get(fullName);
+        if (propEntry && applyFieldProps(leaf.dict, propEntry)) needAppearances = true;
+
         leaf.dict.delete(PDFName.of('Parent'));
         ensureFieldType(leaf.dict, context);
 
@@ -226,6 +282,10 @@ async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap, typeChanges
     }
 
     acroForm.set(PDFName.of('Fields'), newRootFields);
+
+    if (needAppearances) {
+        acroForm.set(PDFName.of('NeedAppearances'), PDFBool.True);
+    }
 
     const newBytes = await pdfDoc.save({ updateFieldAppearances: false });
     return { pdfBytes: newBytes, warnings, renamedCount, renamedFields, deletedCount, deletedFields };

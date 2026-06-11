@@ -334,6 +334,7 @@
         $('#btnBulkApply').addEventListener('click', bulkApplyText);
         $('#btnBulkClose').addEventListener('click', closeBulkEditor);
         $('#btnTogglePositions').addEventListener('click', togglePositions);
+        $('#btnToggleProps').addEventListener('click', toggleProps);
         initDrawHandlers();
     }
 
@@ -926,6 +927,20 @@
         { value: 'Pushbutton', label: 'Pushbutton', ft: 'Btn' },
     ];
 
+    var FONT_SIZE_OPTIONS = ['', '0', '6', '7', '8', '9', '10', '11', '12', '14', '16', '18'];
+
+    function fontSelectHtml(idx, current, disabled) {
+        var html = '<select class="conv-font-select" data-idx="' + idx + '"' + (disabled ? ' disabled' : '') + '>';
+        for (var f = 0; f < FONT_SIZE_OPTIONS.length; f++) {
+            var v = FONT_SIZE_OPTIONS[f];
+            var label = v === '' ? '—' : (v === '0' ? 'Auto' : v);
+            var sel = (String(current) === v) ? ' selected' : '';
+            html += '<option value="' + v + '"' + sel + '>' + label + '</option>';
+        }
+        html += '</select>';
+        return html;
+    }
+
     function fieldKeyForEntry(e) {
         if (e._isWidget && typeof e._widgetIndex === 'number') return e.oldName + '#' + e._widgetIndex;
         if (typeof e._dupIndex === 'number') return e.oldName + '#' + e._dupIndex;
@@ -950,6 +965,7 @@
         var deleted = convState.deletedFields.size;
         var hasMatchInfo = entries.some(function(e) { return !!e.matchType; });
         var showPos = convState.showPositions || false;
+        var showProps = convState.showProps || false;
         var widgets = entries.filter(function(e) { return e._isWidget; }).length;
         var countText = entries.length + ' campos';
         if (widgets) countText += ' (' + widgets + ' widgets)';
@@ -964,6 +980,7 @@
             if (hasMatchInfo) cols += '<th></th>';
             cols += '<th>Nombre actual (PDF)</th><th></th><th>Nombre nuevo</th><th>Tipo</th>';
             if (showPos) cols += '<th>Pág</th><th>X</th><th>Y</th><th>W</th><th>H</th>';
+            if (showProps) cols += '<th title="Tamaño de fuente (Auto = ajusta al texto)">Fuente</th><th title="Texto multilínea (envuelve dentro de la caja)">Multi</th>';
             cols += '<th></th>';
             thead.innerHTML = '<tr>' + cols + '</tr>';
         }
@@ -1005,6 +1022,15 @@
                     '<td class="conv-pos-cell"><input type="number" step="0.1" class="conv-pos-input" data-idx="' + i + '" data-field="height" value="' + ph + '"' + (isDeleted ? ' disabled' : '') + '></td>';
             }
 
+            var propCols = '';
+            if (showProps) {
+                var curFont = (e._fontSize !== undefined && e._fontSize !== null) ? e._fontSize : '';
+                var multiChecked = e._multiline ? ' checked' : '';
+                propCols =
+                    '<td class="conv-prop-cell">' + fontSelectHtml(i, curFont, isDeleted) + '</td>' +
+                    '<td class="conv-prop-cell" style="text-align:center;"><input type="checkbox" class="conv-multiline-check" data-idx="' + i + '"' + multiChecked + (isDeleted ? ' disabled' : '') + '></td>';
+            }
+
             var copyBtn = '<button class="conv-copy-btn" data-idx="' + i + '" title="Copiar nombre al campo nuevo (para editar solo el número)">⧉</button>';
 
             tr.innerHTML =
@@ -1015,6 +1041,7 @@
                 '<td><input type="text" class="conv-edit-name" data-idx="' + i + '" value="' + escapeHtml(e.newName) + '" placeholder="' + escapeHtml(e.oldName) + '"' + (isDeleted ? ' disabled' : '') + '></td>' +
                 '<td class="conv-type-cell">' + typeSelectHtml(i, e._newType || e.type, isDeleted) + '</td>' +
                 posCols +
+                propCols +
                 '<td style="width:32px;text-align:center;">' +
                     '<button class="conv-delete-btn" data-idx="' + i + '" title="' + (isDeleted ? 'Restaurar campo' : 'Eliminar campo') + '">' +
                     (isDeleted ? '↩' : '✕') + '</button></td>';
@@ -1050,6 +1077,21 @@
                 if (convState.allFieldEntries[idx]) {
                     convState.allFieldEntries[idx]._newType = e.target.value;
                     convState.allFieldEntries[idx]._typeEdited = true;
+                }
+            }
+            if (e.target.classList.contains('conv-font-select')) {
+                var idx = parseInt(e.target.dataset.idx, 10);
+                if (convState.allFieldEntries[idx]) {
+                    convState.allFieldEntries[idx]._fontSize = e.target.value;
+                    convState.allFieldEntries[idx]._propEdited = true;
+                }
+            }
+            if (e.target.classList.contains('conv-multiline-check')) {
+                var idx = parseInt(e.target.dataset.idx, 10);
+                if (convState.allFieldEntries[idx]) {
+                    convState.allFieldEntries[idx]._multiline = e.target.checked;
+                    convState.allFieldEntries[idx]._multilineEdited = true;
+                    convState.allFieldEntries[idx]._propEdited = true;
                 }
             }
         });
@@ -1137,6 +1179,14 @@
         convState.showPositions = !convState.showPositions;
         var btn = $('#btnTogglePositions');
         btn.classList.toggle('active', convState.showPositions);
+        renderConvAllFieldsTable(convState.allFieldEntries);
+        filterConvTable();
+    }
+
+    function toggleProps() {
+        convState.showProps = !convState.showProps;
+        var btn = $('#btnToggleProps');
+        btn.classList.toggle('active', convState.showProps);
         renderConvAllFieldsTable(convState.allFieldEntries);
         filterConvTable();
     }
@@ -1261,6 +1311,7 @@
             var renameMap = [];
             var moveMap = [];
             var typeChanges = [];
+            var propChanges = [];
             var deleteNames = Array.from(convState.deletedFields);
             for (var i = 0; i < convState.allFieldEntries.length; i++) {
                 var e = convState.allFieldEntries[i];
@@ -1279,6 +1330,18 @@
                     }
                     typeChanges.push({ fieldName: key, ftCode: ftCode });
                 }
+                if (e._propEdited) {
+                    var pc = { fieldName: key };
+                    if (e._fontSize !== undefined && e._fontSize !== null && e._fontSize !== '') {
+                        pc.fontSize = e._fontSize;
+                    }
+                    if (e._multilineEdited) {
+                        pc.multiline = !!e._multiline;
+                    }
+                    if (pc.fontSize !== undefined || pc.multiline !== undefined) {
+                        propChanges.push(pc);
+                    }
+                }
             }
 
             var t0 = performance.now();
@@ -1287,7 +1350,8 @@
                 renameMap: renameMap,
                 deleteNames: deleteNames,
                 moveMap: moveMap.length > 0 ? moveMap : undefined,
-                typeChanges: typeChanges.length > 0 ? typeChanges : undefined
+                typeChanges: typeChanges.length > 0 ? typeChanges : undefined,
+                propChanges: propChanges.length > 0 ? propChanges : undefined
             });
 
             var pdfBytes = result.pdfBytes;
@@ -1317,6 +1381,7 @@
             statusEl.className = 'status active success';
             statusEl.textContent = '✓ ' + result.renamedCount + ' renombrados' +
                 (moveMap.length ? ', ' + moveMap.length + ' reposicionados' : '') +
+                (propChanges.length ? ', ' + propChanges.length + ' con props' : '') +
                 (result.deletedCount ? ', ' + result.deletedCount + ' eliminados' : '') +
                 (convState.addedFields.length ? ', ' + convState.addedFields.length + ' agregado(s)' : '') +
                 ' en ' + Math.round(t1 - t0) + 'ms. Listo.';
