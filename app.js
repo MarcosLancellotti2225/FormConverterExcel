@@ -1005,10 +1005,12 @@
                     '<td class="conv-pos-cell"><input type="number" step="0.1" class="conv-pos-input" data-idx="' + i + '" data-field="height" value="' + ph + '"' + (isDeleted ? ' disabled' : '') + '></td>';
             }
 
+            var copyBtn = '<button class="conv-copy-btn" data-idx="' + i + '" title="Copiar nombre al campo nuevo (para editar solo el número)">⧉</button>';
+
             tr.innerHTML =
                 '<td style="color:var(--text-dim);text-align:right;width:30px;">' + (i + 1) + '</td>' +
                 matchCol +
-                '<td class="conv-old-name" style="font-family:monospace;font-size:0.8rem;word-break:break-all;cursor:pointer;">' + escapeHtml(e.oldName) + widgetBadge + excelHint + '</td>' +
+                '<td class="conv-old-name" style="font-family:monospace;font-size:0.8rem;word-break:break-all;cursor:pointer;">' + escapeHtml(e.oldName) + widgetBadge + excelHint + copyBtn + '</td>' +
                 '<td style="text-align:center;color:var(--accent);font-weight:bold;">→</td>' +
                 '<td><input type="text" class="conv-edit-name" data-idx="' + i + '" value="' + escapeHtml(e.newName) + '" placeholder="' + escapeHtml(e.oldName) + '"' + (isDeleted ? ' disabled' : '') + '></td>' +
                 '<td class="conv-type-cell">' + typeSelectHtml(i, e._newType || e.type, isDeleted) + '</td>' +
@@ -1053,6 +1055,25 @@
         });
 
         tbody.addEventListener('click', function(e) {
+            var copyBtn = e.target.closest('.conv-copy-btn');
+            if (copyBtn) {
+                var cidx = parseInt(copyBtn.dataset.idx, 10);
+                var entry = convState.allFieldEntries[cidx];
+                if (entry) {
+                    var nameToCopy = entry.newName || entry.oldName;
+                    entry.newName = nameToCopy;
+                    var input = $('.conv-edit-name[data-idx="' + cidx + '"]', tbody);
+                    if (input) {
+                        input.value = nameToCopy;
+                        input.focus();
+                        var dot = nameToCopy.search(/\d+\s*$/);
+                        if (dot >= 0) input.setSelectionRange(dot, nameToCopy.length);
+                        else input.setSelectionRange(nameToCopy.length, nameToCopy.length);
+                    }
+                    if (navigator.clipboard) navigator.clipboard.writeText(nameToCopy);
+                }
+                return;
+            }
             var delBtn = e.target.closest('.conv-delete-btn');
             if (delBtn) {
                 var idx = parseInt(delBtn.dataset.idx, 10);
