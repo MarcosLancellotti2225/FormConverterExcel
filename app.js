@@ -843,10 +843,21 @@
         var container = $('#convPreview');
         if (convState.preview) convState.preview.destroy();
         var detectResult = await InsPipelineBundle.runDetectFields({ pdfBytes: renamedPdfBytes });
+        convState.previewFields = detectResult.fields;
         convState.preview = await InsPipelineBundle.renderDetectPreview(
             new Uint8Array(renamedPdfBytes), container, detectResult.fields
         );
         wireConvPreviewClicks(detectResult.fields);
+    }
+
+    // Two fields are the same widget if same page and overlapping position.
+    // Names can collide (duplicates), positions cannot — so match by geometry.
+    function samePos(a, b) {
+        if (!a || !b) return false;
+        if ((a.page || 1) !== (b.page || 1)) return false;
+        var dx = Math.abs((a.x || 0) - (b.x || 0));
+        var dy = Math.abs((a.y || 0) - (b.y || 0));
+        return dx <= 1.5 && dy <= 1.5;
     }
 
     function wireConvPreviewClicks(previewFields) {
@@ -858,18 +869,24 @@
             var idx = parseInt(overlay.dataset.fieldIdx, 10);
             if (isNaN(idx) || !previewFields[idx]) return;
 
-            var clickedName = previewFields[idx].name;
-            var tableIdx = findTableIdxByName(clickedName);
+            var tableIdx = findTableIdxByField(previewFields[idx]);
             if (tableIdx < 0) return;
 
             highlightConvPair(tableIdx, idx);
+            var row = $('#convRenameTableBody tr[data-table-idx="' + tableIdx + '"]');
+            if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
     }
 
-    function findTableIdxByName(name) {
+    // Match a preview field to its table row by position first (unique),
+    // falling back to name only when no positional match exists.
+    function findTableIdxByField(pf) {
+        for (var i = 0; i < convState.allFieldEntries.length; i++) {
+            if (samePos(convState.allFieldEntries[i], pf)) return i;
+        }
         for (var i = 0; i < convState.allFieldEntries.length; i++) {
             var e = convState.allFieldEntries[i];
-            if (e.newName === name || e.oldName === name) return i;
+            if (e.newName === pf.name || e.oldName === pf.name) return i;
         }
         return -1;
     }
@@ -1002,6 +1019,9 @@
             tbody.appendChild(tr);
         }
 
+        if (tbody.dataset.listenersWired === '1') return;
+        tbody.dataset.listenersWired = '1';
+
         tbody.addEventListener('input', function(e) {
             if (e.target.classList.contains('conv-edit-name')) {
                 var idx = parseInt(e.target.dataset.idx, 10);
@@ -1045,8 +1065,7 @@
             var tableIdx = parseInt(tr.dataset.tableIdx, 10);
             var entry = convState.allFieldEntries[tableIdx];
             if (!entry) return;
-            var fieldName = entry.newName || entry.oldName;
-            var overlayIdx = findOverlayIdxByName(fieldName);
+            var overlayIdx = findOverlayIdxForEntry(entry);
             highlightConvPair(tableIdx, overlayIdx);
             if (overlayIdx != null) {
                 var ov = $('.detect-field-overlay[data-field-idx="' + overlayIdx + '"]', $('#convPreview'));
@@ -1187,6 +1206,20 @@
         closeBulkEditor();
         $('#convStatus').className = 'status active success';
         $('#convStatus').textContent = '✓ Bulk edit: ' + updated + ' cambio(s) aplicados. Hacé click en "Aplicar cambios" para guardar en el PDF.';
+    }
+
+    // Find the preview overlay for a given table entry, by position (unique)
+    // and falling back to name. Returns the overlay's data-field-idx.
+    function findOverlayIdxForEntry(entry) {
+        var pf = convState.previewFields || [];
+        for (var i = 0; i < pf.length; i++) {
+            if (samePos(pf[i], entry)) return i;
+        }
+        var target = entry.newName || entry.oldName;
+        for (var i = 0; i < pf.length; i++) {
+            if (pf[i].name === target) return i;
+        }
+        return null;
     }
 
     function findOverlayIdxByName(name) {
