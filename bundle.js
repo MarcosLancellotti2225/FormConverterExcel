@@ -88384,6 +88384,19 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         }
         const leaves = [];
         collectLeavesRaw(fieldsArray, context, "", leaves);
+        const dupCounts = {};
+        for (const leaf of leaves) {
+          if (!leaf.widgetCount) dupCounts[leaf.fullName] = (dupCounts[leaf.fullName] || 0) + 1;
+        }
+        const dupSeen = {};
+        for (const leaf of leaves) {
+          if (!leaf.widgetCount && dupCounts[leaf.fullName] > 1) {
+            const idx = dupSeen[leaf.fullName] || 0;
+            leaf._dupIndex = idx;
+            leaf._dupCount = dupCounts[leaf.fullName];
+            dupSeen[leaf.fullName] = idx + 1;
+          }
+        }
         let renamedCount = 0;
         let deletedCount = 0;
         const renamedFields = [];
@@ -88391,6 +88404,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const newRootFields = PDFArray.withContext(context);
         for (const leaf of leaves) {
           const fullName = leaf.fullName;
+          const uniqueKey = leaf._dupCount > 1 ? fullName + "#" + leaf._dupIndex : fullName;
           if (leaf.widgetCount > 1 && leaf.kids) {
             for (let wi = 0; wi < leaf.kids.size(); wi++) {
               const widgetKey = fullName + "#" + wi;
@@ -88441,22 +88455,22 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             }
             continue;
           }
-          if (deleteSet.has(fullName)) {
+          if (deleteSet.has(uniqueKey) || deleteSet.has(fullName)) {
             deletedCount++;
-            deletedFields.push(fullName);
+            deletedFields.push(uniqueKey);
             removeWidgetFromPages(leaf.dict, context, pdfDoc);
             continue;
           }
-          const newName = nameMap.get(fullName);
+          const newName = nameMap.get(uniqueKey) || nameMap.get(fullName);
           collectInherited(leaf.dict, context);
           if (newName) {
             leaf.dict.set(PDFName.of("T"), PDFHexString.fromText(newName));
             renamedCount++;
-            renamedFields.push({ oldName: fullName, newName });
+            renamedFields.push({ oldName: uniqueKey, newName });
           } else {
             leaf.dict.set(PDFName.of("T"), PDFHexString.fromText(fullName));
           }
-          const posEntry = posMap.get(fullName) || posMap.get(newName || fullName);
+          const posEntry = posMap.get(uniqueKey) || posMap.get(fullName);
           if (posEntry) {
             const rect = PDFArray.withContext(context);
             rect.push(PDFNumber.of(posEntry.x));
@@ -88466,7 +88480,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             leaf.dict.set(PDFName.of("Rect"), rect);
             leaf.dict.delete(PDFName.of("AP"));
           }
-          const typeEntry = typeMap.get(fullName) || typeMap.get(newName || fullName);
+          const typeEntry = typeMap.get(uniqueKey) || typeMap.get(fullName);
           if (typeEntry) {
             leaf.dict.set(PDFName.of("FT"), PDFName.of(typeEntry));
           }
@@ -94100,6 +94114,23 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           });
         }
       }
+      function markDuplicates(fields) {
+        const counts = {};
+        for (const f of fields) {
+          const key = f._isWidget ? f.name + "#w" + f._widgetIndex : f.name;
+          counts[f.name] = (counts[f.name] || 0) + 1;
+        }
+        const seen = {};
+        for (const f of fields) {
+          if (f._isWidget) continue;
+          if (counts[f.name] > 1) {
+            const idx = seen[f.name] || 0;
+            f._dupIndex = idx;
+            f._dupCount = counts[f.name];
+            seen[f.name] = idx + 1;
+          }
+        }
+      }
       async function readPdfFields(pdfBytes) {
         const doc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
         const context = doc.context;
@@ -94113,6 +94144,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         if (!fieldsArray) return [];
         const leaves = [];
         collectLeaves(fieldsArray, context, "", leaves, pageRefs);
+        markDuplicates(leaves);
         return leaves;
       }
       module.exports = { readPdfFields };

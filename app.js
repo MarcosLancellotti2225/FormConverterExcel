@@ -494,7 +494,7 @@
             var f = pdfFields[i];
             var norm = normalizeFieldName(f.name);
             pdfByNorm[norm] = f.name;
-            pdfNames.push({ name: f.name, norm: norm, type: f.type, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height, _isWidget: f._isWidget, _widgetIndex: f._widgetIndex, _widgetCount: f._widgetCount });
+            pdfNames.push({ name: f.name, norm: norm, type: f.type, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height, _isWidget: f._isWidget, _widgetIndex: f._widgetIndex, _widgetCount: f._widgetCount, _dupIndex: f._dupIndex, _dupCount: f._dupCount });
         }
 
         var usedPdf = {};
@@ -544,7 +544,7 @@
                     type: pdf.type,
                     page: pdf.page,
                     x: pdf.x, y: pdf.y, width: pdf.width, height: pdf.height,
-                    _isWidget: pdf._isWidget, _widgetIndex: pdf._widgetIndex, _widgetCount: pdf._widgetCount,
+                    _isWidget: pdf._isWidget, _widgetIndex: pdf._widgetIndex, _widgetCount: pdf._widgetCount, _dupIndex: pdf._dupIndex, _dupCount: pdf._dupCount,
                     matchType: matchType,
                     matchScore: bestScore
                 });
@@ -556,7 +556,7 @@
                     type: pdf.type,
                     page: pdf.page,
                     x: pdf.x, y: pdf.y, width: pdf.width, height: pdf.height,
-                    _isWidget: pdf._isWidget, _widgetIndex: pdf._widgetIndex, _widgetCount: pdf._widgetCount,
+                    _isWidget: pdf._isWidget, _widgetIndex: pdf._widgetIndex, _widgetCount: pdf._widgetCount, _dupIndex: pdf._dupIndex, _dupCount: pdf._dupCount,
                     matchType: 'none',
                     matchScore: 0
                 });
@@ -621,7 +621,7 @@
                     }
                 }
                 convState.allFieldEntries = origFields.fields.map(function(f) {
-                    return { oldName: f.name, newName: renamedMap[f.name] || '', type: f.type, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height, _isWidget: f._isWidget, _widgetIndex: f._widgetIndex, _widgetCount: f._widgetCount, matchType: renamedMap[f.name] ? 'exact' : 'none', matchScore: renamedMap[f.name] ? 1 : 0 };
+                    return { oldName: f.name, newName: renamedMap[f.name] || '', type: f.type, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height, _isWidget: f._isWidget, _widgetIndex: f._widgetIndex, _widgetCount: f._widgetCount, _dupIndex: f._dupIndex, _dupCount: f._dupCount, matchType: renamedMap[f.name] ? 'exact' : 'none', matchScore: renamedMap[f.name] ? 1 : 0 };
                 });
 
                 finishConvertUI(result, t0);
@@ -911,6 +911,7 @@
 
     function fieldKeyForEntry(e) {
         if (e._isWidget && typeof e._widgetIndex === 'number') return e.oldName + '#' + e._widgetIndex;
+        if (typeof e._dupIndex === 'number') return e.oldName + '#' + e._dupIndex;
         return e.oldName;
     }
 
@@ -966,9 +967,12 @@
             var excelHint = (e.excelName && e.excelName !== e.oldName)
                 ? '<div class="conv-excel-hint" title="Nombre en Excel: ' + escapeHtml(e.excelName) + '">Excel: ' + escapeHtml(e.excelName) + '</div>'
                 : '';
-            var widgetBadge = e._isWidget
-                ? '<span class="conv-widget-badge" title="Widget ' + e._widgetIndex + ' de ' + e._widgetCount + '">#' + e._widgetIndex + '</span>'
-                : '';
+            var widgetBadge = '';
+            if (e._isWidget) {
+                widgetBadge = '<span class="conv-widget-badge" title="Widget ' + e._widgetIndex + ' de ' + e._widgetCount + '">#' + e._widgetIndex + '</span>';
+            } else if (typeof e._dupIndex === 'number') {
+                widgetBadge = '<span class="conv-dup-badge" title="Duplicado ' + (e._dupIndex + 1) + ' de ' + e._dupCount + ' con el mismo nombre">#' + e._dupIndex + '</span>';
+            }
 
             var posCols = '';
             if (showPos) {

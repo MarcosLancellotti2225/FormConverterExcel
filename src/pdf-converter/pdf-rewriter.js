@@ -99,6 +99,21 @@ async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap, typeChanges
     const leaves = [];
     collectLeavesRaw(fieldsArray, context, '', leaves);
 
+    // Mark duplicate names so each gets a unique key
+    const dupCounts = {};
+    for (const leaf of leaves) {
+        if (!leaf.widgetCount) dupCounts[leaf.fullName] = (dupCounts[leaf.fullName] || 0) + 1;
+    }
+    const dupSeen = {};
+    for (const leaf of leaves) {
+        if (!leaf.widgetCount && dupCounts[leaf.fullName] > 1) {
+            const idx = dupSeen[leaf.fullName] || 0;
+            leaf._dupIndex = idx;
+            leaf._dupCount = dupCounts[leaf.fullName];
+            dupSeen[leaf.fullName] = idx + 1;
+        }
+    }
+
     let renamedCount = 0;
     let deletedCount = 0;
     const renamedFields = [];
@@ -107,6 +122,7 @@ async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap, typeChanges
 
     for (const leaf of leaves) {
         const fullName = leaf.fullName;
+        const uniqueKey = leaf._dupCount > 1 ? fullName + '#' + leaf._dupIndex : fullName;
 
         if (leaf.widgetCount > 1 && leaf.kids) {
             for (let wi = 0; wi < leaf.kids.size(); wi++) {
@@ -166,26 +182,26 @@ async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap, typeChanges
             continue;
         }
 
-        if (deleteSet.has(fullName)) {
+        if (deleteSet.has(uniqueKey) || deleteSet.has(fullName)) {
             deletedCount++;
-            deletedFields.push(fullName);
+            deletedFields.push(uniqueKey);
             removeWidgetFromPages(leaf.dict, context, pdfDoc);
             continue;
         }
 
-        const newName = nameMap.get(fullName);
+        const newName = nameMap.get(uniqueKey) || nameMap.get(fullName);
 
         collectInherited(leaf.dict, context);
 
         if (newName) {
             leaf.dict.set(PDFName.of('T'), PDFHexString.fromText(newName));
             renamedCount++;
-            renamedFields.push({ oldName: fullName, newName });
+            renamedFields.push({ oldName: uniqueKey, newName });
         } else {
             leaf.dict.set(PDFName.of('T'), PDFHexString.fromText(fullName));
         }
 
-        const posEntry = posMap.get(fullName) || posMap.get(newName || fullName);
+        const posEntry = posMap.get(uniqueKey) || posMap.get(fullName);
         if (posEntry) {
             const rect = PDFArray.withContext(context);
             rect.push(PDFNumber.of(posEntry.x));
@@ -196,7 +212,7 @@ async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap, typeChanges
             leaf.dict.delete(PDFName.of('AP'));
         }
 
-        const typeEntry = typeMap.get(fullName) || typeMap.get(newName || fullName);
+        const typeEntry = typeMap.get(uniqueKey) || typeMap.get(fullName);
         if (typeEntry) {
             leaf.dict.set(PDFName.of('FT'), PDFName.of(typeEntry));
         }

@@ -157,6 +157,25 @@ function collectLeaves(fieldsArray, context, parentName, result, pageRefs) {
     }
 }
 
+function markDuplicates(fields) {
+    const counts = {};
+    for (const f of fields) {
+        const key = f._isWidget ? f.name + '#w' + f._widgetIndex : f.name;
+        counts[f.name] = (counts[f.name] || 0) + 1;
+    }
+
+    const seen = {};
+    for (const f of fields) {
+        if (f._isWidget) continue;
+        if (counts[f.name] > 1) {
+            const idx = seen[f.name] || 0;
+            f._dupIndex = idx;
+            f._dupCount = counts[f.name];
+            seen[f.name] = idx + 1;
+        }
+    }
+}
+
 async function readPdfFields(pdfBytes) {
     const doc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
     const context = doc.context;
@@ -174,6 +193,7 @@ async function readPdfFields(pdfBytes) {
 
     const leaves = [];
     collectLeaves(fieldsArray, context, '', leaves, pageRefs);
+    markDuplicates(leaves);
     return leaves;
 }
 
