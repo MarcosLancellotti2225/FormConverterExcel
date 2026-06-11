@@ -1373,18 +1373,20 @@ footer {
 
 .conv-copy-btn {
     display: inline-block;
-    margin-left: 6px;
-    padding: 0 5px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: 4px;
+    margin-left: 3px;
+    padding: 0 2px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 2px;
     color: var(--text-muted);
-    font-size: 0.75rem;
+    font-size: 0.55rem;
     cursor: pointer;
     vertical-align: middle;
-    line-height: 1.4;
+    line-height: 1;
+    opacity: 0.45;
 }
 .conv-copy-btn:hover {
+    opacity: 1;
     background: var(--accent);
     color: var(--bg);
     border-color: var(--accent);
