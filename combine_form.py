@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 """
-combine_form.py
-Combines signframe.json (skeleton from Signframe) + matriz.xlsx (field mapping)
-→ form-definition-final.json (complete form definition).
+combine_form.py — Two-step combiner for Signframe form definitions.
+
+Step 1: Pre-populate sourceName suggestions in the matrix → matriz_revisar.xlsx
+Step 2: Generate enriched form-definition JSON → form-definition-final.json
 
 Usage:
-    python3 combine_form.py
-    python3 combine_form.py --signframe path/to.json --matriz path/to.xlsx --output path/out.json
+    python3 combine_form.py                     # Both steps
+    python3 combine_form.py --step 1            # Only step 1
+    python3 combine_form.py --step 2            # Only step 2
+    python3 combine_form.py --signframe X.json --matriz Y.xlsx
 """
 
 import json, sys, os, re, argparse, unicodedata
 from collections import OrderedDict
+from difflib import SequenceMatcher
 
 try:
     import openpyxl
+    from openpyxl.styles import PatternFill
 except ImportError:
     sys.exit("ERROR: pip install openpyxl")
 
@@ -24,9 +29,14 @@ NEVER_CONDITION = json.dumps({
     "conditions": [{"fieldId": "field_NEVER_EXISTS", "operator": "not_empty"}]
 })
 
+VALID_OPERATORS = frozenset(['not_empty', 'empty', 'equals'])
+
+YELLOW_FILL = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
+
 TYPE_MAP = {
     'texto': 'text', 'alfanumerico': 'text', 'alfanumérico': 'text',
     'numerico': 'number', 'numérico': 'number',
+    'numérico/porcentual': 'number',
     'fecha': 'date', 'combo': 'select', 'lista': 'select',
     'select': 'select', 'dropdown': 'select',
     'radio': 'radio', 'radio/combo': 'radio',
@@ -36,52 +46,69 @@ TYPE_MAP = {
     'titulo': 'heading', 'textarea': 'textarea',
 }
 
-NATIVE_TYPE_MAP = {'Tx': 'text', 'Btn': 'checkbox', 'Ch': 'select', 'Sig': 'signature'}
+# ─── Utilities ───────────────────────────────────────────────────────────────
 
-NUMBER_FORMATS = {
-    'monto': '#.##0,00', 'entero': '#.##0', 'porcentaje': '00.00',
-}
+def norm(s):
+    """Normalize string for comparison: lowercase, strip accents, collapse whitespace."""
+    if not s:
+        return ''
+    s = str(s).strip().lower()
+    s = unicodedata.normalize('NFD', s)
+    s = re.sub(r'[̀-ͯ]', '', s)
+    s = re.sub(r'[^a-z0-9]+', ' ', s).strip()
+    return s
 
-PATH_CORRECTIONS = {
-    'datosGenerales.personas': 'datosFormulario.personas',
-    'Consentimiento': 'consentimiento',
-    'dispotabilidadCarencia': 'disputabilidadCarencia',
-}
+def tokenize(s):
+    return set(norm(s).split())
 
-VALID_OPERATORS = frozenset(['not_empty', 'empty', 'equals'])
+def similarity(a, b):
+    """0..1 similarity between two strings."""
+    na, nb = norm(a), norm(b)
+    if not na or not nb:
+        return 0.0
+    return SequenceMatcher(None, na, nb).ratio()
 
-# ─── Flexible header detection ───────────────────────────────────────────────
+def token_overlap(a, b):
+    """Fraction of shared tokens."""
+    ta, tb = tokenize(a), tokenize(b)
+    if not ta or not tb:
+        return 0.0
+    shared = ta & tb
+    return len(shared) / min(len(ta), len(tb))
+
+def is_yes(val):
+    return str(val or '').strip().lower() in ('si', 'sí', 'yes', 'true', '1')
+
+def to_key(name):
+    if not name:
+        return 'otros'
+    k = norm(name)
+    k = re.sub(r'\s+', '_', k)
+    return k or 'otros'
+
+def title_case(s):
+    return ' '.join(w.capitalize() for w in str(s).split())
+
+
+# ─── Matrix reading ─────────────────────────────────────────────────────────
 
 HEADER_PATTERNS = [
-    (re.compile(r'^#$'),                                          'rowNum'),
-    (re.compile(r'secci[oó]n', re.I),                             'seccionPdf'),
-    (re.compile(r'acroform\s*actual', re.I),                      'acroActual'),
-    (re.compile(r'acroform\s*propuesto', re.I),                   'acroPropuesto'),
-    (re.compile(r'etiqueta', re.I),                               'etiqueta'),
-    (re.compile(r'nombre\s*interno|source\s*name', re.I),         'sourceName'),
-    (re.compile(r'^tipo$', re.I),                                 'nativeType'),
-    (re.compile(r'grupo', re.I),                                  'grupo'),
-    (re.compile(r'p[aá]gina', re.I),                              'pagina'),
-    (re.compile(r'path.*principal', re.I),                        'pathPrincipal'),
-    (re.compile(r'path.*secundari', re.I),                        'pathsSecundarios'),
-    (re.compile(r'pre.*rellena', re.I),                           'preRellenado'),
-    (re.compile(r'obligatori', re.I),                             'obligatorio'),
-    (re.compile(r'max\s*length|largo', re.I),                     'maxLength'),
-    (re.compile(r'patr[oó]n|regex', re.I),                        'patron'),
-    (re.compile(r'^formato$', re.I),                              'formato'),
-    (re.compile(r'visibilidad.*condicional|condicional.*visib', re.I), 'visibilidadCondicional'),
-    (re.compile(r'cat[aá]logo.*nombre|nombre.*cat[aá]logo', re.I),    'catalogo'),
-    (re.compile(r'opciones.*json|lovable|opciones.*formato', re.I),   'opcionesJson'),
-    (re.compile(r'tipo\s*de\s*dato', re.I),                      'tipoDato'),
-    (re.compile(r'regla\s*original', re.I),                       'reglaOriginal'),
-    (re.compile(r'hoja.*cat[aá]logo', re.I),                     'hojaCatalogo'),
+    (re.compile(r'pasos', re.I), 'pasos'),
+    (re.compile(r'^secci[oó]n$', re.I), 'seccion'),
+    (re.compile(r'nombre\s+en\s+pdf', re.I), 'nombrePdf'),
+    (re.compile(r'nombre\s+del\s+campo\s+en\s+formulario', re.I), 'etiqueta'),
+    (re.compile(r'tipo\s+de\s+dato', re.I), 'tipoDato'),
+    (re.compile(r'^valor$', re.I), 'valor'),
+    (re.compile(r'^regla$', re.I), 'regla'),
+    (re.compile(r'obligatori', re.I), 'obligatorio'),
+    (re.compile(r'formulario\s+a\s+visual', re.I), 'formularioVisualizar'),
+    (re.compile(r'visualizaci[oó]n', re.I), 'visualizacion'),
+    (re.compile(r'observacion', re.I), 'observaciones'),
+    (re.compile(r'nombre.*campo.*json|nombre.*json', re.I), 'pathJson'),
+    (re.compile(r'nombre.*campo.*pdf$', re.I), 'nombreCampoPdf'),
+    (re.compile(r'sourcename.*sugerido', re.I), 'sourceNameSugerido'),
+    (re.compile(r'sourcename.*final', re.I), 'sourceNameFinal'),
 ]
-
-
-# ─── Reading ─────────────────────────────────────────────────────────────────
-
-def _is_yes(val):
-    return str(val or '').strip().lower() in ('sí', 'si', 'yes', 'true', '1')
 
 
 def detect_headers(ws):
@@ -111,438 +138,443 @@ def read_matriz(path):
         row = {}
         for prop, col in col_map.items():
             row[prop] = ws.cell(row=r, column=col).value
-        if not row.get('sourceName') and not row.get('acroActual'):
+        if not row.get('etiqueta') and not row.get('nombrePdf'):
             continue
-
-        row['obligatorio'] = _is_yes(row.get('obligatorio'))
-        row['preRellenado'] = _is_yes(row.get('preRellenado'))
-
-        if row.get('maxLength') is not None:
-            try:
-                row['maxLength'] = int(float(str(row['maxLength'])))
-            except (ValueError, TypeError):
-                row['maxLength'] = None
-
-        row['optionsParsed'] = None
-        if row.get('opcionesJson'):
-            try:
-                row['optionsParsed'] = json.loads(str(row['opcionesJson']))
-            except json.JSONDecodeError:
-                pass
-
         row['_row'] = r
+        row['_obligatorio'] = is_yes(row.get('obligatorio'))
         rows.append(row)
 
     wb.close()
     print(f"    -> {len(rows)} filas de datos\n")
-    return rows
+    return rows, col_map
 
+
+def collapse_option_rows(rows):
+    """Collapse consecutive rows with same etiqueta + different valor into groups.
+    Returns list of 'logical fields', each with .rows (list of original rows)
+    and .options (list of valor strings).
+    The first row of each group carries the primary data (pathJson, etc.).
+    """
+    groups = []
+    i = 0
+    while i < len(rows):
+        primary = rows[i]
+        etiq = norm(primary.get('etiqueta', ''))
+        tipo = norm(primary.get('tipoDato', ''))
+        group_rows = [primary]
+        options = []
+        if primary.get('valor'):
+            options.append(str(primary['valor']))
+
+        j = i + 1
+        while j < len(rows):
+            next_row = rows[j]
+            next_etiq = norm(next_row.get('etiqueta', ''))
+            if next_etiq == etiq and next_row.get('valor') and not next_row.get('pathJson'):
+                group_rows.append(next_row)
+                options.append(str(next_row['valor']))
+                j += 1
+            else:
+                break
+
+        groups.append({
+            'primary': primary,
+            'rows': group_rows,
+            'options': options if len(options) > 1 else [],
+            'etiqueta': primary.get('etiqueta', ''),
+            'seccion': primary.get('seccion', ''),
+            'tipoDato': primary.get('tipoDato', ''),
+            'nombrePdf': primary.get('nombrePdf', ''),
+            'pathJson': primary.get('pathJson', ''),
+            'obligatorio': primary.get('_obligatorio', False),
+            'sourceNameFinal': primary.get('sourceNameFinal'),
+            'sourceNameSugerido': primary.get('sourceNameSugerido'),
+        })
+        i = j
+    return groups
+
+
+# ─── Signframe JSON reading ─────────────────────────────────────────────────
 
 def read_signframe(path):
     with open(path, 'r', encoding='utf-8') as f:
         return json.load(f)
 
 
-def collect_sf_fields(data):
+def extract_json_fields(data):
+    """Extract all fields from signframe JSON, along with field positions if available."""
     fields = []
     for sec in data.get('sections', []):
+        for fld in sec.get('fields', []):
+            fields.append(fld)
         for sub in sec.get('subsections', []):
             for fld in sub.get('fields', []):
                 fields.append(fld)
+
+    positions = {}
+    sp = data.get('_sourcePdf', {})
+    if sp and sp.get('fieldPositions'):
+        fp = sp['fieldPositions']
+        if isinstance(fp, list):
+            for entry in fp:
+                sn = entry.get('sourceName', '')
+                if sn:
+                    positions[sn] = entry
+        elif isinstance(fp, dict):
+            positions = fp
+
+    for f in fields:
+        sn = ''
+        sm = f.get('sourceMeta')
+        if sm:
+            sn = sm.get('sourceName', '')
+        if not sn:
+            fid = f.get('id', '')
+            sn = fid[6:] if fid.startswith('field_') else fid
+        f['_sourceName'] = sn
+        f['_label'] = f.get('label', sn)
+        f['_page'] = sm.get('page', 0) if sm else 0
+
+        if sn in positions:
+            f['_pos'] = positions[sn]
+
     return fields
 
 
-# ─── Helpers ─────────────────────────────────────────────────────────────────
+# ─── Fuzzy matching engine ───────────────────────────────────────────────────
 
-def source_key(field):
-    sm = field.get('sourceMeta')
-    if sm and sm.get('sourceName'):
-        return sm['sourceName']
-    fid = field.get('id', '')
-    return fid[6:] if fid.startswith('field_') else fid
+def score_match(mfield, jfield, section_scores):
+    """Score how well a matrix logical-field matches a JSON field. Higher = better."""
+    score = 0.0
+
+    m_etiq = mfield.get('etiqueta', '')
+    m_pdf = mfield.get('nombrePdf', '')
+    m_sec = norm(mfield.get('seccion', ''))
+    m_path = mfield.get('pathJson', '')
+
+    j_sn = jfield.get('_sourceName', '')
+    j_label = jfield.get('_label', '')
+    j_path = jfield.get('salidaJSON') or jfield.get('jsonOutputPath') or jfield.get('prefillKey') or ''
+
+    # 1. JSON path match (strongest signal if both have paths)
+    if m_path and j_path:
+        m_paths = [p.strip() for p in str(m_path).replace('\n', ',').split(',') if p.strip()]
+        for mp in m_paths:
+            if mp == j_path:
+                score += 50
+                break
+            if norm(mp) == norm(j_path):
+                score += 45
+                break
+            if mp.split('.')[-1] == j_path.split('.')[-1]:
+                score += 15
+
+    # 2. Label similarity: etiqueta vs JSON label
+    sim_label = similarity(m_etiq, j_label)
+    score += sim_label * 20
+
+    # 3. Label similarity: etiqueta vs sourceName
+    sim_sn = similarity(m_etiq, j_sn)
+    score += sim_sn * 10
+
+    # 4. "Nombre en PDF" vs sourceName or label
+    if m_pdf and m_pdf.lower() != 'no se llena en pdf':
+        sim_pdf_sn = similarity(m_pdf, j_sn)
+        sim_pdf_label = similarity(m_pdf, j_label)
+        score += max(sim_pdf_sn, sim_pdf_label) * 15
+
+    # 5. Token overlap bonuses
+    tok_overlap = token_overlap(m_etiq, j_label)
+    score += tok_overlap * 10
+    tok_overlap_sn = token_overlap(m_etiq, j_sn)
+    score += tok_overlap_sn * 5
+
+    # 6. Section affinity (pre-computed)
+    if m_sec in section_scores:
+        if j_sn in section_scores[m_sec]:
+            score += section_scores[m_sec][j_sn]
+
+    return score
 
 
-def to_key(name):
-    if not name:
-        return 'otros'
-    k = unicodedata.normalize('NFD', name.lower())
-    k = re.sub(r'[̀-ͯ]', '', k)
-    k = re.sub(r'[^a-z0-9]+', '_', k)
-    return k.strip('_') or 'otros'
+def build_section_affinity(matrix_groups, json_fields):
+    """Pre-compute section affinity: which JSON fields tend to cluster near
+    fields that share the same matrix section label.
+    Simple approach: group JSON fields by page, try to match section names."""
+    section_scores = {}
+
+    pages = {}
+    for jf in json_fields:
+        p = jf.get('_page', 0)
+        if p not in pages:
+            pages[p] = []
+        pages[p].append(jf)
+
+    sections_seen = set()
+    for mg in matrix_groups:
+        sec = norm(mg.get('seccion', ''))
+        if sec:
+            sections_seen.add(sec)
+
+    for sec in sections_seen:
+        section_scores[sec] = {}
+        for jf in json_fields:
+            j_label = norm(jf.get('_label', ''))
+            j_sn = norm(jf.get('_sourceName', ''))
+            sec_sim = max(similarity(sec, j_label), similarity(sec, j_sn))
+            if sec_sim > 0.3:
+                section_scores[sec][jf['_sourceName']] = sec_sim * 5
+
+    return section_scores
 
 
-def section_parent(name):
-    m = re.match(r'^(.+?)\s+(\d+)\s*$', (name or '').strip())
-    if m:
-        return m.group(1).strip(), m.group(2)
-    return (name or '').strip(), None
+def match_all(matrix_groups, json_fields):
+    """Match each matrix logical-field to the best JSON field.
+    Returns list of (group, matched_sourceName, confidence, is_ambiguous).
+    """
+    section_scores = build_section_affinity(matrix_groups, json_fields)
+    used = set()
+    results = []
+
+    for mg in matrix_groups:
+        if mg.get('sourceNameFinal'):
+            results.append((mg, str(mg['sourceNameFinal']), 1.0, False))
+            used.add(str(mg['sourceNameFinal']))
+            continue
+
+        is_json_only = norm(mg.get('pasos', '') or '') == 'json'
+        is_no_pdf = norm(mg.get('nombrePdf', '')) in ('no se llena en pdf', '')
+        is_option_row = not mg.get('pathJson') and len(mg.get('rows', [])) == 1 and mg.get('options')
+
+        if is_option_row and not mg.get('etiqueta'):
+            results.append((mg, '', 0.0, False))
+            continue
+
+        scores = []
+        for jf in json_fields:
+            sn = jf['_sourceName']
+            if sn in used:
+                continue
+            sc = score_match(mg, jf, section_scores)
+            if sc > 0:
+                scores.append((sc, sn, jf))
+
+        scores.sort(key=lambda x: -x[0])
+
+        if not scores:
+            results.append((mg, '', 0.0, True))
+            continue
+
+        best_score = scores[0][0]
+        best_sn = scores[0][1]
+
+        ambiguous = False
+        confidence = min(best_score / 50.0, 1.0)
+
+        if len(scores) > 1:
+            second_score = scores[1][0]
+            if second_score > best_score * 0.85:
+                ambiguous = True
+                confidence *= 0.6
+
+        if best_score < 10:
+            ambiguous = True
+            confidence = min(confidence, 0.3)
+
+        used.add(best_sn)
+        results.append((mg, best_sn, confidence, ambiguous))
+
+    return results
 
 
-def correct_path(path):
-    if not path:
-        return path
-    for wrong, right in PATH_CORRECTIONS.items():
-        path = path.replace(wrong, right)
-    return path
+# ─── Step 1: Write review XLSX ───────────────────────────────────────────────
+
+def write_review_xlsx(original_path, matrix_rows, col_map, match_results, output_path):
+    """Copy the original matrix and add sourceName_sugerido + sourceName_final columns."""
+    wb = openpyxl.load_workbook(original_path)
+    ws = wb.active
+
+    max_col = ws.max_column
+    col_sugerido = col_map.get('sourceNameSugerido')
+    col_final = col_map.get('sourceNameFinal')
+
+    if not col_sugerido:
+        col_sugerido = max_col + 1
+        ws.cell(row=1, column=col_sugerido, value='sourceName_sugerido')
+    if not col_final:
+        col_final = col_sugerido + 1
+        ws.cell(row=1, column=col_final, value='sourceName_final')
+
+    row_to_match = {}
+    for mg, sn, conf, ambig in match_results:
+        for r in mg.get('rows', [mg.get('primary', {})]):
+            row_num = r.get('_row')
+            if row_num:
+                row_to_match[row_num] = (sn, conf, ambig)
+
+    stats = {'resolved': 0, 'ambiguous': 0, 'empty': 0, 'final_set': 0}
+
+    for r in range(2, ws.max_row + 1):
+        match_data = row_to_match.get(r)
+        if not match_data:
+            continue
+
+        sn, conf, ambig = match_data
+
+        existing_final = ws.cell(row=r, column=col_final).value
+        if existing_final:
+            stats['final_set'] += 1
+            continue
+
+        ws.cell(row=r, column=col_sugerido, value=sn if sn else '')
+
+        if ambig or conf < 0.5:
+            ws.cell(row=r, column=col_sugerido).fill = YELLOW_FILL
+            ws.cell(row=r, column=col_final).fill = YELLOW_FILL
+            stats['ambiguous'] += 1
+        elif sn:
+            stats['resolved'] += 1
+        else:
+            stats['empty'] += 1
+
+    wb.save(output_path)
+    wb.close()
+
+    print(f"\n  Guardado: {output_path}")
+    print(f"    {stats['resolved']} filas con match confiable")
+    print(f"    {stats['ambiguous']} filas amarillas (revisar manualmente)")
+    print(f"    {stats['final_set']} filas con sourceName_final ya definido")
+    print(f"    {stats['empty']} filas sin match")
+    return stats
 
 
-# ─── Type / format resolution ────────────────────────────────────────────────
+# ─── Step 2: Generate form-definition JSON ───────────────────────────────────
 
-def resolve_type(row):
-    tipo = str(row.get('tipoDato', '') or '').strip().lower()
+def resolve_source_name(mg):
+    """Return the resolved sourceName: final > sugerido."""
+    final = mg.get('sourceNameFinal')
+    if final and str(final).strip():
+        return str(final).strip()
+    sug = mg.get('sourceNameSugerido')
+    if sug and str(sug).strip():
+        return str(sug).strip()
+    return ''
+
+
+def resolve_type(mg):
+    tipo = norm(mg.get('tipoDato', ''))
     if tipo in TYPE_MAP:
         return TYPE_MAP[tipo]
-    native = str(row.get('nativeType', '') or '').strip()
-    if native in NATIVE_TYPE_MAP:
-        return NATIVE_TYPE_MAP[native]
-    if row.get('grupo'):
-        return 'radio'
-    if row.get('optionsParsed'):
-        return 'select'
     return 'text'
 
 
-def resolve_number_format(row):
-    fmt = str(row.get('formato', '') or '').strip().lower()
-    if not fmt:
-        return None
-    if any(k in fmt for k in ('monto', 'moneda', 'currency')):
-        return NUMBER_FORMATS['monto']
-    if any(k in fmt for k in ('porcentaje', '%')):
-        return NUMBER_FORMATS['porcentaje']
-    if any(k in fmt for k in ('entero', 'integer')):
-        return NUMBER_FORMATS['entero']
-    if fmt in ('numérico', 'numerico', 'numero'):
-        return NUMBER_FORMATS['entero']
-    return None
+def enrich_field(field, mg, all_groups):
+    """Enrich a JSON field with matrix data. NEVER touch id or sourceMeta."""
 
+    field['label'] = mg.get('etiqueta') or field.get('label', '')
+    field['required'] = mg.get('obligatorio', False)
 
-# ─── Options ──────────────────────────────────────────────────────────────────
-
-def build_options(row):
-    opts = row.get('optionsParsed')
-    if not opts or not isinstance(opts, list):
-        return None
-    result = []
-    for o in opts:
-        if isinstance(o, str):
-            result.append({'value': o, 'label': o})
-        else:
-            result.append({
-                'value':    o.get('value', o.get('jsonValue', o.get('label', ''))),
-                'label':    o.get('label', o.get('value', '')),
-                'jsonValue': o.get('jsonValue', o.get('value', o.get('label', ''))),
-                'pdfValue':  o.get('pdfValue', o.get('label', o.get('value', ''))),
-            })
-    return result
-
-
-# ─── Conditional visibility ──────────────────────────────────────────────────
-
-def build_conditional_visibility(raw, label_to_id):
-    if not raw:
-        return None
-    trimmed = str(raw).strip()
-    if not trimmed:
-        return None
-
-    if trimmed[0] in ('{', '['):
-        try:
-            parsed = json.loads(trimmed)
-            _ensure_field_prefix(parsed)
-            _validate_operators(parsed)
-            return json.dumps(parsed)
-        except json.JSONDecodeError:
-            pass
-
-    m = re.search(r'[Ss]i\s+"([^"]+)"\s+(?:seleccionado|marcado)', trimmed, re.I)
-    if not m:
-        m = re.search(r'[Ss]i\s+(?:se\s+)?(?:selecciona|elige|marca)\s+"?([^"]+?)"?\s*(?:->|→|,|\s+mostrar)', trimmed, re.I)
-    if m:
-        ref_label = m.group(1).strip()
-        fid = label_to_id.get(ref_label.lower())
-        if not fid:
-            ref = re.sub(r'[^a-z0-9_]', '', ref_label.replace(' ', '_').lower())
-            fid = 'field_' + ref
-        return json.dumps({
-            'logic': 'and',
-            'conditions': [{'fieldId': fid, 'operator': 'not_empty'}]
-        })
-
-    return None
-
-
-def _ensure_field_prefix(obj):
-    if not isinstance(obj, dict):
-        return
-    for c in obj.get('conditions', []):
-        fid = c.get('fieldId', '')
-        if fid and not fid.startswith('field_'):
-            c['fieldId'] = 'field_' + fid
-
-
-def _validate_operators(obj):
-    if not isinstance(obj, dict):
-        return
-    for c in obj.get('conditions', []):
-        op = c.get('operator', '')
-        if op and op not in VALID_OPERATORS:
-            c['operator'] = 'not_empty'
-        if op == 'equals' and 'value' not in c:
-            c['value'] = ''
-
-
-# ─── Radio group matching ────────────────────────────────────────────────────
-
-def _find_matching_option(label, options):
-    ll = label.lower().strip()
-    for o in options:
-        if o.get('label', '').lower().strip() == ll:
-            return o
-    for o in options:
-        ol = o.get('label', '').lower()
-        if ll in ol or ol in ll:
-            return o
-    return None
-
-
-def _humanize_group(grupo):
-    return str(grupo).replace('_', ' ').title()
-
-
-# ─── Field enrichment ────────────────────────────────────────────────────────
-
-def enrich_field(field, mx, radio_groups, label_to_id):
-    """Enrich a signframe field with matrix data.
-    REGLA DE ORO: id and sourceMeta are NEVER modified.
-    autoFillConcat, repeaterConfig, sourceMeta are PRESERVED as-is.
-    """
-    ftype = resolve_type(mx)
-    path = correct_path(mx.get('pathPrincipal'))
-    options = build_options(mx)
-    cond_vis = build_conditional_visibility(mx.get('visibilidadCondicional'), label_to_id)
-    num_fmt = resolve_number_format(mx)
-
-    field['label'] = mx.get('etiqueta') or field.get('label', '')
-    field['type'] = ftype
-    field['required'] = mx.get('obligatorio', False)
-
-    # readOnly: false for any field with sourceMeta that paints the PDF
     if field.get('sourceMeta'):
         field['readOnly'] = False
-    elif 'readOnly' not in field:
+    elif field.get('readOnly') is None:
         field['readOnly'] = False
 
-    if 'hidden' not in field:
-        field['hidden'] = False
-    if 'width' not in field:
-        field['width'] = 'full'
+    ftype = resolve_type(mg)
+    field['type'] = ftype
 
-    # prefillMode
-    if mx.get('preRellenado') is True:
-        field['prefillMode'] = 'required'
-    elif mx.get('preRellenado') is False:
-        field['prefillMode'] = 'none'
-
-    # Paths
-    if path:
-        field['salidaJSON'] = path
-        field['jsonOutputPath'] = path
-        field['prefillKey'] = path
-        field['excludeFromJson'] = False
+    path_raw = mg.get('pathJson')
+    if path_raw:
+        paths = [p.strip() for p in str(path_raw).replace('\n', ',').split(',') if p.strip()]
+        if paths:
+            field['salidaJSON'] = paths[0]
+            field['jsonOutputPath'] = paths[0]
+            field['prefillKey'] = paths[0]
+            field['excludeFromJson'] = False
+            if len(paths) > 1:
+                field['mappedPaths'] = paths[1:]
     elif not field.get('salidaJSON'):
         field['excludeFromJson'] = True
 
-    # Secondary paths
-    if mx.get('pathsSecundarios'):
-        raw = str(mx['pathsSecundarios'])
-        sep = '|' if '|' in raw else ','
-        paths = [p.strip() for p in raw.split(sep) if p.strip()]
-        if paths:
-            field['mappedPaths'] = paths
+    vis = norm(mg.get('visualizacion', ''))
+    if 'disabled' in vis:
+        field['readOnly'] = True
+    if 'no visible' in vis:
+        field['hidden'] = True
 
-    # conditionalVisibility
-    if cond_vis:
-        field['conditionalVisibility'] = cond_vis
-    elif 'conditionalVisibility' not in field:
-        field['conditionalVisibility'] = None
+    if ftype == 'checkbox' and field.get('sourceMeta'):
+        field['checkedPdfValue'] = True
+        field['checkedJsonValue'] = True
 
-    if 'conditionalRequired' not in field:
-        field['conditionalRequired'] = None
+    if mg.get('options'):
+        field['options'] = [{'value': v, 'label': v} for v in mg['options']]
 
-    # maxLength
-    if mx.get('maxLength'):
-        field['maxLength'] = mx['maxLength']
-
-    # validationPattern
-    if mx.get('patron'):
-        field['validationPattern'] = str(mx['patron'])
-
-    # options
-    if options:
-        field['options'] = options
-
-    # numberFormat
-    if num_fmt:
-        field['jsonNumberFormat'] = num_fmt
-
-    # Checkbox: checkedPdfValue depends on sourceMeta presence
-    if ftype == 'checkbox':
-        if field.get('sourceMeta'):
-            field['checkedPdfValue'] = True
-            field['checkedJsonValue'] = True
-        # No sourceMeta → leave existing or omit (UI helper, can be "X")
-
-    # Width hints
     if ftype == 'date':
         field['width'] = 'half'
-    if ftype == 'select' and options:
-        field['width'] = 'half'
 
-    # autoFillConcat: PRESERVE, never overwrite
-    # repeaterConfig: PRESERVE, never overwrite
-
-    # Radio group handling
-    grupo = mx.get('grupo')
-    if grupo:
-        grupo = str(grupo).strip()
-    if grupo and grupo in radio_groups and len(radio_groups[grupo]) > 1:
-        field['type'] = 'radio'
-        group_rows = radio_groups[grupo]
-        group_ids = []
-        for gr in group_rows:
-            sn = str(gr.get('sourceName', gr.get('acroActual', '')))
-            group_ids.append('field_' + sn)
-
-        field['radioGroupLabel'] = _humanize_group(grupo)
-        field['radioGroupFields'] = [gid for gid in group_ids if gid != field.get('id')]
-
-        if options:
-            field['options'] = options
-
-        etiqueta = mx.get('etiqueta', '')
-        if options:
-            matched_opt = _find_matching_option(str(etiqueta), options)
-            if matched_opt:
-                field['jsonValue'] = matched_opt.get('jsonValue', matched_opt.get('value', etiqueta))
-                field['pdfValue'] = matched_opt.get('pdfValue', matched_opt.get('label', etiqueta))
-            else:
-                field['jsonValue'] = etiqueta
-                field['pdfValue'] = etiqueta
-        else:
-            field['jsonValue'] = etiqueta
-            field['pdfValue'] = etiqueta
+    if 'conditionalVisibility' not in field:
+        field['conditionalVisibility'] = None
+    if 'conditionalRequired' not in field:
+        field['conditionalRequired'] = None
 
     return field
 
 
-# ─── Section organization ────────────────────────────────────────────────────
-
-def _assign_order(fields):
-    for i, f in enumerate(fields):
-        f['order'] = i + 1
-
-
-def organize_sections(fields_with_section, unmatched_sf):
-    # Collect unique section names in order of appearance
+def organize_sections(fields_with_section, unmatched_fields):
+    """Organize fields into sections based on matrix seccion column."""
     seen = set()
-    section_names_ordered = []
+    section_order = []
     section_fields = {}
 
     for field, sec_name in fields_with_section:
         if sec_name not in seen:
             seen.add(sec_name)
-            section_names_ordered.append(sec_name)
+            section_order.append(sec_name)
             section_fields[sec_name] = []
         section_fields[sec_name].append(field)
 
-    # Group numbered sections: BENEFICIARIO 1/2/3 → parent BENEFICIARIO
-    parent_groups = OrderedDict()
-    parent_insertion_order = []
-    for sec_name in section_names_ordered:
-        base, num = section_parent(sec_name)
-        if base not in parent_groups:
-            parent_groups[base] = []
-            parent_insertion_order.append(base)
-        parent_groups[base].append((sec_name, num))
-
     sections = []
-    sec_order = 1
+    sec_idx = 1
+    for sec_name in section_order:
+        flds = section_fields[sec_name]
+        for i, f in enumerate(flds):
+            f['order'] = i + 1
 
-    for parent_name in parent_insertion_order:
-        children = parent_groups[parent_name]
-        has_numbered = any(num is not None for _, num in children)
+        sec_id = 'section_' + to_key(sec_name)
+        sub_id = 'subsection_' + to_key(sec_name)
+        clean_title = title_case(sec_name)
 
-        if has_numbered and len(children) > 1:
-            subsections = []
-            sub_order = 1
-            for child_name, _ in children:
-                child_fields = section_fields.get(child_name, [])
-                _assign_order(child_fields)
-                sub_id = 'subsection_' + to_key(child_name)
-                subsections.append({
-                    'id': sub_id,
-                    'title': child_name.strip().title(),
-                    'order': sub_order,
-                    'fields': child_fields,
-                    'childrenOrder': [{'kind': 'field', 'id': f['id']} for f in child_fields],
-                })
-                sub_order += 1
+        subsection = {
+            'id': sub_id,
+            'title': clean_title,
+            'order': 1,
+            'fields': flds,
+            'childrenOrder': [{'kind': 'field', 'id': f['id']} for f in flds],
+        }
+        sections.append({
+            'id': sec_id,
+            'title': clean_title,
+            'order': sec_idx,
+            'subsections': [subsection],
+            'childrenOrder': [{'kind': 'subsection', 'id': sub_id}],
+        })
+        sec_idx += 1
 
-            sec_id = 'section_' + to_key(parent_name)
-            parent_title = parent_name.strip().title()
-            if not parent_title.endswith('s') and not parent_title.endswith('es'):
-                parent_title += 's'
-
-            sections.append({
-                'id': sec_id,
-                'title': parent_title,
-                'order': sec_order,
-                'subsections': subsections,
-                'childrenOrder': [{'kind': 'subsection', 'id': s['id']} for s in subsections],
-            })
-            sec_order += 1
-        else:
-            for child_name, _ in children:
-                child_fields = section_fields.get(child_name, [])
-                _assign_order(child_fields)
-                sec_id = 'section_' + to_key(child_name)
-                sub_id = 'subsection_' + to_key(child_name)
-                clean_title = child_name.strip().title()
-
-                subsection = {
-                    'id': sub_id,
-                    'title': clean_title,
-                    'order': 1,
-                    'fields': child_fields,
-                    'childrenOrder': [{'kind': 'field', 'id': f['id']} for f in child_fields],
-                }
-
-                sections.append({
-                    'id': sec_id,
-                    'title': clean_title,
-                    'order': sec_order,
-                    'subsections': [subsection],
-                    'childrenOrder': [{'kind': 'subsection', 'id': sub_id}],
-                })
-                sec_order += 1
-
-    # Unmatched signframe fields → hidden system section with NEVER condition
-    if unmatched_sf:
-        _assign_order(unmatched_sf)
+    if unmatched_fields:
+        for i, f in enumerate(unmatched_fields):
+            f['order'] = i + 1
         sub_id = 'subsection_sistema_oculto'
         subsection = {
             'id': sub_id,
             'title': 'Datos del Sistema (oculto)',
             'order': 1,
             'conditionalVisibility': NEVER_CONDITION,
-            'fields': unmatched_sf,
-            'childrenOrder': [{'kind': 'field', 'id': f['id']} for f in unmatched_sf],
+            'fields': unmatched_fields,
+            'childrenOrder': [{'kind': 'field', 'id': f['id']} for f in unmatched_fields],
         }
         sections.append({
             'id': 'section_sistema',
             'title': 'Sistema',
-            'order': sec_order,
+            'order': sec_idx,
             'subsections': [subsection],
             'childrenOrder': [{'kind': 'subsection', 'id': sub_id}],
         })
@@ -550,188 +582,179 @@ def organize_sections(fields_with_section, unmatched_sf):
     return sections
 
 
-# ─── Validation ──────────────────────────────────────────────────────────────
+def generate_form_definition(sf_data, json_fields, matrix_groups, match_results, output_path):
+    """Generate the enriched form-definition JSON."""
+    warnings = []
 
-def validate_output(sections, warnings):
-    total = 0
+    sn_to_group = {}
+    for mg, sn, conf, ambig in match_results:
+        resolved = resolve_source_name(mg)
+        if not resolved:
+            resolved = sn
+        if resolved:
+            sn_to_group[resolved] = mg
+
+    fields_with_section = []
+    unmatched = []
+
+    for jf in json_fields:
+        sn = jf['_sourceName']
+        mg = sn_to_group.get(sn)
+
+        if mg:
+            enrich_field(jf, mg, matrix_groups)
+            sec = mg.get('seccion', 'Sin Seccion')
+            fields_with_section.append((jf, str(sec).strip()))
+        else:
+            unmatched.append(jf)
+
+        if jf.get('repeaterConfig'):
+            warnings.append(f"Field '{jf.get('id')}' tiene repeaterConfig -> preservado, revisar manualmente")
+
+    sections = organize_sections(fields_with_section, unmatched)
+
     for sec in sections:
         for sub in sec.get('subsections', []):
             for f in sub.get('fields', []):
-                total += 1
-                # order must not be 0
                 if f.get('order', 0) == 0:
-                    warnings.append(f"FIX: field '{f.get('id')}' tenia order=0, corregido")
                     f['order'] = 1
-
-                # conditionalVisibility validation
                 cv = f.get('conditionalVisibility')
                 if cv and isinstance(cv, str):
                     try:
                         parsed = json.loads(cv)
-                        for cond in parsed.get('conditions', []):
-                            op = cond.get('operator', '')
-                            if op not in VALID_OPERATORS:
-                                old_op = op
-                                cond['operator'] = 'not_empty'
-                                f['conditionalVisibility'] = json.dumps(parsed)
-                                warnings.append(
-                                    f"FIX: field '{f.get('id')}' operador invalido '{old_op}' -> 'not_empty'"
-                                )
-                            if op == 'equals' and 'value' not in cond:
-                                cond['value'] = ''
-                                f['conditionalVisibility'] = json.dumps(parsed)
-                            fid = cond.get('fieldId', '')
-                            if fid and not fid.startswith('field_'):
-                                cond['fieldId'] = 'field_' + fid
-                                f['conditionalVisibility'] = json.dumps(parsed)
+                        changed = False
+                        for c in parsed.get('conditions', []):
+                            if c.get('operator') and c['operator'] not in VALID_OPERATORS:
+                                c['operator'] = 'not_empty'
+                                changed = True
+                            if c.get('fieldId', '').startswith('field_') is False and c.get('fieldId'):
+                                c['fieldId'] = 'field_' + c['fieldId']
+                                changed = True
+                        if changed:
+                            f['conditionalVisibility'] = json.dumps(parsed)
                     except json.JSONDecodeError:
                         pass
 
-                # checkbox with sourceMeta must use true, not "X"
-                if f.get('type') == 'checkbox' and f.get('sourceMeta'):
-                    cpv = f.get('checkedPdfValue')
-                    if cpv in ('X', 'x'):
-                        f['checkedPdfValue'] = True
-                        f['checkedJsonValue'] = True
-                        warnings.append(
-                            f"FIX: checkbox '{f.get('id')}' con sourceMeta tenia 'X' -> true"
-                        )
-    return total
+    output = {}
+    for k in sf_data:
+        if k == 'sections':
+            continue
+        output[k] = sf_data[k]
+    output['sections'] = sections
+
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(output, f, ensure_ascii=False, indent=2)
+
+    total = sum(len(sub.get('fields', []))
+                for sec in sections for sub in sec.get('subsections', []))
+
+    print(f"\n  Generado: {output_path}")
+    print(f"    {len(sections)} secciones")
+    print(f"    {total} campos totales")
+    print(f"    {len(fields_with_section)} con match")
+    print(f"    {len(unmatched)} sin match (-> Sistema)")
+
+    return warnings
+
+
+# ─── Report ──────────────────────────────────────────────────────────────────
+
+def write_report(match_results, json_fields, warnings, report_path):
+    lines = []
+    lines.append("=" * 60)
+    lines.append("REPORTE DE COMBINACION")
+    lines.append("=" * 60)
+
+    resolved = sum(1 for _, sn, c, a in match_results if sn and c >= 0.5)
+    ambiguous = sum(1 for _, sn, c, a in match_results if a)
+    empty = sum(1 for _, sn, c, a in match_results if not sn)
+    final_set = sum(1 for mg, _, _, _ in match_results if mg.get('sourceNameFinal'))
+
+    used_sns = set()
+    for _, sn, _, _ in match_results:
+        if sn:
+            used_sns.add(sn)
+
+    unmatched_json = [jf for jf in json_fields if jf['_sourceName'] not in used_sns]
+
+    lines.append(f"\nFilas de matriz: {len(match_results)}")
+    lines.append(f"  Resueltas (confianza >= 0.5): {resolved}")
+    lines.append(f"  Ambiguas (amarillas): {ambiguous}")
+    lines.append(f"  Sin match: {empty}")
+    lines.append(f"  Con sourceName_final fijo: {final_set}")
+    lines.append(f"\nCampos en signframe JSON: {len(json_fields)}")
+    lines.append(f"  Con match en matriz: {len(used_sns)}")
+    lines.append(f"  Sin match (-> Sistema): {len(unmatched_json)}")
+
+    dups = {}
+    for _, sn, _, _ in match_results:
+        if sn:
+            dups[sn] = dups.get(sn, 0) + 1
+    conflicts = {k: v for k, v in dups.items() if v > 1}
+    if conflicts:
+        lines.append(f"\nCONFLICTOS (mismo sourceName asignado a multiples filas):")
+        for sn, count in conflicts.items():
+            lines.append(f"  {sn}: {count} filas")
+
+    if warnings:
+        lines.append(f"\nWARNINGS ({len(warnings)}):")
+        for w in warnings:
+            lines.append(f"  {w}")
+
+    if ambiguous:
+        lines.append(f"\nFILAS AMBIGUAS (revisar en matriz_revisar.xlsx):")
+        for mg, sn, conf, ambig in match_results:
+            if ambig:
+                lines.append(f"  Fila {mg.get('primary', {}).get('_row', '?')}: "
+                           f"'{mg.get('etiqueta', '')}' -> '{sn}' (conf={conf:.2f})")
+
+    report = '\n'.join(lines)
+    with open(report_path, 'w', encoding='utf-8') as f:
+        f.write(report)
+    print(f"\n  Reporte: {report_path}")
+    print(report)
+    return report
 
 
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='Combina signframe.json + matriz.xlsx -> form-definition-final.json'
-    )
-    parser.add_argument('--signframe', default='./signframe.json',
-                        help='Path al JSON skeleton de Signframe (default: ./signframe.json)')
-    parser.add_argument('--matriz', default='./matriz.xlsx',
-                        help='Path al XLSX de mapeo (default: ./matriz.xlsx)')
-    parser.add_argument('--output', default='./form-definition-final.json',
-                        help='Path de salida (default: ./form-definition-final.json)')
+    parser = argparse.ArgumentParser(description='Combine signframe.json + matriz.xlsx')
+    parser.add_argument('--signframe', default='./signframe.json')
+    parser.add_argument('--matriz', default='./Matriz_Formularios_VidaColectiva_Secciones.xlsx')
+    parser.add_argument('--output-xlsx', default='./matriz_revisar.xlsx')
+    parser.add_argument('--output-json', default='./form-definition-final.json')
+    parser.add_argument('--report', default='./reporte.txt')
+    parser.add_argument('--step', type=int, default=0, help='1=solo XLSX, 2=solo JSON, 0=ambos')
     args = parser.parse_args()
 
-    # ── 1. Read inputs ──
-    print(f"Leyendo {args.signframe}...")
+    print("Leyendo signframe.json...")
     sf_data = read_signframe(args.signframe)
+    json_fields = extract_json_fields(sf_data)
+    print(f"  {len(json_fields)} campos extraidos")
 
-    print(f"Leyendo {args.matriz}...")
-    mx_rows = read_matriz(args.matriz)
+    print("Leyendo matriz...")
+    matrix_rows, col_map = read_matriz(args.matriz)
 
-    sf_fields = collect_sf_fields(sf_data)
-    print(f"  {len(sf_fields)} campos en signframe.json")
-    print(f"  {len(mx_rows)} filas en matriz\n")
+    print("Colapsando filas de opciones...")
+    matrix_groups = collapse_option_rows(matrix_rows)
+    print(f"  {len(matrix_rows)} filas -> {len(matrix_groups)} campos logicos")
 
-    # ── 2. Build lookups ──
-    mx_by_source = {}
-    mx_by_acro = {}
-    for row in mx_rows:
-        sn = row.get('sourceName')
-        aa = row.get('acroActual')
-        if sn:
-            mx_by_source[str(sn)] = row
-        if aa:
-            mx_by_acro[str(aa)] = row
+    print("Ejecutando fuzzy matching...")
+    match_results = match_all(matrix_groups, json_fields)
 
-    # Label → field_id lookup (for conditionalVisibility natural-language parsing)
-    label_to_id = {}
-    for row in mx_rows:
-        etiq = row.get('etiqueta')
-        sn = row.get('sourceName', row.get('acroActual', ''))
-        if etiq and sn:
-            label_to_id[str(etiq).lower().strip()] = 'field_' + str(sn)
+    if args.step in (0, 1):
+        print("\n--- PASO 1: Generar matriz_revisar.xlsx ---")
+        write_review_xlsx(args.matriz, matrix_rows, col_map, match_results, args.output_xlsx)
 
-    # ── 3. Detect radio groups ──
-    # Only groups where members are Btn-type (checkboxes in PDF) become radio groups.
-    # Tx-type groups (like fecha_solicitud = dia/mes/ano) are related fields, not radios.
-    candidate_groups = {}
-    for row in mx_rows:
-        g = row.get('grupo')
-        if g:
-            g = str(g).strip()
-            if g not in candidate_groups:
-                candidate_groups[g] = []
-            candidate_groups[g].append(row)
-
-    radio_groups = {}
-    for g, rows in candidate_groups.items():
-        has_btn = any(str(r.get('nativeType', '')).strip() == 'Btn' for r in rows)
-        has_radio_type = any('radio' in str(r.get('tipoDato', '')).lower() for r in rows)
-        if has_btn or has_radio_type:
-            radio_groups[g] = rows
-
-    # ── 4. Cross-reference and enrich ──
-    fields_with_section = []
-    unmatched_sf = []
     warnings = []
-    used_mx_keys = set()
+    if args.step in (0, 2):
+        print("\n--- PASO 2: Generar form-definition-final.json ---")
+        warnings = generate_form_definition(
+            sf_data, json_fields, matrix_groups, match_results, args.output_json
+        )
 
-    for field in sf_fields:
-        key = source_key(field)
-        mx = mx_by_source.get(key) or mx_by_acro.get(key)
-
-        if mx:
-            used_mx_keys.add(str(mx.get('sourceName', '')))
-            used_mx_keys.add(str(mx.get('acroActual', '')))
-            sec_name = str(mx.get('seccionPdf') or 'Sin Seccion').strip()
-            enrich_field(field, mx, radio_groups, label_to_id)
-            fields_with_section.append((field, sec_name))
-        else:
-            unmatched_sf.append(field)
-            warnings.append(
-                f"signframe field '{field.get('id')}' (source={key}) "
-                f"sin match en matriz -> seccion Sistema"
-            )
-
-    # Matrix rows without signframe match
-    for row in mx_rows:
-        sn = str(row.get('sourceName', ''))
-        aa = str(row.get('acroActual', ''))
-        if sn not in used_mx_keys and aa not in used_mx_keys:
-            warnings.append(
-                f"fila de matriz sourceName='{sn}' (acro='{aa}') "
-                f"sin match en signframe.json"
-            )
-
-    # Repeater warnings
-    for field in sf_fields:
-        if field.get('repeaterConfig'):
-            warnings.append(
-                f"Field '{field.get('id')}' tiene repeaterConfig "
-                f"-> preservado tal cual, revisar manualmente"
-            )
-
-    # ── 5. Organize sections ──
-    sections = organize_sections(fields_with_section, unmatched_sf)
-
-    # ── 6. Validate ──
-    total_fields = validate_output(sections, warnings)
-
-    # ── 7. Build output ──
-    output = dict(sf_data)
-    output['sections'] = sections
-
-    with open(args.output, 'w', encoding='utf-8') as f:
-        json.dump(output, f, ensure_ascii=False, indent=2)
-
-    # ── 8. Report ──
-    n_sections = len(sections)
-    n_matched = len(fields_with_section)
-    n_unmatched = len(unmatched_sf)
-
-    print(f"\nGenerado: {args.output}")
-    print(f"  {n_sections} secciones")
-    print(f"  {total_fields} campos totales")
-    print(f"  {n_matched} matcheados con matriz")
-    print(f"  {n_unmatched} sin match (-> seccion Sistema)")
-
-    if warnings:
-        print(f"\n  {len(warnings)} advertencias:")
-        for w in warnings:
-            print(f"    {w}")
-
+    write_report(match_results, json_fields, warnings, args.report)
     print("\nDone.")
 
 
