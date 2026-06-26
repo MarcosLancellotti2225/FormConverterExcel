@@ -23,6 +23,11 @@ Thumbs.db
 __pycache__/
 *.pyc
 
+# combine_form.py generated outputs
+matriz_revisar.xlsx
+reporte.txt
+form-definition-final.json
+
 # Logs
 *.log
 npm-debug.log*
