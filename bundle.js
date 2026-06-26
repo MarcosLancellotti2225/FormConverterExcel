@@ -97515,28 +97515,11 @@ ${pagesHtml}</body>
           for (const page of copiedPages) merged.addPage(page);
           stats.push({ name: file.name, pages: pageCount });
         }
-        function findTopParentLocal(ref2, dict2) {
-          let curRef = ref2, cur = dict2, depth = 20;
-          while (depth-- > 0) {
-            const pRef = cur.get(PDFName.of("Parent"));
-            if (!pRef) return curRef;
-            const p = context.lookup(pRef);
-            if (!p || typeof p.get !== "function") return curRef;
-            curRef = pRef;
-            cur = p;
-          }
-          return curRef;
-        }
-        function refInArrayLocal(r2, arr) {
-          const s = String(r2);
-          for (let i = 0; i < arr.length; i++) {
-            if (String(arr[i]) === s) return true;
-          }
-          return false;
-        }
-        const allFieldRefs = [];
         const pages = merged.getPages();
+        const allFieldRefs = [];
+        const seenRefs = /* @__PURE__ */ new Set();
         for (let pi = 0; pi < pages.length; pi++) {
+          const pageRef = pages[pi].ref;
           const pageNode = pages[pi].node;
           const annotsRef = pageNode.get(PDFName.of("Annots"));
           if (!annotsRef) continue;
@@ -97549,18 +97532,27 @@ ${pagesHtml}</body>
             const subtype = dict.get(PDFName.of("Subtype"));
             const hasFieldType = dict.get(PDFName.of("FT"));
             const hasFieldName = dict.get(PDFName.of("T"));
-            const hasParent = dict.get(PDFName.of("Parent"));
             const isWidget = subtype && subtype.toString() === "/Widget" || hasFieldType || hasFieldName;
             if (!isWidget) continue;
+            dict.set(PDFName.of("P"), pageRef);
+            const hasParent = dict.get(PDFName.of("Parent"));
+            let topRef = ref;
             if (hasParent) {
-              const topRef = findTopParentLocal(ref, dict);
-              if (topRef && !refInArrayLocal(topRef, allFieldRefs)) {
-                allFieldRefs.push(topRef);
+              let cur = dict, curRef = ref, depth = 20;
+              while (depth-- > 0) {
+                const pRef = cur.get(PDFName.of("Parent"));
+                if (!pRef) break;
+                const p = context.lookup(pRef);
+                if (!p || typeof p.get !== "function") break;
+                curRef = pRef;
+                cur = p;
               }
-            } else {
-              if (!refInArrayLocal(ref, allFieldRefs)) {
-                allFieldRefs.push(ref);
-              }
+              topRef = curRef;
+            }
+            const key = String(topRef);
+            if (!seenRefs.has(key)) {
+              seenRefs.add(key);
+              allFieldRefs.push(topRef);
             }
           }
         }

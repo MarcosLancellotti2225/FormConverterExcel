@@ -94,6 +94,7 @@ function getWidgetPage(dict, context, pageRefs, annotsByPage) {
         }
     }
 
+    // Fallback: find which page's Annots contains this widget
     if (annotsByPage) {
         const dictRef = context.getObjectRef(dict);
         if (dictRef) {
