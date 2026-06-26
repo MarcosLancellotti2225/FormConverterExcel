@@ -2357,6 +2357,7 @@
     // ==================== SIGNFRAME GENERATOR FLOW ====================
 
     var sfState = {
+        pdf: null,
         matrix: null,
         signframeJson: null,
         targetJson: null,
@@ -2365,6 +2366,11 @@
     };
 
     function initSignframeFlow() {
+        $('#sfPdfInput').addEventListener('change', function(e) {
+            sfState.pdf = e.target.files[0] || null;
+            updateSfFileStatus('sfPdfStatus', sfState.pdf);
+            refreshSfButton();
+        });
         $('#sfMatrixInput').addEventListener('change', function(e) {
             sfState.matrix = e.target.files[0] || null;
             updateSfFileStatus('sfMatrixStatus', sfState.matrix);
@@ -2400,7 +2406,7 @@
     }
 
     function refreshSfButton() {
-        $('#btnSignframeGenerate').disabled = !(sfState.matrix && sfState.signframeJson);
+        $('#btnSignframeGenerate').disabled = !(sfState.pdf && sfState.matrix && sfState.signframeJson);
     }
 
     async function runSignframeGenerate() {

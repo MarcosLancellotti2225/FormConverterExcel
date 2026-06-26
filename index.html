@@ -52,9 +52,9 @@
             <div class="mode-card" data-mode="signframe">
                 <div class="mode-icon">{ }</div>
                 <h2>Generador Signframe</h2>
-                <p>Genera el JSON de definición de formulario Signframe desde Matriz XLSX + JSON skeleton.</p>
+                <p>Genera el JSON de definición de formulario Signframe desde PDF + Matriz XLSX + JSON Signframe.</p>
                 <ul class="mode-features">
-                    <li>Cruza matriz con JSON skeleton de Signframe</li>
+                    <li>Cruza matriz con JSON de Signframe</li>
                     <li>Secciones y campos auto-organizados</li>
                     <li>Radios desdoblados, checkboxes, helpers</li>
                     <li>8 checks de validación automáticos</li>
@@ -213,19 +213,25 @@
         <div id="signframeFlow" hidden>
             <section class="panel">
                 <h2>1. Archivos</h2>
-                <p class="hint">Cargá la Matriz XLSX (22 columnas) y el JSON skeleton de Signframe. Opcionalmente un JSON destino para validar paths.</p>
+                <p class="hint">Cargá el PDF original, la Matriz XLSX y el JSON de Signframe. Opcionalmente un JSON destino para validar paths.</p>
                 <div class="inputs-grid">
-                    <label class="file-slot required" data-slot="sf-matrix">
-                        <span class="label">Matriz XLSX</span>
-                        <span class="desc">Mapeo 22 columnas (AcroForm Actual → Propuesto, tipos, secciones, paths)</span>
-                        <input type="file" accept=".xlsx,.xls" id="sfMatrixInput">
-                        <span class="file-status" id="sfMatrixStatus"></span>
+                    <label class="file-slot required" data-slot="sf-pdf">
+                        <span class="label">PDF original</span>
+                        <span class="desc">El PDF del formulario INS (referencia para nombres de descarga)</span>
+                        <input type="file" accept=".pdf" id="sfPdfInput">
+                        <span class="file-status" id="sfPdfStatus"></span>
                     </label>
                     <label class="file-slot required" data-slot="sf-json">
                         <span class="label">Signframe JSON</span>
-                        <span class="desc">El JSON skeleton de Signframe con los campos y sourceMeta</span>
+                        <span class="desc">El JSON de Signframe con los campos y sourceMeta</span>
                         <input type="file" accept=".json" id="sfJsonInput">
                         <span class="file-status" id="sfJsonStatus"></span>
+                    </label>
+                    <label class="file-slot required" data-slot="sf-matrix">
+                        <span class="label">Matriz XLSX</span>
+                        <span class="desc">Mapeo de campos (AcroForm Actual → Propuesto, tipos, secciones)</span>
+                        <input type="file" accept=".xlsx,.xls" id="sfMatrixInput">
+                        <span class="file-status" id="sfMatrixStatus"></span>
                     </label>
                     <label class="file-slot" data-slot="sf-target">
                         <span class="label">JSON destino (opcional)</span>
@@ -387,7 +393,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=30"></script>
-    <script src="app.js?v=30"></script>
+    <script src="bundle.js?v=31"></script>
+    <script src="app.js?v=31"></script>
 </body>
 </html>
