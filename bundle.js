@@ -94087,7 +94087,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           height: Math.round(Math.abs(y2 - y1))
         };
       }
-      function getWidgetPage(dict, context, pageRefs) {
+      function getWidgetPage(dict, context, pageRefs, annotsByPage) {
         const pRef = dict.get(PDFName.of("P"));
         if (pRef) {
           const resolved = context.lookup(pRef);
@@ -94099,9 +94099,18 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             if (idx >= 0) return idx + 1;
           }
         }
+        if (annotsByPage) {
+          const dictRef = context.getObjectRef(dict);
+          if (dictRef) {
+            const dStr = String(dictRef);
+            for (let pi = 0; pi < annotsByPage.length; pi++) {
+              if (annotsByPage[pi].has(dStr)) return pi + 1;
+            }
+          }
+        }
         return 1;
       }
-      function collectLeaves(fieldsArray, context, parentName, result, pageRefs) {
+      function collectLeaves(fieldsArray, context, parentName, result, pageRefs, annotsByPage) {
         if (!fieldsArray || typeof fieldsArray.size !== "function") return;
         for (let i = 0; i < fieldsArray.size(); i++) {
           const ref = fieldsArray.get(i);
@@ -94117,7 +94126,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
               const firstKid = context.lookup(kids.get(0));
               const firstKidHasT = firstKid && firstKid.get && firstKid.get(PDFName.of("T"));
               if (firstKidHasT) {
-                collectLeaves(kids, context, fullName, result, pageRefs);
+                collectLeaves(kids, context, fullName, result, pageRefs, annotsByPage);
                 continue;
               }
               if (kids.size() > 1) {
@@ -94127,7 +94136,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
                   const kidDict = context.lookup(kidRef);
                   if (!kidDict || typeof kidDict.get !== "function") continue;
                   const rect2 = getWidgetRect(kidDict, context);
-                  const page2 = getWidgetPage(kidDict, context, pageRefs);
+                  const page2 = getWidgetPage(kidDict, context, pageRefs, annotsByPage);
                   result.push({
                     name: fullName,
                     type: type2,
@@ -94147,7 +94156,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           }
           const type = getInheritedFieldType(dict, context);
           const rect = getWidgetRect(dict, context);
-          const page = getWidgetPage(dict, context, pageRefs);
+          const page = getWidgetPage(dict, context, pageRefs, annotsByPage);
           result.push({
             name: fullName,
             type,
@@ -94181,6 +94190,17 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const context = doc.context;
         const pages = doc.getPages();
         const pageRefs = pages.map((p) => p.ref);
+        const annotsByPage = pages.map(function(page) {
+          var set = /* @__PURE__ */ new Set();
+          var annotsRef = page.node.get(PDFName.of("Annots"));
+          if (!annotsRef) return set;
+          var annots = context.lookup(annotsRef);
+          if (!annots || typeof annots.size !== "function") return set;
+          for (var i = 0; i < annots.size(); i++) {
+            set.add(String(annots.get(i)));
+          }
+          return set;
+        });
         const acroFormRef = doc.catalog.get(PDFName.of("AcroForm"));
         if (!acroFormRef) return [];
         const acroForm = context.lookup(acroFormRef);
@@ -94188,7 +94208,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const fieldsArray = fieldsRef ? context.lookup(fieldsRef) : null;
         if (!fieldsArray) return [];
         const leaves = [];
-        collectLeaves(fieldsArray, context, "", leaves, pageRefs);
+        collectLeaves(fieldsArray, context, "", leaves, pageRefs, annotsByPage);
         markDuplicates(leaves);
         return leaves;
       }

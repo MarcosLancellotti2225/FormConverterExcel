@@ -81,7 +81,7 @@ function getWidgetRect(dict, context) {
     };
 }
 
-function getWidgetPage(dict, context, pageRefs) {
+function getWidgetPage(dict, context, pageRefs, annotsByPage) {
     const pRef = dict.get(PDFName.of('P'));
     if (pRef) {
         const resolved = context.lookup(pRef);
@@ -93,10 +93,21 @@ function getWidgetPage(dict, context, pageRefs) {
             if (idx >= 0) return idx + 1;
         }
     }
+
+    if (annotsByPage) {
+        const dictRef = context.getObjectRef(dict);
+        if (dictRef) {
+            const dStr = String(dictRef);
+            for (let pi = 0; pi < annotsByPage.length; pi++) {
+                if (annotsByPage[pi].has(dStr)) return pi + 1;
+            }
+        }
+    }
+
     return 1;
 }
 
-function collectLeaves(fieldsArray, context, parentName, result, pageRefs) {
+function collectLeaves(fieldsArray, context, parentName, result, pageRefs, annotsByPage) {
     if (!fieldsArray || typeof fieldsArray.size !== 'function') return;
 
     for (let i = 0; i < fieldsArray.size(); i++) {
@@ -115,7 +126,7 @@ function collectLeaves(fieldsArray, context, parentName, result, pageRefs) {
                 const firstKid = context.lookup(kids.get(0));
                 const firstKidHasT = firstKid && firstKid.get && firstKid.get(PDFName.of('T'));
                 if (firstKidHasT) {
-                    collectLeaves(kids, context, fullName, result, pageRefs);
+                    collectLeaves(kids, context, fullName, result, pageRefs, annotsByPage);
                     continue;
                 }
 
@@ -126,7 +137,7 @@ function collectLeaves(fieldsArray, context, parentName, result, pageRefs) {
                         const kidDict = context.lookup(kidRef);
                         if (!kidDict || typeof kidDict.get !== 'function') continue;
                         const rect = getWidgetRect(kidDict, context);
-                        const page = getWidgetPage(kidDict, context, pageRefs);
+                        const page = getWidgetPage(kidDict, context, pageRefs, annotsByPage);
                         result.push({
                             name: fullName,
                             type,
@@ -145,7 +156,7 @@ function collectLeaves(fieldsArray, context, parentName, result, pageRefs) {
 
         const type = getInheritedFieldType(dict, context);
         const rect = getWidgetRect(dict, context);
-        const page = getWidgetPage(dict, context, pageRefs);
+        const page = getWidgetPage(dict, context, pageRefs, annotsByPage);
 
         result.push({
             name: fullName,
@@ -183,6 +194,18 @@ async function readPdfFields(pdfBytes) {
     const pages = doc.getPages();
     const pageRefs = pages.map(p => p.ref);
 
+    const annotsByPage = pages.map(function (page) {
+        var set = new Set();
+        var annotsRef = page.node.get(PDFName.of('Annots'));
+        if (!annotsRef) return set;
+        var annots = context.lookup(annotsRef);
+        if (!annots || typeof annots.size !== 'function') return set;
+        for (var i = 0; i < annots.size(); i++) {
+            set.add(String(annots.get(i)));
+        }
+        return set;
+    });
+
     const acroFormRef = doc.catalog.get(PDFName.of('AcroForm'));
     if (!acroFormRef) return [];
 
@@ -192,7 +215,7 @@ async function readPdfFields(pdfBytes) {
     if (!fieldsArray) return [];
 
     const leaves = [];
-    collectLeaves(fieldsArray, context, '', leaves, pageRefs);
+    collectLeaves(fieldsArray, context, '', leaves, pageRefs, annotsByPage);
     markDuplicates(leaves);
     return leaves;
 }
