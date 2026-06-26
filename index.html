@@ -49,6 +49,18 @@
                 </ul>
                 <button class="primary">Empezar</button>
             </div>
+            <div class="mode-card" data-mode="signframe">
+                <div class="mode-icon">{ }</div>
+                <h2>Generador Signframe</h2>
+                <p>Genera el JSON de definición de formulario Signframe desde Matriz XLSX + PDF AcroForm.</p>
+                <ul class="mode-features">
+                    <li>Cruza matriz con AcroForms del PDF</li>
+                    <li>Secciones y campos auto-organizados</li>
+                    <li>Radios desdoblados, checkboxes, helpers</li>
+                    <li>8 checks de validación automáticos</li>
+                </ul>
+                <button class="primary">Empezar</button>
+            </div>
             <div class="mode-card" data-mode="merge-pdf">
                 <div class="mode-icon">📎</div>
                 <h2>Concatenar PDFs</h2>
@@ -197,6 +209,75 @@
             </section>
         </div>
 
+        <!-- ============ SIGNFRAME GENERATOR FLOW ============ -->
+        <div id="signframeFlow" hidden>
+            <section class="panel">
+                <h2>1. Archivos</h2>
+                <p class="hint">Cargá la Matriz XLSX (22 columnas) y el PDF con los AcroForms. Opcionalmente un JSON destino para validar paths.</p>
+                <div class="inputs-grid">
+                    <label class="file-slot required" data-slot="sf-matrix">
+                        <span class="label">Matriz XLSX</span>
+                        <span class="desc">Mapeo 22 columnas (AcroForm Actual → Propuesto, tipos, secciones, paths)</span>
+                        <input type="file" accept=".xlsx,.xls" id="sfMatrixInput">
+                        <span class="file-status" id="sfMatrixStatus"></span>
+                    </label>
+                    <label class="file-slot required" data-slot="sf-pdf">
+                        <span class="label">PDF AcroForm</span>
+                        <span class="desc">El PDF con los campos AcroForm reales</span>
+                        <input type="file" accept=".pdf" id="sfPdfInput">
+                        <span class="file-status" id="sfPdfStatus"></span>
+                    </label>
+                    <label class="file-slot" data-slot="sf-target">
+                        <span class="label">JSON destino (opcional)</span>
+                        <span class="desc">Para validar que los paths salidaJSON existan</span>
+                        <input type="file" accept=".json" id="sfTargetInput">
+                        <span class="file-status" id="sfTargetStatus"></span>
+                    </label>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>2. Generar</h2>
+                <div class="actions">
+                    <button id="btnSignframeGenerate" class="primary" disabled>Generar JSON Signframe</button>
+                    <button id="btnSignframeDownload" class="primary" hidden>Descargar JSON</button>
+                    <button id="btnSignframeReport" class="secondary btn-sm" hidden>Descargar Reporte</button>
+                </div>
+                <div id="sfStatus" class="status"></div>
+            </section>
+
+            <div id="sfResultPanel" class="detect-split" hidden>
+                <section class="panel detect-split-left">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                        <h2 style="margin:0;">Validación</h2>
+                        <span id="sfValidationSummary" style="font-size:12px;"></span>
+                    </div>
+                    <div id="sfValidationChecks" class="sf-checks"></div>
+
+                    <div style="margin-top:1rem;">
+                        <h3 style="font-size:0.9rem;margin-bottom:6px;">Estadísticas</h3>
+                        <div id="sfStats" class="sf-stats"></div>
+                    </div>
+
+                    <div id="sfWarningsSection" hidden style="margin-top:1rem;">
+                        <h3 style="font-size:0.9rem;margin-bottom:6px;">Warnings</h3>
+                        <div id="sfWarnings" class="sf-warnings"></div>
+                    </div>
+                </section>
+                <section class="panel detect-split-right">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                        <h2 style="margin:0;">JSON Preview</h2>
+                        <div style="display:flex;gap:6px;">
+                            <button id="btnSfCopyJson" class="secondary btn-sm">Copiar JSON</button>
+                            <button id="btnSfCollapseAll" class="secondary btn-sm">Colapsar</button>
+                            <button id="btnSfExpandAll" class="secondary btn-sm">Expandir</button>
+                        </div>
+                    </div>
+                    <div id="sfJsonPreview" class="sf-json-preview"></div>
+                </section>
+            </div>
+        </div>
+
         <!-- ============ MERGE PDF FLOW ============ -->
         <div id="mergePdfFlow" hidden>
             <section class="panel">
@@ -306,7 +387,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=28"></script>
-    <script src="app.js?v=28"></script>
+    <script src="bundle.js?v=29"></script>
+    <script src="app.js?v=29"></script>
 </body>
 </html>

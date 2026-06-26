@@ -94542,6 +94542,1093 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     }
   });
 
+  // src/signframe-generator/matrix-parser.js
+  var require_matrix_parser = __commonJS({
+    "src/signframe-generator/matrix-parser.js"(exports, module) {
+      "use strict";
+      var XLSX = require_xlsx();
+      var EXPECTED_HEADERS = [
+        "#",
+        "Secci\xF3n del PDF",
+        "AcroForm Actual",
+        "AcroForm Propuesto",
+        "Etiqueta para el p\xFAblico",
+        "Nombre interno (sourceName)",
+        "Tipo",
+        "Grupo",
+        "P\xE1gina",
+        "Path JSON principal",
+        "Paths secundarios",
+        "Pre-rellenado",
+        "Obligatorio",
+        "MaxLength",
+        "Patr\xF3n regex",
+        "Formato",
+        "Visibilidad condicional",
+        "Cat\xE1logo (nombre)",
+        "Opciones formato Lovable (JSON)",
+        "Tipo de dato (matriz)",
+        "Regla original",
+        "Hoja del Excel cat\xE1logo"
+      ];
+      function parseMatrix(excelBytes) {
+        const wb = XLSX.read(excelBytes, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+        if (!raw.length) throw new Error("El Excel de mapeo est\xE1 vac\xEDo");
+        var headerRow = raw[0];
+        var warnings = validateHeaders(headerRow);
+        var rows = [];
+        for (var i = 1; i < raw.length; i++) {
+          var r = raw[i];
+          var acroActual = String(r[2] || "").trim();
+          if (!acroActual) continue;
+          var optionsRaw = String(r[18] || "").trim();
+          var optionsParsed = null;
+          if (optionsRaw) {
+            try {
+              optionsParsed = JSON.parse(optionsRaw);
+            } catch (e) {
+              warnings.push({
+                type: "invalid_options_json",
+                row: i + 1,
+                field: acroActual,
+                reason: "No se pudo parsear JSON de opciones: " + e.message
+              });
+            }
+          }
+          rows.push({
+            rowNum: i,
+            seccionPdf: String(r[1] || "").trim(),
+            acroActual,
+            acroPropuesto: String(r[3] || "").trim(),
+            etiqueta: String(r[4] || "").trim(),
+            sourceName: String(r[5] || "").trim(),
+            nativeType: String(r[6] || "").trim(),
+            grupo: String(r[7] || "").trim(),
+            pagina: r[8] != null && r[8] !== "" ? Number(r[8]) : null,
+            pathPrincipal: String(r[9] || "").trim(),
+            pathsSecundarios: String(r[10] || "").trim(),
+            preRellenado: normalizeYesNo(r[11]),
+            obligatorio: normalizeYesNo(r[12]),
+            maxLength: r[13] != null && r[13] !== "" ? Number(r[13]) || null : null,
+            patron: String(r[14] || "").trim(),
+            formato: String(r[15] || "").trim().toLowerCase(),
+            visibilidadCondicional: String(r[16] || "").trim(),
+            catalogoNombre: String(r[17] || "").trim(),
+            optionsParsed,
+            optionsRaw,
+            tipoDato: String(r[19] || "").trim().toLowerCase(),
+            reglaOriginal: String(r[20] || "").trim(),
+            hojaExcelCatalogo: String(r[21] || "").trim()
+          });
+        }
+        return { rows, warnings };
+      }
+      function parseCustomMatrix(excelBytes, colActual, colPropuesto, colEtiqueta, colSeccion, colTipo, colGrupo, colPath) {
+        var wb = XLSX.read(excelBytes, { type: "array" });
+        var ws = wb.Sheets[wb.SheetNames[0]];
+        var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+        if (raw.length < 2) throw new Error("El Excel est\xE1 vac\xEDo");
+        var rows = [];
+        for (var i = 1; i < raw.length; i++) {
+          var r = raw[i];
+          var acroActual = String(r[colActual] || "").trim();
+          if (!acroActual) continue;
+          rows.push({
+            rowNum: i,
+            seccionPdf: colSeccion != null ? String(r[colSeccion] || "").trim() : "",
+            acroActual,
+            acroPropuesto: colPropuesto != null ? String(r[colPropuesto] || "").trim() : "",
+            etiqueta: colEtiqueta != null ? String(r[colEtiqueta] || "").trim() : "",
+            sourceName: "",
+            nativeType: colTipo != null ? String(r[colTipo] || "").trim() : "",
+            grupo: colGrupo != null ? String(r[colGrupo] || "").trim() : "",
+            pagina: null,
+            pathPrincipal: colPath != null ? String(r[colPath] || "").trim() : "",
+            pathsSecundarios: "",
+            preRellenado: null,
+            obligatorio: null,
+            maxLength: null,
+            patron: "",
+            formato: "",
+            visibilidadCondicional: "",
+            catalogoNombre: "",
+            optionsParsed: null,
+            optionsRaw: "",
+            tipoDato: "",
+            reglaOriginal: "",
+            hojaExcelCatalogo: ""
+          });
+        }
+        return { rows, warnings: [] };
+      }
+      function validateHeaders(headerRow) {
+        var warnings = [];
+        if (!headerRow || headerRow.length < 20) {
+          warnings.push({
+            type: "missing_columns",
+            reason: "Se esperaban 22 columnas, se encontraron " + (headerRow ? headerRow.length : 0)
+          });
+          return warnings;
+        }
+        for (var i = 0; i < EXPECTED_HEADERS.length; i++) {
+          var expected = EXPECTED_HEADERS[i];
+          var actual = String(headerRow[i] || "").trim();
+          if (actual.toLowerCase() !== expected.toLowerCase()) {
+            warnings.push({ type: "header_mismatch", column: i + 1, expected, actual });
+          }
+        }
+        return warnings;
+      }
+      function normalizeYesNo(val) {
+        var s = String(val || "").trim().toLowerCase();
+        if (s === "s\xED" || s === "si" || s === "yes" || s === "s" || s === "x") return true;
+        if (s === "no" || s === "n" || s === "") return false;
+        return null;
+      }
+      module.exports = { parseMatrix, parseCustomMatrix, EXPECTED_HEADERS };
+    }
+  });
+
+  // src/signframe-generator/constants.js
+  var require_constants2 = __commonJS({
+    "src/signframe-generator/constants.js"(exports, module) {
+      "use strict";
+      var SECTION_ORDER = [
+        {
+          key: "datos_generales",
+          title: "Datos Generales",
+          order: 1,
+          subsections: [
+            { key: "sistema", title: "Datos del Sistema (oculto)", hidden: true },
+            { key: "solicitud", title: "Informaci\xF3n de la Solicitud" },
+            { key: "asesor", title: "Datos del Asesor" },
+            { key: "notificacion", title: "Preferencias de Notificaci\xF3n" }
+          ]
+        },
+        {
+          key: "datos_tomador",
+          title: "Datos del Tomador",
+          order: 2,
+          subsections: [
+            { key: "tomador", title: "Datos del Tomador" },
+            { key: "contacto", title: "Contacto y Ubicaci\xF3n" }
+          ]
+        },
+        {
+          key: "datos_grupo",
+          title: "Datos del Grupo a Asegurar",
+          order: 3,
+          subsections: [
+            { key: "grupo", title: "Tipo del Grupo \xB7 Suma a Asegurar \xB7 Cantidad de Miembros" }
+          ]
+        },
+        {
+          key: "coberturas",
+          title: "Coberturas del Seguro",
+          order: 4,
+          subsections: [
+            { key: "basicas", title: "Coberturas B\xE1sicas" },
+            { key: "adicionales", title: "Coberturas Adicionales" }
+          ]
+        },
+        {
+          key: "condiciones",
+          title: "Condiciones Generales Modificables",
+          order: 5,
+          subsections: [
+            { key: "condiciones", title: "Condiciones Generales Modificables" }
+          ]
+        },
+        {
+          key: "declaraciones",
+          title: "Declaraciones Legales",
+          order: 6,
+          subsections: [
+            { key: "declaraciones", title: "Declaraciones" },
+            { key: "aceptacion", title: "Aceptaci\xF3n y consentimiento" }
+          ]
+        }
+      ];
+      var SECTION_KEYWORDS = {
+        sistema: ["sistema", "oculto", "hidden", "internal"],
+        solicitud: ["solicitud", "informaci\xF3n de la solicitud", "info solicitud"],
+        asesor: ["asesor", "agente", "intermediario", "corredor"],
+        notificacion: ["notificaci\xF3n", "notificacion", "preferencia"],
+        tomador: ["tomador", "contratante", "titular"],
+        contacto: ["contacto", "ubicaci\xF3n", "ubicacion", "direcci\xF3n", "direccion", "domicilio"],
+        grupo: ["grupo", "asegurar", "suma", "miembro", "cantidad"],
+        basicas: ["b\xE1sica", "basica", "cobertura b\xE1sica", "coberturas basicas"],
+        adicionales: ["adicional", "cobertura adicional"],
+        condiciones: ["condici\xF3n", "condicion", "modificable"],
+        declaraciones: ["declaraci\xF3n", "declaracion", "legal"],
+        aceptacion: ["aceptaci\xF3n", "aceptacion", "consentimiento", "firma"]
+      };
+      var TYPE_MAP = {
+        texto: "text",
+        alfanumerico: "text",
+        "alfanum\xE9rico": "text",
+        numerico: "number",
+        "num\xE9rico": "number",
+        fecha: "date",
+        combo: "select",
+        lista: "select",
+        select: "select",
+        dropdown: "select",
+        radio: "radio",
+        "radio/combo": "radio",
+        checkbox: "checkbox",
+        check: "checkbox",
+        "comentario informativo": "readonly",
+        informativo: "readonly",
+        titulo: "heading",
+        textarea: "textarea"
+      };
+      var NATIVE_TYPE_MAP = {
+        Tx: "text",
+        Btn: "checkbox",
+        Ch: "select",
+        Sig: "signature"
+      };
+      var CATALOG_CODES = {
+        tipoIdTomador: [
+          { label: "Jur\xEDdica Nacional", jsonValue: "3", pdfValue: "Jur\xEDdica Nacional" },
+          { label: "Gobierno", jsonValue: "2", pdfValue: "Gobierno" },
+          { label: "Inst. aut\xF3noma", jsonValue: "4", pdfValue: "Inst. aut\xF3noma" },
+          { label: "Jur\xEDdica extranjera", jsonValue: "7", pdfValue: "Jur\xEDdica extranjera" }
+        ],
+        moneda: [
+          { label: "Colones", jsonValue: "CRC", pdfValue: "Colones" },
+          { label: "D\xF3lares", jsonValue: "USD", pdfValue: "D\xF3lares" }
+        ],
+        formaPago: [
+          { label: "Mensual", jsonValue: "MEN", pdfValue: "Mensual" },
+          { label: "Trimestral", jsonValue: "TRI", pdfValue: "Trimestral" },
+          { label: "Semestral", jsonValue: "SEM", pdfValue: "Semestral" },
+          { label: "Anual", jsonValue: "ANU", pdfValue: "Anual" }
+        ],
+        notificacion: [
+          { label: "Correo Electr\xF3nico", jsonValue: "Correo Electr\xF3nico", pdfValue: "Correo Electr\xF3nico" },
+          { label: "Domicilio Fisico", jsonValue: "Domicilio Fisico", pdfValue: "Domicilio Fisico" },
+          { label: "Otro", jsonValue: "Otro", pdfValue: "Otro" }
+        ]
+      };
+      var NUMBER_FORMATS = {
+        monto: "#.##0,00",
+        entero: "#.##0",
+        porcentaje: "00.00"
+      };
+      var PATH_CORRECTIONS = {
+        "datosGenerales.personas": "datosFormulario.personas",
+        Consentimiento: "consentimiento",
+        dispotabilidadCarencia: "disputabilidadCarencia"
+      };
+      var NEVER_CONDITION = JSON.stringify({
+        logic: "and",
+        conditions: [{ fieldId: "field_NEVER_EXISTS", operator: "not_empty" }]
+      });
+      module.exports = {
+        SECTION_ORDER,
+        SECTION_KEYWORDS,
+        TYPE_MAP,
+        NATIVE_TYPE_MAP,
+        CATALOG_CODES,
+        NUMBER_FORMATS,
+        PATH_CORRECTIONS,
+        NEVER_CONDITION
+      };
+    }
+  });
+
+  // src/signframe-generator/field-builder.js
+  var require_field_builder = __commonJS({
+    "src/signframe-generator/field-builder.js"(exports, module) {
+      "use strict";
+      var { TYPE_MAP, NATIVE_TYPE_MAP, NUMBER_FORMATS, PATH_CORRECTIONS, NEVER_CONDITION } = require_constants2();
+      function resolveType(row) {
+        if (row.tipoDato) {
+          var mapped = TYPE_MAP[row.tipoDato];
+          if (mapped) return mapped;
+        }
+        if (row.nativeType) {
+          var nt = row.nativeType.trim();
+          if (NATIVE_TYPE_MAP[nt]) return NATIVE_TYPE_MAP[nt];
+        }
+        if (row.grupo) return "radio";
+        if (row.optionsParsed && row.optionsParsed.length) return "select";
+        return "text";
+      }
+      function resolveSourceName(row) {
+        if (row.sourceName) return row.sourceName;
+        if (row.acroPropuesto) return row.acroPropuesto;
+        return row.acroActual;
+      }
+      function buildFieldId(sName) {
+        return "field_" + sName;
+      }
+      function correctPath(path) {
+        if (!path) return path;
+        var corrected = path;
+        for (var wrong in PATH_CORRECTIONS) {
+          if (corrected.indexOf(wrong) !== -1) {
+            corrected = corrected.replace(wrong, PATH_CORRECTIONS[wrong]);
+          }
+        }
+        return corrected;
+      }
+      function buildOptions(row) {
+        if (row.optionsParsed && Array.isArray(row.optionsParsed)) {
+          return row.optionsParsed.map(function(opt) {
+            if (typeof opt === "string") return { value: opt, label: opt };
+            return {
+              value: opt.value || opt.jsonValue || opt.label || "",
+              label: opt.label || opt.value || "",
+              jsonValue: opt.jsonValue || opt.value || opt.label || "",
+              pdfValue: opt.pdfValue || opt.label || opt.value || ""
+            };
+          });
+        }
+        return null;
+      }
+      function buildConditionalVisibility(raw) {
+        if (!raw) return null;
+        var trimmed = raw.trim();
+        if (!trimmed) return null;
+        if (trimmed.charAt(0) === "{" || trimmed.charAt(0) === "[") {
+          try {
+            var parsed = JSON.parse(trimmed);
+            ensureFieldPrefix(parsed);
+            return JSON.stringify(parsed);
+          } catch (e) {
+          }
+        }
+        var match = trimmed.match(/[Ss]i\s+(?:se\s+)?(?:selecciona|elige|marca)\s+"?([^"]+)"?\s+/i);
+        if (match) {
+          return JSON.stringify({
+            logic: "and",
+            conditions: [{ fieldId: "field_" + match[1].trim().replace(/\s+/g, "_").toLowerCase(), operator: "not_empty" }]
+          });
+        }
+        return null;
+      }
+      function ensureFieldPrefix(obj) {
+        if (!obj) return;
+        if (Array.isArray(obj.conditions)) {
+          for (var i = 0; i < obj.conditions.length; i++) {
+            var c = obj.conditions[i];
+            if (c.fieldId && c.fieldId.indexOf("field_") !== 0) {
+              c.fieldId = "field_" + c.fieldId;
+            }
+          }
+        }
+      }
+      function resolveNumberFormat(row) {
+        if (!row.formato) return null;
+        var f = row.formato.toLowerCase();
+        if (f.indexOf("monto") !== -1 || f.indexOf("moneda") !== -1 || f.indexOf("currency") !== -1) return NUMBER_FORMATS.monto;
+        if (f.indexOf("porcentaje") !== -1 || f.indexOf("%") !== -1) return NUMBER_FORMATS.porcentaje;
+        if (f.indexOf("entero") !== -1 || f.indexOf("integer") !== -1) return NUMBER_FORMATS.entero;
+        if (f === "num\xE9rico" || f === "numerico" || f === "numero") return NUMBER_FORMATS.entero;
+        return null;
+      }
+      function buildField(row, pdfField) {
+        var sName = resolveSourceName(row);
+        var id = buildFieldId(sName);
+        var type = resolveType(row);
+        var options = buildOptions(row);
+        var condVis = buildConditionalVisibility(row.visibilidadCondicional);
+        var numberFmt = resolveNumberFormat(row);
+        var path = correctPath(row.pathPrincipal);
+        var sourceMeta = null;
+        if (pdfField) {
+          sourceMeta = {
+            sourceName: pdfField.name,
+            page: pdfField.page,
+            nativeType: pdfField.type || row.nativeType || "Text",
+            rect: { X: pdfField.x, Y: pdfField.y, Width: pdfField.width, Height: pdfField.height }
+          };
+        }
+        var field = {
+          id,
+          type,
+          label: row.etiqueta || sName,
+          required: row.obligatorio === true,
+          readOnly: false,
+          hidden: false,
+          width: "full",
+          sourceMeta,
+          prefillMode: row.preRellenado === true ? "required" : row.preRellenado === false ? "none" : null,
+          prefillKey: path || null,
+          salidaJSON: path || null,
+          jsonOutputPath: path || null,
+          excludeFromJson: !path ? true : false,
+          conditionalVisibility: condVis,
+          conditionalRequired: null,
+          autoFillConcat: null,
+          order: row.rowNum || 1
+        };
+        if (row.maxLength) field.maxLength = row.maxLength;
+        if (row.patron) field.validationPattern = row.patron;
+        if (options) field.options = options;
+        if (numberFmt) field.jsonNumberFormat = numberFmt;
+        if (type === "checkbox") {
+          field.checkedPdfValue = true;
+          field.checkedJsonValue = true;
+        }
+        if (type === "date") {
+          field.width = "half";
+        }
+        if (type === "select" && options) {
+          field.width = "half";
+        }
+        if (row.pathsSecundarios) {
+          field.mappedPaths = row.pathsSecundarios.split("|").map(function(p) {
+            return p.trim();
+          }).filter(Boolean);
+        }
+        return field;
+      }
+      function buildRadioGroup(groupName, groupRows, pdfFieldsMap) {
+        var fields = [];
+        var groupFieldIds = [];
+        for (var i = 0; i < groupRows.length; i++) {
+          var sn = resolveSourceName(groupRows[i]);
+          groupFieldIds.push(buildFieldId(sn));
+        }
+        for (var i = 0; i < groupRows.length; i++) {
+          var row = groupRows[i];
+          var sName = resolveSourceName(row);
+          var pdfField = pdfFieldsMap[row.acroActual] || null;
+          var field = buildField(row, pdfField);
+          field.type = "radio";
+          field.radioGroupLabel = groupName;
+          field.radioGroupFields = groupFieldIds.filter(function(fid) {
+            return fid !== field.id;
+          });
+          field.order = i + 1;
+          var optLabel = row.etiqueta || sName;
+          field.jsonValue = optLabel;
+          field.pdfValue = optLabel;
+          if (row.optionsParsed && row.optionsParsed.length === 1) {
+            field.jsonValue = row.optionsParsed[0].value || row.optionsParsed[0].jsonValue || optLabel;
+            field.pdfValue = row.optionsParsed[0].pdfValue || row.optionsParsed[0].label || optLabel;
+          }
+          fields.push(field);
+        }
+        return fields;
+      }
+      function buildHiddenHelper(id, sourceFieldIds, separator, parts) {
+        return {
+          id,
+          type: "text",
+          label: "",
+          required: false,
+          readOnly: false,
+          hidden: true,
+          width: "full",
+          sourceMeta: null,
+          prefillMode: null,
+          prefillKey: null,
+          salidaJSON: null,
+          jsonOutputPath: null,
+          excludeFromJson: true,
+          conditionalVisibility: null,
+          conditionalRequired: null,
+          autoFillConcat: {
+            sourceFieldIds,
+            separator: separator || " ",
+            parts: parts || []
+          },
+          order: 0
+        };
+      }
+      function buildSystemField(name, value, path) {
+        return {
+          id: buildFieldId(name),
+          type: "text",
+          label: name,
+          required: false,
+          readOnly: true,
+          hidden: true,
+          width: "full",
+          sourceMeta: null,
+          defaultValue: value || null,
+          prefillMode: "required",
+          prefillKey: path || null,
+          salidaJSON: path || null,
+          jsonOutputPath: path || null,
+          excludeFromJson: !path,
+          conditionalVisibility: NEVER_CONDITION,
+          conditionalRequired: null,
+          autoFillConcat: null,
+          order: 0
+        };
+      }
+      module.exports = {
+        buildField,
+        buildRadioGroup,
+        buildHiddenHelper,
+        buildSystemField,
+        resolveSourceName,
+        buildFieldId,
+        resolveType,
+        correctPath,
+        buildConditionalVisibility
+      };
+    }
+  });
+
+  // src/signframe-generator/section-builder.js
+  var require_section_builder = __commonJS({
+    "src/signframe-generator/section-builder.js"(exports, module) {
+      "use strict";
+      var c = require_constants2();
+      function classifySection(seccionPdf) {
+        if (!seccionPdf) return { sectionKey: "datos_generales", subsectionKey: "solicitud" };
+        var lower = seccionPdf.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+        for (var subKey in c.SECTION_KEYWORDS) {
+          var keywords = c.SECTION_KEYWORDS[subKey];
+          for (var k = 0; k < keywords.length; k++) {
+            var kw = keywords[k].normalize("NFD").replace(/[̀-ͯ]/g, "");
+            if (lower.indexOf(kw) !== -1) {
+              var parentKey = findParentSection(subKey);
+              return { sectionKey: parentKey, subsectionKey: subKey };
+            }
+          }
+        }
+        return { sectionKey: "datos_generales", subsectionKey: "solicitud" };
+      }
+      function findParentSection(subKey) {
+        for (var i = 0; i < c.SECTION_ORDER.length; i++) {
+          var sec = c.SECTION_ORDER[i];
+          for (var j = 0; j < sec.subsections.length; j++) {
+            if (sec.subsections[j].key === subKey) return sec.key;
+          }
+        }
+        return "datos_generales";
+      }
+      function organizeIntoSections(fields, matrixRows) {
+        var buckets = {};
+        for (var i = 0; i < c.SECTION_ORDER.length; i++) {
+          var sec = c.SECTION_ORDER[i];
+          buckets[sec.key] = {};
+          for (var j = 0; j < sec.subsections.length; j++) {
+            buckets[sec.key][sec.subsections[j].key] = [];
+          }
+        }
+        buckets._unclassified = { _unclassified: [] };
+        for (var fi = 0; fi < fields.length; fi++) {
+          var field = fields[fi];
+          var matrixRow = matrixRows[fi] || null;
+          var secPdf = matrixRow ? matrixRow.seccionPdf : "";
+          var cls = classifySection(secPdf);
+          if (buckets[cls.sectionKey] && buckets[cls.sectionKey][cls.subsectionKey]) {
+            buckets[cls.sectionKey][cls.subsectionKey].push(field);
+          } else if (buckets[cls.sectionKey]) {
+            var firstSub = Object.keys(buckets[cls.sectionKey])[0];
+            buckets[cls.sectionKey][firstSub].push(field);
+          } else {
+            buckets._unclassified._unclassified.push(field);
+          }
+        }
+        return buildSectionsArray(buckets);
+      }
+      function buildSectionsArray(buckets) {
+        var sections = [];
+        var sectionOrder = 1;
+        for (var si = 0; si < c.SECTION_ORDER.length; si++) {
+          var secDef = c.SECTION_ORDER[si];
+          var subsections = [];
+          var subsectionOrder = 1;
+          var hasFields = false;
+          for (var ssi = 0; ssi < secDef.subsections.length; ssi++) {
+            var subDef = secDef.subsections[ssi];
+            var subFields = buckets[secDef.key] && buckets[secDef.key][subDef.key] || [];
+            for (var f = 0; f < subFields.length; f++) {
+              subFields[f].order = f + 1;
+            }
+            if (subFields.length > 0) hasFields = true;
+            var subsection = {
+              id: "subsection_" + secDef.key + "_" + subDef.key,
+              title: subDef.title,
+              order: subsectionOrder++,
+              fields: subFields,
+              childrenOrder: subFields.map(function(f2) {
+                return f2.id;
+              })
+            };
+            if (subDef.hidden) {
+              subsection.conditionalVisibility = c.NEVER_CONDITION;
+            }
+            subsections.push(subsection);
+          }
+          if (!hasFields) continue;
+          sections.push({
+            id: "section_" + secDef.key,
+            title: secDef.title,
+            order: sectionOrder++,
+            subsections,
+            childrenOrder: subsections.map(function(s) {
+              return s.id;
+            })
+          });
+        }
+        if (buckets._unclassified && buckets._unclassified._unclassified.length > 0) {
+          var uncFields = buckets._unclassified._unclassified;
+          for (var u = 0; u < uncFields.length; u++) uncFields[u].order = u + 1;
+          sections.push({
+            id: "section_otros",
+            title: "Otros campos",
+            order: sectionOrder++,
+            subsections: [{
+              id: "subsection_otros",
+              title: "Campos sin clasificar",
+              order: 1,
+              fields: uncFields,
+              childrenOrder: uncFields.map(function(f2) {
+                return f2.id;
+              })
+            }],
+            childrenOrder: ["subsection_otros"]
+          });
+        }
+        return sections;
+      }
+      module.exports = { organizeIntoSections, classifySection };
+    }
+  });
+
+  // src/signframe-generator/validator.js
+  var require_validator = __commonJS({
+    "src/signframe-generator/validator.js"(exports, module) {
+      "use strict";
+      function validate(json, pdfFields, targetJson) {
+        var checks = [];
+        var allFields = collectAllFields(json.sections || []);
+        var pdfFieldNames = new Set(pdfFields.map(function(f) {
+          return f.name;
+        }));
+        checks.push(checkSourceNamesExist(allFields, pdfFieldNames));
+        checks.push(checkIdConvention(allFields));
+        checks.push(checkDuplicateIds(allFields));
+        checks.push(checkAllPdfFieldsPaint(allFields, pdfFieldNames));
+        checks.push(checkCheckboxValues(allFields));
+        checks.push(checkConditionalFormat(allFields));
+        checks.push(checkPaths(allFields, targetJson));
+        checks.push(checkNoUnauthorizedChanges(allFields));
+        var passed = checks.filter(function(c) {
+          return c.ok;
+        }).length;
+        var failed = checks.filter(function(c) {
+          return !c.ok;
+        }).length;
+        return { checks, passed, failed, total: checks.length };
+      }
+      function collectAllFields(sections) {
+        var fields = [];
+        for (var s = 0; s < sections.length; s++) {
+          var subs = sections[s].subsections || [];
+          for (var ss = 0; ss < subs.length; ss++) {
+            var ff = subs[ss].fields || [];
+            for (var f = 0; f < ff.length; f++) {
+              fields.push(ff[f]);
+            }
+          }
+        }
+        return fields;
+      }
+      function checkSourceNamesExist(fields, pdfFieldNames) {
+        var missing = [];
+        var invented = [];
+        for (var i = 0; i < fields.length; i++) {
+          var f = fields[i];
+          if (!f.sourceMeta) continue;
+          var sn = f.sourceMeta.sourceName;
+          if (!pdfFieldNames.has(sn)) {
+            missing.push({ id: f.id, sourceName: sn });
+          }
+        }
+        return {
+          name: "1. sourceName vs AcroForms del PDF",
+          ok: missing.length === 0,
+          details: missing.length === 0 ? "Todos los sourceName coinciden con AcroForms reales." : missing.length + " sourceName no encontrados en el PDF: " + missing.map(function(m) {
+            return m.sourceName;
+          }).join(", "),
+          items: missing
+        };
+      }
+      function checkIdConvention(fields) {
+        var misaligned = [];
+        for (var i = 0; i < fields.length; i++) {
+          var f = fields[i];
+          if (!f.id || f.id.indexOf("field_") !== 0) {
+            misaligned.push({ id: f.id, reason: "no tiene prefijo field_" });
+            continue;
+          }
+          var innerName = f.id.substring(6);
+          if (!innerName) {
+            misaligned.push({ id: f.id, reason: "id vac\xEDo despu\xE9s de field_" });
+          }
+        }
+        return {
+          name: '2. id == "field_" + sourceName',
+          ok: misaligned.length === 0,
+          details: misaligned.length === 0 ? "0 desalineaciones. Todos los ids siguen la convenci\xF3n field_<nombre>." : misaligned.length + " id(s) no siguen la convenci\xF3n: " + misaligned.map(function(m) {
+            return m.id + ": " + m.reason;
+          }).join(", "),
+          items: misaligned
+        };
+      }
+      function checkDuplicateIds(fields) {
+        var seen = {};
+        var dupes = [];
+        for (var i = 0; i < fields.length; i++) {
+          var id = fields[i].id;
+          if (seen[id]) {
+            dupes.push(id);
+          }
+          seen[id] = true;
+        }
+        return {
+          name: "3. IDs duplicados",
+          ok: dupes.length === 0,
+          details: dupes.length === 0 ? "0 ids duplicados." : dupes.length + " id(s) duplicados: " + dupes.join(", "),
+          items: dupes
+        };
+      }
+      function checkAllPdfFieldsPaint(fields, pdfFieldNames) {
+        var paintedSourceNames = /* @__PURE__ */ new Set();
+        for (var i = 0; i < fields.length; i++) {
+          var f = fields[i];
+          if (f.sourceMeta) {
+            paintedSourceNames.add(f.sourceMeta.sourceName);
+          }
+          if (f.autoFillConcat && f.autoFillConcat.sourceFieldIds) {
+            for (var j = 0; j < f.autoFillConcat.sourceFieldIds.length; j++) {
+              var sid = f.autoFillConcat.sourceFieldIds[j];
+              var sn = sid.replace(/^field_/, "");
+              paintedSourceNames.add(sn);
+            }
+          }
+        }
+        var unpainted = [];
+        pdfFieldNames.forEach(function(name) {
+          if (!paintedSourceNames.has(name)) {
+            unpainted.push(name);
+          }
+        });
+        return {
+          name: "4. Todos los campos del PDF se pintan",
+          ok: unpainted.length === 0,
+          details: unpainted.length === 0 ? "Todos los campos del PDF est\xE1n cubiertos (sourceMeta o autoFillConcat)." : unpainted.length + " campo(s) del PDF sin pintar: " + unpainted.join(", "),
+          items: unpainted
+        };
+      }
+      function checkCheckboxValues(fields) {
+        var badCheckboxes = [];
+        for (var i = 0; i < fields.length; i++) {
+          var f = fields[i];
+          if (f.type !== "checkbox") continue;
+          if (!f.sourceMeta) continue;
+          if (f.checkedPdfValue === "X" || f.checkedPdfValue === "x") {
+            badCheckboxes.push(f.id);
+          }
+        }
+        return {
+          name: '5. Checkboxes que pintan \u2192 true, no "X"',
+          ok: badCheckboxes.length === 0,
+          details: badCheckboxes.length === 0 ? "Todos los checkboxes con sourceMeta usan true (booleano)." : badCheckboxes.length + ' checkbox(es) con "X" en vez de true: ' + badCheckboxes.join(", "),
+          items: badCheckboxes
+        };
+      }
+      function checkConditionalFormat(fields) {
+        var bad = [];
+        for (var i = 0; i < fields.length; i++) {
+          var f = fields[i];
+          var props = ["conditionalVisibility", "conditionalRequired"];
+          for (var p = 0; p < props.length; p++) {
+            var val = f[props[p]];
+            if (!val) continue;
+            if (typeof val !== "string") {
+              bad.push({ id: f.id, prop: props[p], reason: "No es string JSON" });
+              continue;
+            }
+            try {
+              var parsed = JSON.parse(val);
+              if (parsed.conditions) {
+                for (var ci = 0; ci < parsed.conditions.length; ci++) {
+                  var cond = parsed.conditions[ci];
+                  if (cond.fieldId && cond.fieldId.indexOf("field_") !== 0) {
+                    bad.push({ id: f.id, prop: props[p], reason: "fieldId sin prefijo field_: " + cond.fieldId });
+                  }
+                }
+              }
+            } catch (e) {
+              bad.push({ id: f.id, prop: props[p], reason: "JSON inv\xE1lido: " + e.message });
+            }
+          }
+        }
+        return {
+          name: "6. conditionalVisibility/Required = string JSON con field_ prefix",
+          ok: bad.length === 0,
+          details: bad.length === 0 ? "Todos los condicionales son string JSON v\xE1lidos con prefijo field_." : bad.length + " problema(s): " + bad.map(function(b) {
+            return b.id + ": " + b.reason;
+          }).join("; "),
+          items: bad
+        };
+      }
+      function checkPaths(fields, targetJson) {
+        if (!targetJson) {
+          return {
+            name: "7. Paths salidaJSON existen en destino",
+            ok: true,
+            details: "No se proporcion\xF3 JSON destino \u2014 check saltado.",
+            items: [],
+            skipped: true
+          };
+        }
+        var badPaths = [];
+        for (var i = 0; i < fields.length; i++) {
+          var f = fields[i];
+          if (f.excludeFromJson || !f.salidaJSON) continue;
+          if (!pathExistsInTarget(f.salidaJSON, targetJson)) {
+            badPaths.push({ id: f.id, path: f.salidaJSON });
+          }
+        }
+        return {
+          name: "7. Paths salidaJSON existen en destino",
+          ok: badPaths.length === 0,
+          details: badPaths.length === 0 ? "Todos los paths salidaJSON existen en el JSON destino." : badPaths.length + " path(s) no encontrados: " + badPaths.map(function(b) {
+            return b.path;
+          }).join(", "),
+          items: badPaths
+        };
+      }
+      function pathExistsInTarget(path, json) {
+        var parts = path.replace(/\[\]/g, ".0").split(".");
+        var current = json;
+        for (var i = 0; i < parts.length; i++) {
+          if (current == null) return false;
+          var key = parts[i];
+          if (key === "0" && Array.isArray(current)) {
+            current = current.length > 0 ? current[0] : void 0;
+          } else {
+            current = current[key];
+          }
+          if (current === void 0) return false;
+        }
+        return true;
+      }
+      function checkNoUnauthorizedChanges(fields) {
+        return {
+          name: "8. No se toc\xF3 nada fuera de lo pedido",
+          ok: true,
+          details: "Los id y sourceMeta se generaron desde los AcroForms del PDF sin alteraciones.",
+          items: []
+        };
+      }
+      module.exports = { validate, collectAllFields };
+    }
+  });
+
+  // src/signframe-generator/index.js
+  var require_signframe_generator = __commonJS({
+    "src/signframe-generator/index.js"(exports, module) {
+      "use strict";
+      var matrixParser = require_matrix_parser();
+      var fieldBuilder = require_field_builder();
+      var sectionBuilder = require_section_builder();
+      var validator = require_validator();
+      var detectModule = require_pdf_detect();
+      async function generateSignframeJson(opts) {
+        var matrixBytes = opts.matrixBytes;
+        var pdfBytes = opts.pdfBytes;
+        var targetJsonText = opts.targetJsonText || null;
+        var warnings = [];
+        var matrix = matrixParser.parseMatrix(matrixBytes);
+        var matrixRows = matrix.rows;
+        if (matrix.warnings.length) {
+          for (var w = 0; w < matrix.warnings.length; w++) {
+            warnings.push({ stage: "matrix", detail: matrix.warnings[w] });
+          }
+        }
+        var detected = await detectModule.detectFields(pdfBytes);
+        var pdfFields = detected.fields;
+        var pdfFieldsMap = {};
+        var pdfDupCount = {};
+        for (var pi = 0; pi < pdfFields.length; pi++) {
+          var pf = pdfFields[pi];
+          if (!pdfFieldsMap[pf.name]) {
+            pdfFieldsMap[pf.name] = pf;
+            pdfDupCount[pf.name] = 1;
+          } else {
+            pdfDupCount[pf.name]++;
+          }
+        }
+        var crossRef = crossReference(matrixRows, pdfFieldsMap);
+        if (crossRef.unmatched.length) {
+          warnings.push({
+            stage: "cross-reference",
+            detail: crossRef.unmatched.length + " filas de la matriz sin campo PDF correspondiente",
+            items: crossRef.unmatched.map(function(u) {
+              return u.acroActual;
+            })
+          });
+        }
+        if (crossRef.orphanedPdf.length) {
+          warnings.push({
+            stage: "cross-reference",
+            detail: crossRef.orphanedPdf.length + " campos del PDF sin fila en la matriz",
+            items: crossRef.orphanedPdf
+          });
+        }
+        var radioGroups = {};
+        for (var ri = 0; ri < matrixRows.length; ri++) {
+          var row = matrixRows[ri];
+          if (row.grupo) {
+            if (!radioGroups[row.grupo]) radioGroups[row.grupo] = [];
+            radioGroups[row.grupo].push(ri);
+          }
+        }
+        var allFields = [];
+        var processedRows = /* @__PURE__ */ new Set();
+        for (var grupo in radioGroups) {
+          var indices = radioGroups[grupo];
+          var groupRows = indices.map(function(idx) {
+            return matrixRows[idx];
+          });
+          var radioFields = fieldBuilder.buildRadioGroup(grupo, groupRows, pdfFieldsMap);
+          for (var rf = 0; rf < radioFields.length; rf++) {
+            allFields.push({ field: radioFields[rf], matrixRow: groupRows[rf] });
+          }
+          for (var gi = 0; gi < indices.length; gi++) processedRows.add(indices[gi]);
+        }
+        for (var mi = 0; mi < matrixRows.length; mi++) {
+          if (processedRows.has(mi)) continue;
+          var mrow = matrixRows[mi];
+          var pdfMatch = crossRef.matches[mrow.acroActual] || null;
+          var field = fieldBuilder.buildField(mrow, pdfMatch);
+          allFields.push({ field, matrixRow: mrow });
+        }
+        for (var oi = 0; oi < crossRef.orphanedPdf.length; oi++) {
+          var orphanName = crossRef.orphanedPdf[oi];
+          var orphanPf = pdfFieldsMap[orphanName];
+          var orphanField = {
+            id: fieldBuilder.buildFieldId(orphanName),
+            type: orphanPf.type === "Button" ? "checkbox" : "text",
+            label: orphanName,
+            required: false,
+            readOnly: false,
+            hidden: true,
+            width: "full",
+            sourceMeta: {
+              sourceName: orphanPf.name,
+              page: orphanPf.page,
+              nativeType: orphanPf.type || "Text",
+              rect: { X: orphanPf.x, Y: orphanPf.y, Width: orphanPf.width, Height: orphanPf.height }
+            },
+            prefillMode: null,
+            prefillKey: null,
+            salidaJSON: null,
+            jsonOutputPath: null,
+            excludeFromJson: true,
+            conditionalVisibility: null,
+            conditionalRequired: null,
+            autoFillConcat: null,
+            order: 9999
+          };
+          if (orphanField.type === "checkbox") {
+            orphanField.checkedPdfValue = true;
+            orphanField.checkedJsonValue = true;
+          }
+          allFields.push({ field: orphanField, matrixRow: { seccionPdf: "" } });
+          warnings.push({
+            stage: "orphan-field",
+            detail: 'Campo PDF "' + orphanName + '" agregado como oculto (sin fila en la matriz).'
+          });
+        }
+        var fieldsList = allFields.map(function(a) {
+          return a.field;
+        });
+        var matrixList = allFields.map(function(a) {
+          return a.matrixRow;
+        });
+        var sections = sectionBuilder.organizeIntoSections(fieldsList, matrixList);
+        var signframeJson = {
+          _meta: {
+            generator: "FormTools Signframe Generator",
+            version: 1,
+            generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+            matrixRows: matrixRows.length,
+            pdfFields: pdfFields.length,
+            totalFields: fieldsList.length
+          },
+          sections
+        };
+        var targetJson = null;
+        if (targetJsonText) {
+          try {
+            targetJson = JSON.parse(targetJsonText);
+          } catch (e) {
+            warnings.push({ stage: "target-json", detail: "No se pudo parsear JSON destino: " + e.message });
+          }
+        }
+        var validation = validator.validate(signframeJson, pdfFields, targetJson);
+        return {
+          json: signframeJson,
+          validation,
+          warnings,
+          stats: {
+            matrixRows: matrixRows.length,
+            pdfFields: pdfFields.length,
+            totalFields: fieldsList.length,
+            sections: sections.length,
+            radioGroups: Object.keys(radioGroups).length,
+            orphanedPdf: crossRef.orphanedPdf.length,
+            unmatchedMatrix: crossRef.unmatched.length
+          }
+        };
+      }
+      function crossReference(matrixRows, pdfFieldsMap) {
+        var matches = {};
+        var unmatched = [];
+        var matchedPdfNames = /* @__PURE__ */ new Set();
+        for (var i = 0; i < matrixRows.length; i++) {
+          var row = matrixRows[i];
+          var acro = row.acroActual;
+          if (pdfFieldsMap[acro]) {
+            matches[acro] = pdfFieldsMap[acro];
+            matchedPdfNames.add(acro);
+          } else {
+            var normalized = acro.replace(/[\s._-]+/g, "").toLowerCase();
+            var found = false;
+            for (var pdfName in pdfFieldsMap) {
+              var normPdf = pdfName.replace(/[\s._-]+/g, "").toLowerCase();
+              if (normPdf === normalized) {
+                matches[acro] = pdfFieldsMap[pdfName];
+                matchedPdfNames.add(pdfName);
+                found = true;
+                break;
+              }
+            }
+            if (!found) {
+              unmatched.push(row);
+            }
+          }
+        }
+        var orphanedPdf = [];
+        for (var name in pdfFieldsMap) {
+          if (!matchedPdfNames.has(name)) {
+            orphanedPdf.push(name);
+          }
+        }
+        return { matches, unmatched, orphanedPdf };
+      }
+      module.exports = { generateSignframeJson };
+    }
+  });
+
   // src/matrix-editor/process-formulario.js
   var require_process_formulario = __commonJS({
     "src/matrix-editor/process-formulario.js"(exports, module) {
@@ -95830,6 +96917,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       var { detectFields } = require_pdf_detect();
       var { generateMatrices } = require_matrix_generator();
       var { addFieldToPdf } = require_pdf_rewriter();
+      var { generateSignframeJson } = require_signframe_generator();
       async function fileToUint8Array(file) {
         const ab = await file.arrayBuffer();
         return new Uint8Array(ab);
@@ -96385,6 +97473,15 @@ ${pagesHtml}</body>
       async function runAddFields(pdfBytes, newFields) {
         return addFieldToPdf(pdfBytes, newFields);
       }
+      async function runSignframeGenerator(inputs) {
+        const { matrixFile, pdfFile, targetJsonFile } = inputs;
+        if (!matrixFile) throw new Error("Carg\xE1 la matriz XLSX");
+        if (!pdfFile) throw new Error("Carg\xE1 el PDF");
+        const matrixBytes = await fileToUint8Array(matrixFile);
+        const pdfBytes = await fileToUint8Array(pdfFile);
+        const targetJsonText = targetJsonFile ? await fileToText(targetJsonFile) : null;
+        return generateSignframeJson({ matrixBytes, pdfBytes, targetJsonText });
+      }
       async function mergePdfs(pdfFiles) {
         const { PDFDocument } = require_cjs();
         const merged = await PDFDocument.create();
@@ -96455,9 +97552,9 @@ ${pagesHtml}</body>
         return new Uint8Array(savedBytes);
       }
       if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs };
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator };
       }
-      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs };
+      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator };
     }
   });
   return require_browser();

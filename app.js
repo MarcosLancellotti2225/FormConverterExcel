@@ -15,6 +15,7 @@
         initConvertPdfFlow();
         initDetectFieldsFlow();
         initMergePdfFlow();
+        initSignframeFlow();
 
         selectMode(null);
     }
@@ -39,9 +40,10 @@
         $('#convertPdfFlow').hidden = mode !== 'convert-pdf';
         $('#detectFieldsFlow').hidden = mode !== 'detect-fields';
         $('#mergePdfFlow').hidden = mode !== 'merge-pdf';
+        $('#signframeFlow').hidden = mode !== 'signframe';
         $('#btnBackToHome').hidden = !mode;
         var main = document.querySelector('main');
-        if (mode === 'convert-pdf' || mode === 'detect-fields') {
+        if (mode === 'convert-pdf' || mode === 'detect-fields' || mode === 'signframe') {
             main.classList.add('wide-mode');
         } else {
             main.classList.remove('wide-mode');
@@ -2350,6 +2352,290 @@
             div.appendChild(btn);
             container.appendChild(div);
         }
+    }
+
+    // ==================== SIGNFRAME GENERATOR FLOW ====================
+
+    var sfState = {
+        matrix: null,
+        pdf: null,
+        targetJson: null,
+        result: null,
+        jsonString: null,
+    };
+
+    function initSignframeFlow() {
+        $('#sfMatrixInput').addEventListener('change', function(e) {
+            sfState.matrix = e.target.files[0] || null;
+            updateSfFileStatus('sfMatrixStatus', sfState.matrix);
+            refreshSfButton();
+        });
+        $('#sfPdfInput').addEventListener('change', function(e) {
+            sfState.pdf = e.target.files[0] || null;
+            updateSfFileStatus('sfPdfStatus', sfState.pdf);
+            refreshSfButton();
+        });
+        $('#sfTargetInput').addEventListener('change', function(e) {
+            sfState.targetJson = e.target.files[0] || null;
+            updateSfFileStatus('sfTargetStatus', sfState.targetJson);
+        });
+        $('#btnSignframeGenerate').addEventListener('click', runSignframeGenerate);
+        $('#btnSignframeDownload').addEventListener('click', downloadSignframeJson);
+        $('#btnSignframeReport').addEventListener('click', downloadSignframeReport);
+        $('#btnSfCopyJson').addEventListener('click', copySfJson);
+        $('#btnSfCollapseAll').addEventListener('click', function() { toggleSfSections(false); });
+        $('#btnSfExpandAll').addEventListener('click', function() { toggleSfSections(true); });
+    }
+
+    function updateSfFileStatus(elId, file) {
+        var el = document.getElementById(elId);
+        var slot = el.closest('.file-slot');
+        if (file) {
+            slot.classList.add('loaded');
+            el.textContent = '✓ ' + file.name + ' (' + formatSize(file.size) + ')';
+        } else {
+            slot.classList.remove('loaded');
+            el.textContent = '';
+        }
+    }
+
+    function refreshSfButton() {
+        $('#btnSignframeGenerate').disabled = !(sfState.matrix && sfState.pdf);
+    }
+
+    async function runSignframeGenerate() {
+        var statusEl = $('#sfStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Generando JSON Signframe...';
+        $('#btnSignframeGenerate').disabled = true;
+
+        try {
+            var t0 = performance.now();
+            var result = await InsPipelineBundle.runSignframeGenerator({
+                matrixFile: sfState.matrix,
+                pdfFile: sfState.pdf,
+                targetJsonFile: sfState.targetJson || undefined,
+            });
+            var t1 = performance.now();
+
+            sfState.result = result;
+            sfState.jsonString = JSON.stringify(result.json, null, 2);
+
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ JSON generado en ' + Math.round(t1 - t0) + 'ms — ' +
+                result.stats.totalFields + ' campos, ' + result.stats.sections + ' secciones, ' +
+                result.validation.passed + '/' + result.validation.total + ' checks OK';
+
+            $('#btnSignframeDownload').hidden = false;
+            $('#btnSignframeReport').hidden = false;
+            $('#sfResultPanel').hidden = false;
+
+            renderSfValidation(result.validation);
+            renderSfStats(result.stats);
+            renderSfWarnings(result.warnings);
+            renderSfJsonPreview(result.json);
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
+        refreshSfButton();
+    }
+
+    function renderSfValidation(validation) {
+        var container = $('#sfValidationChecks');
+        container.innerHTML = '';
+        var summary = $('#sfValidationSummary');
+        var color = validation.failed === 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+        summary.style.color = color;
+        summary.textContent = validation.passed + '/' + validation.total + ' checks OK';
+
+        for (var i = 0; i < validation.checks.length; i++) {
+            var c = validation.checks[i];
+            var div = document.createElement('div');
+            div.className = 'sf-check ' + (c.ok ? 'sf-check-ok' : 'sf-check-fail');
+            var icon = c.ok ? '✓' : (c.skipped ? '○' : '✗');
+            div.innerHTML =
+                '<span class="sf-check-icon">' + icon + '</span>' +
+                '<div class="sf-check-body">' +
+                    '<strong>' + escapeHtml(c.name) + '</strong>' +
+                    '<div class="sf-check-detail">' + escapeHtml(c.details) + '</div>' +
+                '</div>';
+            container.appendChild(div);
+        }
+    }
+
+    function renderSfStats(stats) {
+        var container = $('#sfStats');
+        var items = [
+            ['Filas en matriz', stats.matrixRows],
+            ['Campos en PDF', stats.pdfFields],
+            ['Campos totales', stats.totalFields],
+            ['Secciones', stats.sections],
+            ['Grupos radio', stats.radioGroups],
+            ['Huérfanos PDF', stats.orphanedPdf],
+            ['Sin match (matriz)', stats.unmatchedMatrix],
+        ];
+        container.innerHTML = items.map(function(item) {
+            var cls = (item[0].indexOf('uérfano') !== -1 || item[0].indexOf('Sin match') !== -1) && item[1] > 0
+                ? ' sf-stat-warn' : '';
+            return '<div class="sf-stat' + cls + '"><span class="sf-stat-label">' + item[0] +
+                '</span><span class="sf-stat-value">' + item[1] + '</span></div>';
+        }).join('');
+    }
+
+    function renderSfWarnings(warnings) {
+        var section = $('#sfWarningsSection');
+        var container = $('#sfWarnings');
+        if (!warnings || !warnings.length) {
+            section.hidden = true;
+            return;
+        }
+        section.hidden = false;
+        container.innerHTML = warnings.map(function(w) {
+            var detail = typeof w.detail === 'string' ? w.detail : JSON.stringify(w.detail);
+            return '<div class="sf-warning"><span class="sf-warning-stage">' +
+                escapeHtml(w.stage || '') + '</span> ' + escapeHtml(detail) + '</div>';
+        }).join('');
+    }
+
+    function renderSfJsonPreview(json) {
+        var container = $('#sfJsonPreview');
+        container.innerHTML = '';
+
+        var sections = json.sections || [];
+        for (var si = 0; si < sections.length; si++) {
+            var sec = sections[si];
+            var secEl = document.createElement('details');
+            secEl.className = 'sf-section';
+            secEl.open = true;
+            var secSummary = document.createElement('summary');
+            secSummary.className = 'sf-section-title';
+            secSummary.textContent = sec.title + ' (' + countFieldsInSection(sec) + ' campos)';
+            secEl.appendChild(secSummary);
+
+            var subs = sec.subsections || [];
+            for (var ssi = 0; ssi < subs.length; ssi++) {
+                var sub = subs[ssi];
+                var subEl = document.createElement('details');
+                subEl.className = 'sf-subsection';
+                subEl.open = true;
+                var subSummary = document.createElement('summary');
+                subSummary.className = 'sf-subsection-title';
+                subSummary.textContent = sub.title + ' (' + (sub.fields || []).length + ')';
+                subEl.appendChild(subSummary);
+
+                var fields = sub.fields || [];
+                for (var fi = 0; fi < fields.length; fi++) {
+                    var f = fields[fi];
+                    var fDiv = document.createElement('div');
+                    fDiv.className = 'sf-field';
+                    var badges = '';
+                    if (f.hidden) badges += '<span class="sf-badge sf-badge-hidden">hidden</span>';
+                    if (f.readOnly) badges += '<span class="sf-badge sf-badge-readonly">readOnly</span>';
+                    if (f.sourceMeta) badges += '<span class="sf-badge sf-badge-pdf">PDF</span>';
+                    if (f.autoFillConcat) badges += '<span class="sf-badge sf-badge-auto">autoFill</span>';
+                    if (f.required) badges += '<span class="sf-badge sf-badge-req">req</span>';
+
+                    fDiv.innerHTML =
+                        '<div class="sf-field-header">' +
+                            '<span class="sf-field-id">' + escapeHtml(f.id) + '</span>' +
+                            '<span class="sf-field-type">' + escapeHtml(f.type) + '</span>' +
+                            badges +
+                        '</div>' +
+                        '<div class="sf-field-label">' + escapeHtml(f.label) + '</div>' +
+                        (f.salidaJSON ? '<div class="sf-field-path">' + escapeHtml(f.salidaJSON) + '</div>' : '');
+                    subEl.appendChild(fDiv);
+                }
+                secEl.appendChild(subEl);
+            }
+            container.appendChild(secEl);
+        }
+    }
+
+    function countFieldsInSection(sec) {
+        var count = 0;
+        var subs = sec.subsections || [];
+        for (var i = 0; i < subs.length; i++) {
+            count += (subs[i].fields || []).length;
+        }
+        return count;
+    }
+
+    function toggleSfSections(open) {
+        var container = $('#sfJsonPreview');
+        var details = container.querySelectorAll('details');
+        for (var i = 0; i < details.length; i++) {
+            details[i].open = open;
+        }
+    }
+
+    function copySfJson() {
+        if (!sfState.jsonString) return;
+        navigator.clipboard.writeText(sfState.jsonString).then(function() {
+            $('#sfStatus').className = 'status active success';
+            $('#sfStatus').textContent = '✓ JSON copiado al portapapeles (' +
+                Math.round(sfState.jsonString.length / 1024) + ' KB)';
+        });
+    }
+
+    function downloadSignframeJson() {
+        if (!sfState.jsonString) return;
+        var blob = new Blob([sfState.jsonString], { type: 'application/json;charset=utf-8' });
+        var name = (sfState.pdf ? sfState.pdf.name.replace(/\.pdf$/i, '') : 'form') + '_signframe_v1.json';
+        InsPipelineBundle.downloadBlob(blob, name);
+    }
+
+    function downloadSignframeReport() {
+        if (!sfState.result) return;
+        var lines = [];
+        lines.push('=== Signframe Generator — Reporte de Validación ===');
+        lines.push('Fecha: ' + new Date().toISOString());
+        lines.push('Matriz: ' + (sfState.matrix ? sfState.matrix.name : '?'));
+        lines.push('PDF: ' + (sfState.pdf ? sfState.pdf.name : '?'));
+        lines.push('');
+
+        lines.push('--- Estadísticas ---');
+        var s = sfState.result.stats;
+        lines.push('Filas en matriz: ' + s.matrixRows);
+        lines.push('Campos en PDF: ' + s.pdfFields);
+        lines.push('Campos totales generados: ' + s.totalFields);
+        lines.push('Secciones: ' + s.sections);
+        lines.push('Grupos radio: ' + s.radioGroups);
+        lines.push('Huérfanos PDF: ' + s.orphanedPdf);
+        lines.push('Sin match (matriz): ' + s.unmatchedMatrix);
+        lines.push('');
+
+        lines.push('--- Checks de Validación (' + sfState.result.validation.passed + '/' +
+            sfState.result.validation.total + ' OK) ---');
+        var checks = sfState.result.validation.checks;
+        for (var i = 0; i < checks.length; i++) {
+            var c = checks[i];
+            var icon = c.ok ? '✓' : (c.skipped ? '○' : '✗');
+            lines.push(icon + ' ' + c.name);
+            lines.push('  ' + c.details);
+            if (c.items && c.items.length) {
+                for (var j = 0; j < Math.min(c.items.length, 20); j++) {
+                    var item = c.items[j];
+                    lines.push('    - ' + (typeof item === 'string' ? item : JSON.stringify(item)));
+                }
+                if (c.items.length > 20) lines.push('    ... y ' + (c.items.length - 20) + ' más');
+            }
+            lines.push('');
+        }
+
+        if (sfState.result.warnings.length) {
+            lines.push('--- Warnings ---');
+            for (var w = 0; w < sfState.result.warnings.length; w++) {
+                var warn = sfState.result.warnings[w];
+                lines.push('[' + (warn.stage || 'warn') + '] ' +
+                    (typeof warn.detail === 'string' ? warn.detail : JSON.stringify(warn.detail)));
+            }
+        }
+
+        var blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+        var name = (sfState.pdf ? sfState.pdf.name.replace(/\.pdf$/i, '') : 'form') + '_signframe_report.txt';
+        InsPipelineBundle.downloadBlob(blob, name);
     }
 
     // ==================== MERGE PDF FLOW ====================
