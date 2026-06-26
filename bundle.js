@@ -96927,6 +96927,625 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     }
   });
 
+  // src/signframe-generator/combiner.js
+  var require_combiner = __commonJS({
+    "src/signframe-generator/combiner.js"(exports, module) {
+      "use strict";
+      var matrixParser = require_matrix_parser();
+      var fieldBuilder = require_field_builder();
+      var validator = require_validator();
+      var constants = require_constants2();
+      var NEVER_CONDITION = constants.NEVER_CONDITION;
+      var NUMBER_FORMATS = constants.NUMBER_FORMATS;
+      async function combineWithSignframe(opts) {
+        var signframeJson = opts.signframeJson;
+        var matrixBytes = opts.matrixBytes;
+        var targetJsonText = opts.targetJsonText || null;
+        var warnings = [];
+        var matrix = matrixParser.parseMatrix(matrixBytes);
+        var matrixRows = matrix.rows;
+        if (matrix.warnings.length) {
+          for (var w = 0; w < matrix.warnings.length; w++) {
+            warnings.push({ stage: "matrix", detail: matrix.warnings[w] });
+          }
+        }
+        var sfFields = collectSignframeFields(signframeJson);
+        var mxBySource = {};
+        var mxByAcro = {};
+        for (var mi = 0; mi < matrixRows.length; mi++) {
+          var mrow = matrixRows[mi];
+          var sn = mrow.sourceName;
+          var aa = mrow.acroActual;
+          if (sn) {
+            mxBySource[String(sn)] = mrow;
+          }
+          if (aa) {
+            mxByAcro[String(aa)] = mrow;
+          }
+        }
+        var labelToId = {};
+        for (var li = 0; li < matrixRows.length; li++) {
+          var lrow = matrixRows[li];
+          var etiq = lrow.etiqueta;
+          var lsn = lrow.sourceName || lrow.acroActual || "";
+          if (etiq && lsn) {
+            labelToId[String(etiq).toLowerCase().trim()] = "field_" + String(lsn);
+          }
+        }
+        var candidateGroups = {};
+        for (var gi = 0; gi < matrixRows.length; gi++) {
+          var grow = matrixRows[gi];
+          var grupo = grow.grupo;
+          if (grupo) {
+            grupo = String(grupo).trim();
+            if (!candidateGroups[grupo]) {
+              candidateGroups[grupo] = [];
+            }
+            candidateGroups[grupo].push(grow);
+          }
+        }
+        var radioGroups = {};
+        for (var gName in candidateGroups) {
+          var gRows = candidateGroups[gName];
+          var hasBtn = false;
+          var hasRadioType = false;
+          for (var bi = 0; bi < gRows.length; bi++) {
+            if (String(gRows[bi].nativeType || "").trim() === "Btn") {
+              hasBtn = true;
+            }
+            if (String(gRows[bi].tipoDato || "").toLowerCase().indexOf("radio") !== -1) {
+              hasRadioType = true;
+            }
+          }
+          if (hasBtn || hasRadioType) {
+            radioGroups[gName] = gRows;
+          }
+        }
+        var fieldsWithSection = [];
+        var unmatchedSf = [];
+        var usedMxKeys = {};
+        for (var fi = 0; fi < sfFields.length; fi++) {
+          var field = sfFields[fi];
+          var key = sourceKey(field);
+          var mx = mxBySource[key] || mxByAcro[key] || null;
+          if (mx) {
+            usedMxKeys[String(mx.sourceName || "")] = true;
+            usedMxKeys[String(mx.acroActual || "")] = true;
+            var secName = String(mx.seccionPdf || "Sin Seccion").trim();
+            enrichField(field, mx, radioGroups, labelToId);
+            fieldsWithSection.push({ field, sectionName: secName });
+          } else {
+            unmatchedSf.push(field);
+            warnings.push({
+              stage: "cross-reference",
+              detail: 'Campo signframe "' + (field.id || "") + '" (source=' + key + ") sin match en matriz -> seccion Sistema"
+            });
+          }
+        }
+        var unmatchedMatrixCount = 0;
+        for (var umi = 0; umi < matrixRows.length; umi++) {
+          var umrow = matrixRows[umi];
+          var umSn = String(umrow.sourceName || "");
+          var umAa = String(umrow.acroActual || "");
+          if (!usedMxKeys[umSn] && !usedMxKeys[umAa]) {
+            unmatchedMatrixCount++;
+            warnings.push({
+              stage: "cross-reference",
+              detail: 'Fila de matriz sourceName="' + umSn + '" (acro="' + umAa + '") sin match en signframe.json'
+            });
+          }
+        }
+        for (var ri = 0; ri < sfFields.length; ri++) {
+          if (sfFields[ri].repeaterConfig) {
+            warnings.push({
+              stage: "repeater",
+              detail: 'Campo "' + (sfFields[ri].id || "") + '" tiene repeaterConfig -> preservado tal cual, revisar manualmente'
+            });
+          }
+        }
+        var sections = organizeSections(fieldsWithSection, unmatchedSf);
+        validateOutput(sections, warnings);
+        var output = {};
+        for (var topKey in signframeJson) {
+          if (signframeJson.hasOwnProperty(topKey)) {
+            if (topKey === "sections") continue;
+            output[topKey] = signframeJson[topKey];
+          }
+        }
+        output.sections = sections;
+        var targetJson = null;
+        if (targetJsonText) {
+          try {
+            targetJson = JSON.parse(targetJsonText);
+          } catch (e) {
+            warnings.push({ stage: "target-json", detail: "No se pudo parsear JSON destino: " + e.message });
+          }
+        }
+        var pdfFieldsForValidation = [];
+        for (var vi = 0; vi < sfFields.length; vi++) {
+          var vf = sfFields[vi];
+          if (vf.sourceMeta && vf.sourceMeta.sourceName) {
+            pdfFieldsForValidation.push({ name: vf.sourceMeta.sourceName });
+          }
+        }
+        var validation = validator.validate(output, pdfFieldsForValidation, targetJson);
+        var totalFields = 0;
+        for (var si = 0; si < sections.length; si++) {
+          var subs = sections[si].subsections || [];
+          for (var ssi = 0; ssi < subs.length; ssi++) {
+            totalFields += (subs[ssi].fields || []).length;
+          }
+        }
+        return {
+          json: output,
+          validation,
+          warnings,
+          stats: {
+            matrixRows: matrixRows.length,
+            signframeFields: sfFields.length,
+            totalFields,
+            sections: sections.length,
+            radioGroups: Object.keys(radioGroups).length,
+            unmatchedSignframe: unmatchedSf.length,
+            unmatchedMatrix: unmatchedMatrixCount
+          }
+        };
+      }
+      function collectSignframeFields(data) {
+        var fields = [];
+        var sections = data.sections || [];
+        for (var s = 0; s < sections.length; s++) {
+          var subs = sections[s].subsections || [];
+          for (var ss = 0; ss < subs.length; ss++) {
+            var ff = subs[ss].fields || [];
+            for (var f = 0; f < ff.length; f++) {
+              fields.push(ff[f]);
+            }
+          }
+        }
+        return fields;
+      }
+      function sourceKey(field) {
+        var sm = field.sourceMeta;
+        if (sm && sm.sourceName) {
+          return sm.sourceName;
+        }
+        var fid = field.id || "";
+        if (fid.indexOf("field_") === 0) {
+          return fid.substring(6);
+        }
+        return fid;
+      }
+      function toKey(name) {
+        if (!name) return "otros";
+        var k = name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+        k = k.replace(/[^a-z0-9]+/g, "_");
+        k = k.replace(/^_+|_+$/g, "");
+        return k || "otros";
+      }
+      function sectionParent(name) {
+        var trimmed = (name || "").trim();
+        var m = trimmed.match(/^(.+?)\s+(\d+)\s*$/);
+        if (m) {
+          return { base: m[1].trim(), num: m[2] };
+        }
+        return { base: trimmed, num: null };
+      }
+      function humanizeGroup(grupo) {
+        var s = String(grupo).replace(/_/g, " ");
+        return s.replace(/\w\S*/g, function(word) {
+          return word.charAt(0).toUpperCase() + word.substring(1).toLowerCase();
+        });
+      }
+      function resolveNumberFormat(row) {
+        if (!row.formato) return null;
+        var f = String(row.formato).toLowerCase();
+        if (f.indexOf("monto") !== -1 || f.indexOf("moneda") !== -1 || f.indexOf("currency") !== -1) {
+          return NUMBER_FORMATS.monto;
+        }
+        if (f.indexOf("porcentaje") !== -1 || f.indexOf("%") !== -1) {
+          return NUMBER_FORMATS.porcentaje;
+        }
+        if (f.indexOf("entero") !== -1 || f.indexOf("integer") !== -1) {
+          return NUMBER_FORMATS.entero;
+        }
+        if (f === "numerico" || f === "num\xE9rico" || f === "numero") {
+          return NUMBER_FORMATS.entero;
+        }
+        return null;
+      }
+      function buildConditionalVisibilityWithLabels(raw, labelToId) {
+        if (!raw) return null;
+        var trimmed = String(raw).trim();
+        if (!trimmed) return null;
+        if (trimmed.charAt(0) === "{" || trimmed.charAt(0) === "[") {
+          try {
+            var parsed = JSON.parse(trimmed);
+            ensureFieldPrefix(parsed);
+            validateOperators(parsed);
+            return JSON.stringify(parsed);
+          } catch (e) {
+          }
+        }
+        var match = trimmed.match(/[Ss]i\s+"([^"]+)"\s+(?:seleccionado|marcado)/i);
+        if (!match) {
+          match = trimmed.match(/[Ss]i\s+(?:se\s+)?(?:selecciona|elige|marca)\s+"?([^"]+?)"?\s*(?:->|→|,|\s+mostrar)/i);
+        }
+        if (match) {
+          var refLabel = match[1].trim();
+          var fid = labelToId[refLabel.toLowerCase()];
+          if (!fid) {
+            var ref = refLabel.replace(/\s+/g, "_").toLowerCase().replace(/[^a-z0-9_]/g, "");
+            fid = "field_" + ref;
+          }
+          return JSON.stringify({
+            logic: "and",
+            conditions: [{ fieldId: fid, operator: "not_empty" }]
+          });
+        }
+        return null;
+      }
+      function ensureFieldPrefix(obj) {
+        if (!obj || typeof obj !== "object") return;
+        var conditions = obj.conditions;
+        if (!conditions) return;
+        for (var i = 0; i < conditions.length; i++) {
+          var c = conditions[i];
+          if (c.fieldId && c.fieldId.indexOf("field_") !== 0) {
+            c.fieldId = "field_" + c.fieldId;
+          }
+        }
+      }
+      var VALID_OPERATORS = { not_empty: true, empty: true, equals: true };
+      function validateOperators(obj) {
+        if (!obj || typeof obj !== "object") return;
+        var conditions = obj.conditions;
+        if (!conditions) return;
+        for (var i = 0; i < conditions.length; i++) {
+          var c = conditions[i];
+          var op = c.operator || "";
+          if (op && !VALID_OPERATORS[op]) {
+            c.operator = "not_empty";
+          }
+          if (op === "equals" && !("value" in c)) {
+            c.value = "";
+          }
+        }
+      }
+      function findMatchingOption(label, options) {
+        var ll = String(label).toLowerCase().trim();
+        for (var i = 0; i < options.length; i++) {
+          if ((options[i].label || "").toLowerCase().trim() === ll) {
+            return options[i];
+          }
+        }
+        for (var j = 0; j < options.length; j++) {
+          var ol = (options[j].label || "").toLowerCase();
+          if (ll.indexOf(ol) !== -1 || ol.indexOf(ll) !== -1) {
+            return options[j];
+          }
+        }
+        return null;
+      }
+      function enrichField(field, mx, radioGroups, labelToId) {
+        var ftype = fieldBuilder.resolveType(mx);
+        var path = fieldBuilder.correctPath(mx.pathPrincipal);
+        var options = fieldBuilder.buildOptions(mx);
+        var condVis = buildConditionalVisibilityWithLabels(mx.visibilidadCondicional, labelToId);
+        var numFmt = resolveNumberFormat(mx);
+        field.label = mx.etiqueta || field.label || "";
+        field.type = ftype;
+        field.required = mx.obligatorio === true;
+        if (field.sourceMeta) {
+          field.readOnly = false;
+        } else if (field.readOnly === void 0) {
+          field.readOnly = false;
+        }
+        if (field.hidden === void 0) {
+          field.hidden = false;
+        }
+        if (field.width === void 0) {
+          field.width = "full";
+        }
+        if (mx.preRellenado === true) {
+          field.prefillMode = "required";
+        } else if (mx.preRellenado === false) {
+          field.prefillMode = "none";
+        }
+        if (path) {
+          field.salidaJSON = path;
+          field.jsonOutputPath = path;
+          field.prefillKey = path;
+          field.excludeFromJson = false;
+        } else if (!field.salidaJSON) {
+          field.excludeFromJson = true;
+        }
+        if (mx.pathsSecundarios) {
+          var rawPaths = String(mx.pathsSecundarios);
+          var sep = rawPaths.indexOf("|") !== -1 ? "|" : ",";
+          var paths = rawPaths.split(sep);
+          var cleanPaths = [];
+          for (var pi = 0; pi < paths.length; pi++) {
+            var p = paths[pi].trim();
+            if (p) cleanPaths.push(p);
+          }
+          if (cleanPaths.length) {
+            field.mappedPaths = cleanPaths;
+          }
+        }
+        if (condVis) {
+          field.conditionalVisibility = condVis;
+        } else if (field.conditionalVisibility === void 0) {
+          field.conditionalVisibility = null;
+        }
+        if (field.conditionalRequired === void 0) {
+          field.conditionalRequired = null;
+        }
+        if (mx.maxLength) {
+          field.maxLength = mx.maxLength;
+        }
+        if (mx.patron) {
+          field.validationPattern = String(mx.patron);
+        }
+        if (options) {
+          field.options = options;
+        }
+        if (numFmt) {
+          field.jsonNumberFormat = numFmt;
+        }
+        if (ftype === "checkbox") {
+          if (field.sourceMeta) {
+            field.checkedPdfValue = true;
+            field.checkedJsonValue = true;
+          }
+        }
+        if (ftype === "date") {
+          field.width = "half";
+        }
+        if (ftype === "select" && options) {
+          field.width = "half";
+        }
+        var grupo = mx.grupo;
+        if (grupo) {
+          grupo = String(grupo).trim();
+        }
+        if (grupo && radioGroups[grupo] && radioGroups[grupo].length > 1) {
+          field.type = "radio";
+          var groupRows = radioGroups[grupo];
+          var groupIds = [];
+          for (var gri = 0; gri < groupRows.length; gri++) {
+            var grSn = String(groupRows[gri].sourceName || groupRows[gri].acroActual || "");
+            groupIds.push("field_" + grSn);
+          }
+          field.radioGroupLabel = humanizeGroup(grupo);
+          var otherIds = [];
+          for (var oi = 0; oi < groupIds.length; oi++) {
+            if (groupIds[oi] !== field.id) {
+              otherIds.push(groupIds[oi]);
+            }
+          }
+          field.radioGroupFields = otherIds;
+          if (options) {
+            field.options = options;
+          }
+          var etiqueta = mx.etiqueta || "";
+          if (options) {
+            var matchedOpt = findMatchingOption(String(etiqueta), options);
+            if (matchedOpt) {
+              field.jsonValue = matchedOpt.jsonValue || matchedOpt.value || etiqueta;
+              field.pdfValue = matchedOpt.pdfValue || matchedOpt.label || etiqueta;
+            } else {
+              field.jsonValue = etiqueta;
+              field.pdfValue = etiqueta;
+            }
+          } else {
+            field.jsonValue = etiqueta;
+            field.pdfValue = etiqueta;
+          }
+        }
+        return field;
+      }
+      function assignOrder(fields) {
+        for (var i = 0; i < fields.length; i++) {
+          fields[i].order = i + 1;
+        }
+      }
+      function organizeSections(fieldsWithSection, unmatchedSf) {
+        var seen = {};
+        var sectionNamesOrdered = [];
+        var sectionFieldsMap = {};
+        for (var i = 0; i < fieldsWithSection.length; i++) {
+          var fws = fieldsWithSection[i];
+          var secName = fws.sectionName;
+          if (!seen[secName]) {
+            seen[secName] = true;
+            sectionNamesOrdered.push(secName);
+            sectionFieldsMap[secName] = [];
+          }
+          sectionFieldsMap[secName].push(fws.field);
+        }
+        var parentGroups = {};
+        var parentInsertionOrder = [];
+        for (var ni = 0; ni < sectionNamesOrdered.length; ni++) {
+          var sName = sectionNamesOrdered[ni];
+          var sp = sectionParent(sName);
+          var base = sp.base;
+          var num = sp.num;
+          if (!parentGroups[base]) {
+            parentGroups[base] = [];
+            parentInsertionOrder.push(base);
+          }
+          parentGroups[base].push({ name: sName, num });
+        }
+        var sections = [];
+        var secOrder = 1;
+        for (var pi = 0; pi < parentInsertionOrder.length; pi++) {
+          var parentName = parentInsertionOrder[pi];
+          var children = parentGroups[parentName];
+          var hasNumbered = false;
+          for (var ci = 0; ci < children.length; ci++) {
+            if (children[ci].num !== null) {
+              hasNumbered = true;
+              break;
+            }
+          }
+          if (hasNumbered && children.length > 1) {
+            var subsections = [];
+            var subOrder = 1;
+            for (var chi = 0; chi < children.length; chi++) {
+              var childName = children[chi].name;
+              var childFields = sectionFieldsMap[childName] || [];
+              assignOrder(childFields);
+              var subId = "subsection_" + toKey(childName);
+              subsections.push({
+                id: subId,
+                title: titleCase(childName),
+                order: subOrder,
+                fields: childFields,
+                childrenOrder: childFields.map(function(f) {
+                  return { kind: "field", id: f.id };
+                })
+              });
+              subOrder++;
+            }
+            var secId = "section_" + toKey(parentName);
+            var parentTitle = titleCase(parentName);
+            if (parentTitle.charAt(parentTitle.length - 1) !== "s") {
+              parentTitle += "s";
+            }
+            sections.push({
+              id: secId,
+              title: parentTitle,
+              order: secOrder,
+              subsections,
+              childrenOrder: subsections.map(function(s) {
+                return { kind: "subsection", id: s.id };
+              })
+            });
+            secOrder++;
+          } else {
+            for (var schi = 0; schi < children.length; schi++) {
+              var cName = children[schi].name;
+              var cFields = sectionFieldsMap[cName] || [];
+              assignOrder(cFields);
+              var cSecId = "section_" + toKey(cName);
+              var cSubId = "subsection_" + toKey(cName);
+              var cleanTitle = titleCase(cName);
+              var subsection = {
+                id: cSubId,
+                title: cleanTitle,
+                order: 1,
+                fields: cFields,
+                childrenOrder: cFields.map(function(f) {
+                  return { kind: "field", id: f.id };
+                })
+              };
+              sections.push({
+                id: cSecId,
+                title: cleanTitle,
+                order: secOrder,
+                subsections: [subsection],
+                childrenOrder: [{ kind: "subsection", id: cSubId }]
+              });
+              secOrder++;
+            }
+          }
+        }
+        if (unmatchedSf.length > 0) {
+          assignOrder(unmatchedSf);
+          var sysSubId = "subsection_sistema_oculto";
+          var sysSubsection = {
+            id: sysSubId,
+            title: "Datos del Sistema (oculto)",
+            order: 1,
+            conditionalVisibility: NEVER_CONDITION,
+            fields: unmatchedSf,
+            childrenOrder: unmatchedSf.map(function(f) {
+              return { kind: "field", id: f.id };
+            })
+          };
+          sections.push({
+            id: "section_sistema",
+            title: "Sistema",
+            order: secOrder,
+            subsections: [sysSubsection],
+            childrenOrder: [{ kind: "subsection", id: sysSubId }]
+          });
+        }
+        return sections;
+      }
+      function titleCase(str) {
+        return String(str).replace(/\w\S*/g, function(word) {
+          return word.charAt(0).toUpperCase() + word.substring(1).toLowerCase();
+        });
+      }
+      function validateOutput(sections, warnings) {
+        for (var si = 0; si < sections.length; si++) {
+          var subs = sections[si].subsections || [];
+          for (var ssi = 0; ssi < subs.length; ssi++) {
+            var fields = subs[ssi].fields || [];
+            for (var fi = 0; fi < fields.length; fi++) {
+              var f = fields[fi];
+              if (f.order === 0 || f.order === void 0) {
+                warnings.push({
+                  stage: "validation",
+                  detail: 'Campo "' + (f.id || "") + '" tenia order=0, corregido a 1'
+                });
+                f.order = 1;
+              }
+              var cv = f.conditionalVisibility;
+              if (cv && typeof cv === "string") {
+                try {
+                  var parsed = JSON.parse(cv);
+                  var modified = false;
+                  var conditions = parsed.conditions || [];
+                  for (var ci = 0; ci < conditions.length; ci++) {
+                    var cond = conditions[ci];
+                    var op = cond.operator || "";
+                    if (op && !VALID_OPERATORS[op]) {
+                      var oldOp = op;
+                      cond.operator = "not_empty";
+                      modified = true;
+                      warnings.push({
+                        stage: "validation",
+                        detail: 'Campo "' + (f.id || "") + '" operador invalido "' + oldOp + '" -> "not_empty"'
+                      });
+                    }
+                    if (op === "equals" && !("value" in cond)) {
+                      cond.value = "";
+                      modified = true;
+                    }
+                    var fid = cond.fieldId || "";
+                    if (fid && fid.indexOf("field_") !== 0) {
+                      cond.fieldId = "field_" + fid;
+                      modified = true;
+                    }
+                  }
+                  if (modified) {
+                    f.conditionalVisibility = JSON.stringify(parsed);
+                  }
+                } catch (e) {
+                }
+              }
+              if (f.type === "checkbox" && f.sourceMeta) {
+                var cpv = f.checkedPdfValue;
+                if (cpv === "X" || cpv === "x") {
+                  f.checkedPdfValue = true;
+                  f.checkedJsonValue = true;
+                  warnings.push({
+                    stage: "validation",
+                    detail: 'Checkbox "' + (f.id || "") + '" con sourceMeta tenia "X" -> true'
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+      module.exports = { combineWithSignframe };
+    }
+  });
+
   // src/browser.js
   var require_browser = __commonJS({
     "src/browser.js"(exports, module) {
@@ -97502,6 +98121,17 @@ ${pagesHtml}</body>
         const targetJsonText = targetJsonFile ? await fileToText(targetJsonFile) : null;
         return generateSignframeJson({ matrixBytes, pdfBytes, targetJsonText });
       }
+      async function runSignframeCombine(inputs) {
+        const { combineWithSignframe } = require_combiner();
+        const { matrixFile, signframeJsonFile, targetJsonFile } = inputs;
+        if (!matrixFile) throw new Error("Carg\xE1 la matriz XLSX");
+        if (!signframeJsonFile) throw new Error("Carg\xE1 el JSON skeleton de Signframe");
+        const matrixBytes = await fileToUint8Array(matrixFile);
+        const signframeText = await fileToText(signframeJsonFile);
+        const signframeJson = JSON.parse(signframeText);
+        const targetJsonText = targetJsonFile ? await fileToText(targetJsonFile) : null;
+        return combineWithSignframe({ signframeJson, matrixBytes, targetJsonText });
+      }
       async function mergePdfs(pdfFiles) {
         const { PDFDocument, PDFName, PDFArray } = require_cjs();
         const merged = await PDFDocument.create();
@@ -97627,9 +98257,9 @@ ${pagesHtml}</body>
         return new Uint8Array(savedBytes);
       }
       if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator };
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator, runSignframeCombine };
       }
-      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator };
+      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator, runSignframeCombine };
     }
   });
   return require_browser();

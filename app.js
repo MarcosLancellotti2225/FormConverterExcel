@@ -2358,7 +2358,7 @@
 
     var sfState = {
         matrix: null,
-        pdf: null,
+        signframeJson: null,
         targetJson: null,
         result: null,
         jsonString: null,
@@ -2370,9 +2370,9 @@
             updateSfFileStatus('sfMatrixStatus', sfState.matrix);
             refreshSfButton();
         });
-        $('#sfPdfInput').addEventListener('change', function(e) {
-            sfState.pdf = e.target.files[0] || null;
-            updateSfFileStatus('sfPdfStatus', sfState.pdf);
+        $('#sfJsonInput').addEventListener('change', function(e) {
+            sfState.signframeJson = e.target.files[0] || null;
+            updateSfFileStatus('sfJsonStatus', sfState.signframeJson);
             refreshSfButton();
         });
         $('#sfTargetInput').addEventListener('change', function(e) {
@@ -2400,7 +2400,7 @@
     }
 
     function refreshSfButton() {
-        $('#btnSignframeGenerate').disabled = !(sfState.matrix && sfState.pdf);
+        $('#btnSignframeGenerate').disabled = !(sfState.matrix && sfState.signframeJson);
     }
 
     async function runSignframeGenerate() {
@@ -2411,9 +2411,9 @@
 
         try {
             var t0 = performance.now();
-            var result = await InsPipelineBundle.runSignframeGenerator({
+            var result = await InsPipelineBundle.runSignframeCombine({
                 matrixFile: sfState.matrix,
-                pdfFile: sfState.pdf,
+                signframeJsonFile: sfState.signframeJson,
                 targetJsonFile: sfState.targetJson || undefined,
             });
             var t1 = performance.now();
@@ -2469,11 +2469,11 @@
         var container = $('#sfStats');
         var items = [
             ['Filas en matriz', stats.matrixRows],
-            ['Campos en PDF', stats.pdfFields],
+            ['Campos en Signframe', stats.signframeFields != null ? stats.signframeFields : stats.pdfFields],
             ['Campos totales', stats.totalFields],
             ['Secciones', stats.sections],
             ['Grupos radio', stats.radioGroups],
-            ['Huérfanos PDF', stats.orphanedPdf],
+            ['Sin match (signframe)', stats.unmatchedSignframe != null ? stats.unmatchedSignframe : stats.orphanedPdf],
             ['Sin match (matriz)', stats.unmatchedMatrix],
         ];
         container.innerHTML = items.map(function(item) {

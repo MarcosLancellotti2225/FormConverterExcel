@@ -663,6 +663,18 @@ async function runSignframeGenerator(inputs) {
     return generateSignframeJson({ matrixBytes, pdfBytes, targetJsonText });
 }
 
+async function runSignframeCombine(inputs) {
+    const { combineWithSignframe } = require('./signframe-generator/combiner');
+    const { matrixFile, signframeJsonFile, targetJsonFile } = inputs;
+    if (!matrixFile) throw new Error('Cargá la matriz XLSX');
+    if (!signframeJsonFile) throw new Error('Cargá el JSON skeleton de Signframe');
+    const matrixBytes = await fileToUint8Array(matrixFile);
+    const signframeText = await fileToText(signframeJsonFile);
+    const signframeJson = JSON.parse(signframeText);
+    const targetJsonText = targetJsonFile ? await fileToText(targetJsonFile) : null;
+    return combineWithSignframe({ signframeJson, matrixBytes, targetJsonText });
+}
+
 async function mergePdfs(pdfFiles) {
     const { PDFDocument, PDFName, PDFArray } = require('pdf-lib');
     const merged = await PDFDocument.create();
@@ -806,7 +818,7 @@ async function generateLabeledPdf(pdfBytes) {
 }
 
 if (typeof window !== 'undefined') {
-    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator };
+    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator, runSignframeCombine };
 }
 
-module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator };
+module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator, runSignframeCombine };
