@@ -40215,11 +40215,11 @@ var InsPipelineBundle = (() => {
       };
       var ENFORCER = {};
       var pool = /* @__PURE__ */ new Map();
-      var PDFName2 = (
+      var PDFName = (
         /** @class */
         function(_super) {
-          tslib_1.__extends(PDFName3, _super);
-          function PDFName3(enforcer, name) {
+          tslib_1.__extends(PDFName2, _super);
+          function PDFName2(enforcer, name) {
             var _this = this;
             if (enforcer !== ENFORCER)
               throw new errors_1.PrivateConstructorError("PDFName");
@@ -40233,7 +40233,7 @@ var InsPipelineBundle = (() => {
             _this.encodedName = encodedName;
             return _this;
           }
-          PDFName3.prototype.asBytes = function() {
+          PDFName2.prototype.asBytes = function() {
             var bytes = [];
             var hex = "";
             var escaped = false;
@@ -40265,67 +40265,67 @@ var InsPipelineBundle = (() => {
             }
             return new Uint8Array(bytes);
           };
-          PDFName3.prototype.decodeText = function() {
+          PDFName2.prototype.decodeText = function() {
             var bytes = this.asBytes();
             return String.fromCharCode.apply(String, Array.from(bytes));
           };
-          PDFName3.prototype.asString = function() {
+          PDFName2.prototype.asString = function() {
             return this.encodedName;
           };
-          PDFName3.prototype.value = function() {
+          PDFName2.prototype.value = function() {
             return this.encodedName;
           };
-          PDFName3.prototype.clone = function() {
+          PDFName2.prototype.clone = function() {
             return this;
           };
-          PDFName3.prototype.toString = function() {
+          PDFName2.prototype.toString = function() {
             return this.encodedName;
           };
-          PDFName3.prototype.sizeInBytes = function() {
+          PDFName2.prototype.sizeInBytes = function() {
             return this.encodedName.length;
           };
-          PDFName3.prototype.copyBytesInto = function(buffer, offset) {
+          PDFName2.prototype.copyBytesInto = function(buffer, offset) {
             offset += utils_1.copyStringIntoBuffer(this.encodedName, buffer, offset);
             return this.encodedName.length;
           };
-          PDFName3.of = function(name) {
+          PDFName2.of = function(name) {
             var decodedValue = decodeName(name);
             var instance = pool.get(decodedValue);
             if (!instance) {
-              instance = new PDFName3(ENFORCER, decodedValue);
+              instance = new PDFName2(ENFORCER, decodedValue);
               pool.set(decodedValue, instance);
             }
             return instance;
           };
-          PDFName3.Length = PDFName3.of("Length");
-          PDFName3.FlateDecode = PDFName3.of("FlateDecode");
-          PDFName3.Resources = PDFName3.of("Resources");
-          PDFName3.Font = PDFName3.of("Font");
-          PDFName3.XObject = PDFName3.of("XObject");
-          PDFName3.ExtGState = PDFName3.of("ExtGState");
-          PDFName3.Contents = PDFName3.of("Contents");
-          PDFName3.Type = PDFName3.of("Type");
-          PDFName3.Parent = PDFName3.of("Parent");
-          PDFName3.MediaBox = PDFName3.of("MediaBox");
-          PDFName3.Page = PDFName3.of("Page");
-          PDFName3.Annots = PDFName3.of("Annots");
-          PDFName3.TrimBox = PDFName3.of("TrimBox");
-          PDFName3.ArtBox = PDFName3.of("ArtBox");
-          PDFName3.BleedBox = PDFName3.of("BleedBox");
-          PDFName3.CropBox = PDFName3.of("CropBox");
-          PDFName3.Rotate = PDFName3.of("Rotate");
-          PDFName3.Title = PDFName3.of("Title");
-          PDFName3.Author = PDFName3.of("Author");
-          PDFName3.Subject = PDFName3.of("Subject");
-          PDFName3.Creator = PDFName3.of("Creator");
-          PDFName3.Keywords = PDFName3.of("Keywords");
-          PDFName3.Producer = PDFName3.of("Producer");
-          PDFName3.CreationDate = PDFName3.of("CreationDate");
-          PDFName3.ModDate = PDFName3.of("ModDate");
-          return PDFName3;
+          PDFName2.Length = PDFName2.of("Length");
+          PDFName2.FlateDecode = PDFName2.of("FlateDecode");
+          PDFName2.Resources = PDFName2.of("Resources");
+          PDFName2.Font = PDFName2.of("Font");
+          PDFName2.XObject = PDFName2.of("XObject");
+          PDFName2.ExtGState = PDFName2.of("ExtGState");
+          PDFName2.Contents = PDFName2.of("Contents");
+          PDFName2.Type = PDFName2.of("Type");
+          PDFName2.Parent = PDFName2.of("Parent");
+          PDFName2.MediaBox = PDFName2.of("MediaBox");
+          PDFName2.Page = PDFName2.of("Page");
+          PDFName2.Annots = PDFName2.of("Annots");
+          PDFName2.TrimBox = PDFName2.of("TrimBox");
+          PDFName2.ArtBox = PDFName2.of("ArtBox");
+          PDFName2.BleedBox = PDFName2.of("BleedBox");
+          PDFName2.CropBox = PDFName2.of("CropBox");
+          PDFName2.Rotate = PDFName2.of("Rotate");
+          PDFName2.Title = PDFName2.of("Title");
+          PDFName2.Author = PDFName2.of("Author");
+          PDFName2.Subject = PDFName2.of("Subject");
+          PDFName2.Creator = PDFName2.of("Creator");
+          PDFName2.Keywords = PDFName2.of("Keywords");
+          PDFName2.Producer = PDFName2.of("Producer");
+          PDFName2.CreationDate = PDFName2.of("CreationDate");
+          PDFName2.ModDate = PDFName2.of("ModDate");
+          return PDFName2;
         }(PDFObject_1.default)
       );
-      exports.default = PDFName2;
+      exports.default = PDFName;
     }
   });
 
@@ -55561,7 +55561,7 @@ var InsPipelineBundle = (() => {
   var require_pdf_analyzer = __commonJS({
     "src/parsers/pdf-analyzer.js"(exports, module) {
       "use strict";
-      var { PDFDocument, PDFName: PDFName2 } = require_cjs();
+      var { PDFDocument, PDFName } = require_cjs();
       async function parsePdfFromBuffer(bytes) {
         if (!bytes) {
           throw new Error("parsePdfFromBuffer: buffer is required");
@@ -55573,7 +55573,7 @@ var InsPipelineBundle = (() => {
         pages.forEach((p, i) => {
           pageRefMap.set(p.ref.objectNumber, i);
         });
-        const acroFormRef = pdfDoc.catalog.get(PDFName2.of("AcroForm"));
+        const acroFormRef = pdfDoc.catalog.get(PDFName.of("AcroForm"));
         if (!acroFormRef) {
           return { numPages: pages.length, fields: {} };
         }
@@ -55581,7 +55581,7 @@ var InsPipelineBundle = (() => {
         if (!acroForm || typeof acroForm.get !== "function") {
           return { numPages: pages.length, fields: {} };
         }
-        const fieldsRef = acroForm.get(PDFName2.of("Fields"));
+        const fieldsRef = acroForm.get(PDFName.of("Fields"));
         if (!fieldsRef) {
           return { numPages: pages.length, fields: {} };
         }
@@ -55598,13 +55598,13 @@ var InsPipelineBundle = (() => {
           const kidRef = kids.get(i);
           const dict = context.lookup(kidRef);
           if (!dict || typeof dict.get !== "function") continue;
-          const tVal = dict.get(PDFName2.of("T"));
+          const tVal = dict.get(PDFName.of("T"));
           let partialName = "";
           if (tVal) {
             partialName = decodeFieldName(tVal);
           }
           const fullName = parentName ? parentName + "." + partialName : partialName;
-          const childKids = dict.get(PDFName2.of("Kids"));
+          const childKids = dict.get(PDFName.of("Kids"));
           const resolvedKids = childKids ? context.lookup(childKids) : null;
           const ft = getInheritedFT(dict, context);
           if (resolvedKids && typeof resolvedKids.size === "function") {
@@ -55641,7 +55641,7 @@ var InsPipelineBundle = (() => {
           const ref = kids.get(i);
           const d = context.lookup(ref);
           if (!d || typeof d.get !== "function") continue;
-          if (d.get(PDFName2.of("T")) !== void 0) return true;
+          if (d.get(PDFName.of("T")) !== void 0) return true;
         }
         return false;
       }
@@ -55660,9 +55660,9 @@ var InsPipelineBundle = (() => {
       function getInheritedFT(dict, context) {
         let current = dict;
         while (current && typeof current.get === "function") {
-          const ft = current.get(PDFName2.of("FT"));
+          const ft = current.get(PDFName.of("FT"));
           if (ft) return decodeValue(ft);
-          const parentRef = current.get(PDFName2.of("Parent"));
+          const parentRef = current.get(PDFName.of("Parent"));
           if (!parentRef) break;
           current = context.lookup(parentRef);
         }
@@ -55698,7 +55698,7 @@ var InsPipelineBundle = (() => {
         return String(pdfVal);
       }
       function extractRect(wDict) {
-        const rectVal = wDict.get(PDFName2.of("Rect"));
+        const rectVal = wDict.get(PDFName.of("Rect"));
         if (!rectVal) return [0, 0, 0, 0];
         const arr = typeof rectVal.size === "function" ? rectVal : null;
         if (!arr) return [0, 0, 0, 0];
@@ -55715,7 +55715,7 @@ var InsPipelineBundle = (() => {
         return [x, y, w, h];
       }
       function resolvePageNum(wDict, context, pageRefMap, pages) {
-        const pRef = wDict.get(PDFName2.of("P"));
+        const pRef = wDict.get(PDFName.of("P"));
         if (pRef) {
           const resolved = typeof pRef.objectNumber === "number" ? pRef : null;
           if (resolved) {
@@ -55727,7 +55727,7 @@ var InsPipelineBundle = (() => {
         return 0;
       }
       function extractOptions(dict, context) {
-        const opt = dict.get(PDFName2.of("Opt"));
+        const opt = dict.get(PDFName.of("Opt"));
         if (!opt) return [];
         const arr = context.lookup(opt);
         if (!arr || typeof arr.size !== "function") return [];
@@ -88311,7 +88311,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
   var require_pdf_rewriter = __commonJS({
     "src/pdf-converter/pdf-rewriter.js"(exports, module) {
       "use strict";
-      var { PDFDocument, PDFName: PDFName2, PDFHexString, PDFString, PDFArray, PDFNumber, PDFBool } = require_cjs();
+      var { PDFDocument, PDFName, PDFHexString, PDFString, PDFArray, PDFNumber, PDFBool } = require_cjs();
       var FF_MULTILINE = 1 << 12;
       function applyFieldProps(dict, prop) {
         let touched = false;
@@ -88319,28 +88319,28 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           const size = Number(prop.fontSize);
           if (!isNaN(size)) {
             let da = "";
-            const daVal = dict.get(PDFName2.of("DA"));
+            const daVal = dict.get(PDFName.of("DA"));
             if (daVal) da = readStringValue(daVal);
             if (da && /\/\S+\s+[\d.]+\s+Tf/.test(da)) {
               da = da.replace(/(\/\S+\s+)([\d.]+)(\s+Tf)/, "$1" + size + "$3");
             } else {
               da = "/Helv " + size + " Tf 0 g";
             }
-            dict.set(PDFName2.of("DA"), PDFString.of(da));
+            dict.set(PDFName.of("DA"), PDFString.of(da));
             touched = true;
           }
         }
         if (prop.multiline !== void 0) {
           let ff = 0;
-          const ffVal = dict.get(PDFName2.of("Ff"));
+          const ffVal = dict.get(PDFName.of("Ff"));
           if (ffVal && typeof ffVal.asNumber === "function") ff = ffVal.asNumber();
           else if (typeof ffVal === "number") ff = ffVal;
           if (prop.multiline) ff |= FF_MULTILINE;
           else ff &= ~FF_MULTILINE;
-          dict.set(PDFName2.of("Ff"), PDFNumber.of(ff));
+          dict.set(PDFName.of("Ff"), PDFNumber.of(ff));
           touched = true;
         }
-        if (touched) dict.delete(PDFName2.of("AP"));
+        if (touched) dict.delete(PDFName.of("AP"));
         return touched;
       }
       function readStringValue(val) {
@@ -88358,15 +88358,15 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           const ref = fieldsArray.get(i);
           const dict = context.lookup(ref);
           if (!dict || typeof dict.get !== "function") continue;
-          const tVal = dict.get(PDFName2.of("T"));
+          const tVal = dict.get(PDFName.of("T"));
           const partialName = tVal ? readStringValue(tVal) : "";
           const fullName = parentName ? parentName + "." + partialName : partialName;
-          const kidsRef = dict.get(PDFName2.of("Kids"));
+          const kidsRef = dict.get(PDFName.of("Kids"));
           if (kidsRef) {
             const kids = context.lookup(kidsRef);
             if (kids && typeof kids.size === "function" && kids.size() > 0) {
               const firstKid = context.lookup(kids.get(0));
-              const firstKidHasT = firstKid && firstKid.get && firstKid.get(PDFName2.of("T"));
+              const firstKidHasT = firstKid && firstKid.get && firstKid.get(PDFName.of("T"));
               if (firstKidHasT) {
                 collectLeavesRaw(kids, context, fullName, result);
                 continue;
@@ -88408,13 +88408,13 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           }
         }
         const deleteSet = new Set(deleteNames || []);
-        const acroFormRef = pdfDoc.catalog.get(PDFName2.of("AcroForm"));
+        const acroFormRef = pdfDoc.catalog.get(PDFName.of("AcroForm"));
         if (!acroFormRef) {
           warnings.push({ type: "no_acroform", reason: "PDF has no AcroForm" });
           return { pdfBytes: await pdfDoc.save(), warnings };
         }
         const acroForm = context.lookup(acroFormRef);
-        const fieldsRef = acroForm.get(PDFName2.of("Fields"));
+        const fieldsRef = acroForm.get(PDFName.of("Fields"));
         const fieldsArray = fieldsRef ? context.lookup(fieldsRef) : null;
         if (!fieldsArray) {
           warnings.push({ type: "no_fields", reason: "AcroForm has no Fields array" });
@@ -88458,7 +88458,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
               collectInherited(leaf.dict, context);
               const INHERITABLE = ["FT", "Ff", "V", "DV", "DA", "DR", "Q"];
               for (const key of INHERITABLE) {
-                const pdfKey = PDFName2.of(key);
+                const pdfKey = PDFName.of(key);
                 if (kidDict.get(pdfKey) === void 0) {
                   const val = leaf.dict.get(pdfKey);
                   if (val !== void 0) kidDict.set(pdfKey, val);
@@ -88466,7 +88466,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
               }
               const widgetNewName = nameMap.get(widgetKey) || nameMap.get(fullName);
               const finalName = widgetNewName || fullName;
-              kidDict.set(PDFName2.of("T"), PDFHexString.fromText(finalName));
+              kidDict.set(PDFName.of("T"), PDFHexString.fromText(finalName));
               if (widgetNewName) {
                 renamedCount++;
                 renamedFields.push({ oldName: widgetKey, newName: widgetNewName });
@@ -88478,16 +88478,16 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
                 rect.push(PDFNumber.of(posEntry2.y));
                 rect.push(PDFNumber.of(posEntry2.x + posEntry2.width));
                 rect.push(PDFNumber.of(posEntry2.y + posEntry2.height));
-                kidDict.set(PDFName2.of("Rect"), rect);
-                kidDict.delete(PDFName2.of("AP"));
+                kidDict.set(PDFName.of("Rect"), rect);
+                kidDict.delete(PDFName.of("AP"));
               }
               const typeEntry2 = typeMap.get(widgetKey) || typeMap.get(fullName);
               if (typeEntry2) {
-                kidDict.set(PDFName2.of("FT"), PDFName2.of(typeEntry2));
+                kidDict.set(PDFName.of("FT"), PDFName.of(typeEntry2));
               }
               const propEntry2 = propMap.get(widgetKey) || propMap.get(fullName);
               if (propEntry2 && applyFieldProps(kidDict, propEntry2)) needAppearances = true;
-              kidDict.delete(PDFName2.of("Parent"));
+              kidDict.delete(PDFName.of("Parent"));
               ensureFieldType(kidDict, context);
               let kRef = context.getObjectRef(kidDict);
               if (!kRef) kRef = context.register(kidDict);
@@ -88504,11 +88504,11 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           const newName = nameMap.get(uniqueKey) || nameMap.get(fullName);
           collectInherited(leaf.dict, context);
           if (newName) {
-            leaf.dict.set(PDFName2.of("T"), PDFHexString.fromText(newName));
+            leaf.dict.set(PDFName.of("T"), PDFHexString.fromText(newName));
             renamedCount++;
             renamedFields.push({ oldName: uniqueKey, newName });
           } else {
-            leaf.dict.set(PDFName2.of("T"), PDFHexString.fromText(fullName));
+            leaf.dict.set(PDFName.of("T"), PDFHexString.fromText(fullName));
           }
           const posEntry = posMap.get(uniqueKey) || posMap.get(fullName);
           if (posEntry) {
@@ -88517,24 +88517,24 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             rect.push(PDFNumber.of(posEntry.y));
             rect.push(PDFNumber.of(posEntry.x + posEntry.width));
             rect.push(PDFNumber.of(posEntry.y + posEntry.height));
-            leaf.dict.set(PDFName2.of("Rect"), rect);
-            leaf.dict.delete(PDFName2.of("AP"));
+            leaf.dict.set(PDFName.of("Rect"), rect);
+            leaf.dict.delete(PDFName.of("AP"));
           }
           const typeEntry = typeMap.get(uniqueKey) || typeMap.get(fullName);
           if (typeEntry) {
-            leaf.dict.set(PDFName2.of("FT"), PDFName2.of(typeEntry));
+            leaf.dict.set(PDFName.of("FT"), PDFName.of(typeEntry));
           }
           const propEntry = propMap.get(uniqueKey) || propMap.get(fullName);
           if (propEntry && applyFieldProps(leaf.dict, propEntry)) needAppearances = true;
-          leaf.dict.delete(PDFName2.of("Parent"));
+          leaf.dict.delete(PDFName.of("Parent"));
           ensureFieldType(leaf.dict, context);
           let ref = context.getObjectRef(leaf.dict);
           if (!ref) ref = context.register(leaf.dict);
           newRootFields.push(ref);
         }
-        acroForm.set(PDFName2.of("Fields"), newRootFields);
+        acroForm.set(PDFName.of("Fields"), newRootFields);
         if (needAppearances) {
-          acroForm.set(PDFName2.of("NeedAppearances"), PDFBool.True);
+          acroForm.set(PDFName.of("NeedAppearances"), PDFBool.True);
         }
         const newBytes = await pdfDoc.save({ updateFieldAppearances: false });
         return { pdfBytes: newBytes, warnings, renamedCount, renamedFields, deletedCount, deletedFields };
@@ -88544,7 +88544,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         if (!fieldRef) return;
         const pages = pdfDoc.getPages();
         for (const page of pages) {
-          const annotsRef = page.node.get(PDFName2.of("Annots"));
+          const annotsRef = page.node.get(PDFName.of("Annots"));
           if (!annotsRef) continue;
           const annots = context.lookup(annotsRef);
           if (!annots || typeof annots.size !== "function") continue;
@@ -88555,16 +88555,16 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
               newAnnots.push(ref);
             }
           }
-          page.node.set(PDFName2.of("Annots"), newAnnots);
+          page.node.set(PDFName.of("Annots"), newAnnots);
         }
-        const kidsRef = fieldDict.get(PDFName2.of("Kids"));
+        const kidsRef = fieldDict.get(PDFName.of("Kids"));
         if (kidsRef) {
           const kids = context.lookup(kidsRef);
           if (kids && typeof kids.size === "function") {
             for (let i = 0; i < kids.size(); i++) {
               const kidRef = kids.get(i);
               for (const page of pages) {
-                const annotsRef2 = page.node.get(PDFName2.of("Annots"));
+                const annotsRef2 = page.node.get(PDFName.of("Annots"));
                 if (!annotsRef2) continue;
                 const annots2 = context.lookup(annotsRef2);
                 if (!annots2 || typeof annots2.size !== "function") continue;
@@ -88575,7 +88575,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
                     newAnnots2.push(ref);
                   }
                 }
-                page.node.set(PDFName2.of("Annots"), newAnnots2);
+                page.node.set(PDFName.of("Annots"), newAnnots2);
               }
             }
           }
@@ -88583,57 +88583,57 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       }
       function collectInherited(dict, context) {
         const INHERITABLE = ["FT", "Ff", "V", "DV", "DA", "DR", "Q"];
-        let parentRef = dict.get(PDFName2.of("Parent"));
+        let parentRef = dict.get(PDFName.of("Parent"));
         while (parentRef) {
           const parent = context.lookup(parentRef);
           if (!parent || typeof parent.get !== "function") break;
           for (const key of INHERITABLE) {
-            const pdfKey = PDFName2.of(key);
+            const pdfKey = PDFName.of(key);
             if (dict.get(pdfKey) === void 0) {
               const val = parent.get(pdfKey);
               if (val !== void 0) dict.set(pdfKey, val);
             }
           }
-          parentRef = parent.get(PDFName2.of("Parent"));
+          parentRef = parent.get(PDFName.of("Parent"));
         }
       }
       function ensureFieldType(dict, context) {
-        if (dict.get(PDFName2.of("FT"))) return;
-        const kidsRef = dict.get(PDFName2.of("Kids"));
+        if (dict.get(PDFName.of("FT"))) return;
+        const kidsRef = dict.get(PDFName.of("Kids"));
         if (kidsRef) {
           const kids = context.lookup(kidsRef);
           if (kids && typeof kids.size === "function") {
             for (let i = 0; i < kids.size(); i++) {
               const kid = context.lookup(kids.get(i));
               if (kid && kid.get) {
-                const asVal = kid.get(PDFName2.of("AS"));
+                const asVal = kid.get(PDFName.of("AS"));
                 if (asVal) {
-                  dict.set(PDFName2.of("FT"), PDFName2.of("Btn"));
+                  dict.set(PDFName.of("FT"), PDFName.of("Btn"));
                   return;
                 }
               }
             }
           }
         }
-        dict.set(PDFName2.of("FT"), PDFName2.of("Tx"));
+        dict.set(PDFName.of("FT"), PDFName.of("Tx"));
       }
       async function addFieldToPdf(pdfBytes, newFields) {
         const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
         const context = pdfDoc.context;
         const pages = pdfDoc.getPages();
-        let acroFormRef = pdfDoc.catalog.get(PDFName2.of("AcroForm"));
+        let acroFormRef = pdfDoc.catalog.get(PDFName.of("AcroForm"));
         let acroForm;
         if (acroFormRef) {
           acroForm = context.lookup(acroFormRef);
         } else {
           acroForm = context.obj({});
-          pdfDoc.catalog.set(PDFName2.of("AcroForm"), acroForm);
+          pdfDoc.catalog.set(PDFName.of("AcroForm"), acroForm);
         }
-        let fieldsRef = acroForm.get(PDFName2.of("Fields"));
+        let fieldsRef = acroForm.get(PDFName.of("Fields"));
         let fieldsArray = fieldsRef ? context.lookup(fieldsRef) : null;
         if (!fieldsArray) {
           fieldsArray = PDFArray.withContext(context);
-          acroForm.set(PDFName2.of("Fields"), fieldsArray);
+          acroForm.set(PDFName.of("Fields"), fieldsArray);
         }
         for (const f of newFields) {
           const pageIdx = (f.page || 1) - 1;
@@ -88647,28 +88647,28 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           rect.push(PDFNumber2.of(f.x + f.width));
           rect.push(PDFNumber2.of(f.y + f.height));
           const fieldDict = context.obj({});
-          fieldDict.set(PDFName2.of("Type"), PDFName2.of("Annot"));
-          fieldDict.set(PDFName2.of("Subtype"), PDFName2.of("Widget"));
-          fieldDict.set(PDFName2.of("FT"), PDFName2.of("Tx"));
-          fieldDict.set(PDFName2.of("T"), PDFHexString.fromText(f.name));
-          fieldDict.set(PDFName2.of("Rect"), rect);
-          fieldDict.set(PDFName2.of("P"), pageRef);
-          fieldDict.set(PDFName2.of("F"), PDFNumber2.of(4));
+          fieldDict.set(PDFName.of("Type"), PDFName.of("Annot"));
+          fieldDict.set(PDFName.of("Subtype"), PDFName.of("Widget"));
+          fieldDict.set(PDFName.of("FT"), PDFName.of("Tx"));
+          fieldDict.set(PDFName.of("T"), PDFHexString.fromText(f.name));
+          fieldDict.set(PDFName.of("Rect"), rect);
+          fieldDict.set(PDFName.of("P"), pageRef);
+          fieldDict.set(PDFName.of("F"), PDFNumber2.of(4));
           const da = "/Helv 10 Tf 0 g";
-          fieldDict.set(PDFName2.of("DA"), PDFString.of(da));
+          fieldDict.set(PDFName.of("DA"), PDFString.of(da));
           const fieldRef = context.register(fieldDict);
           fieldsArray.push(fieldRef);
-          let annotsRef = page.node.get(PDFName2.of("Annots"));
+          let annotsRef = page.node.get(PDFName.of("Annots"));
           let annots;
           if (annotsRef) {
             annots = context.lookup(annotsRef);
             if (!annots || typeof annots.push !== "function") {
               annots = PDFArray.withContext(context);
-              page.node.set(PDFName2.of("Annots"), annots);
+              page.node.set(PDFName.of("Annots"), annots);
             }
           } else {
             annots = PDFArray.withContext(context);
-            page.node.set(PDFName2.of("Annots"), annots);
+            page.node.set(PDFName.of("Annots"), annots);
           }
           annots.push(fieldRef);
         }
@@ -94026,7 +94026,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
   var require_pdf_reader = __commonJS({
     "src/pdf-detect/lib/pdf-reader.js"(exports, module) {
       "use strict";
-      var { PDFDocument, PDFName: PDFName2, PDFHexString, PDFString } = require_cjs();
+      var { PDFDocument, PDFName, PDFHexString, PDFString } = require_cjs();
       function readStringValue(val) {
         if (!val) return "";
         if (typeof val === "string") return val;
@@ -94037,11 +94037,11 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         return String(val);
       }
       function resolveFieldType(dict, context) {
-        const ft = dict.get(PDFName2.of("FT"));
+        const ft = dict.get(PDFName.of("FT"));
         if (ft) {
           const ftStr = ft.encodedName ? ft.encodedName.replace("/", "") : String(ft);
           if (ftStr === "Btn") {
-            const ff = dict.get(PDFName2.of("Ff"));
+            const ff = dict.get(PDFName.of("Ff"));
             const flags = ff ? typeof ff.numberValue === "function" ? ff.numberValue() : Number(ff) : 0;
             if (flags & 1 << 16) return "Radio";
             if (flags & 1 << 15) return "Pushbutton";
@@ -94057,18 +94057,18 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       function getInheritedFieldType(dict, context) {
         let type = resolveFieldType(dict, context);
         if (type !== "Unknown") return type;
-        let parentRef = dict.get(PDFName2.of("Parent"));
+        let parentRef = dict.get(PDFName.of("Parent"));
         while (parentRef) {
           const parent = context.lookup(parentRef);
           if (!parent || typeof parent.get !== "function") break;
           type = resolveFieldType(parent, context);
           if (type !== "Unknown") return type;
-          parentRef = parent.get(PDFName2.of("Parent"));
+          parentRef = parent.get(PDFName.of("Parent"));
         }
         return "Text";
       }
       function getWidgetRect(dict, context) {
-        const rectVal = dict.get(PDFName2.of("Rect"));
+        const rectVal = dict.get(PDFName.of("Rect"));
         if (!rectVal) return { x: 0, y: 0, width: 0, height: 0 };
         const rect = context.lookup(rectVal);
         if (!rect || typeof rect.size !== "function") return { x: 0, y: 0, width: 0, height: 0 };
@@ -94088,7 +94088,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         };
       }
       function getWidgetPage(dict, context, pageRefs) {
-        const pRef = dict.get(PDFName2.of("P"));
+        const pRef = dict.get(PDFName.of("P"));
         if (pRef) {
           const resolved = context.lookup(pRef);
           const ref = pRef.objectNumber !== void 0 ? pRef : context.getObjectRef(resolved);
@@ -94107,15 +94107,15 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           const ref = fieldsArray.get(i);
           const dict = context.lookup(ref);
           if (!dict || typeof dict.get !== "function") continue;
-          const tVal = dict.get(PDFName2.of("T"));
+          const tVal = dict.get(PDFName.of("T"));
           const partialName = tVal ? readStringValue(tVal) : "";
           const fullName = parentName ? parentName + "." + partialName : partialName;
-          const kidsRef = dict.get(PDFName2.of("Kids"));
+          const kidsRef = dict.get(PDFName.of("Kids"));
           if (kidsRef) {
             const kids = context.lookup(kidsRef);
             if (kids && typeof kids.size === "function" && kids.size() > 0) {
               const firstKid = context.lookup(kids.get(0));
-              const firstKidHasT = firstKid && firstKid.get && firstKid.get(PDFName2.of("T"));
+              const firstKidHasT = firstKid && firstKid.get && firstKid.get(PDFName.of("T"));
               if (firstKidHasT) {
                 collectLeaves(kids, context, fullName, result, pageRefs);
                 continue;
@@ -94181,10 +94181,10 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const context = doc.context;
         const pages = doc.getPages();
         const pageRefs = pages.map((p) => p.ref);
-        const acroFormRef = doc.catalog.get(PDFName2.of("AcroForm"));
+        const acroFormRef = doc.catalog.get(PDFName.of("AcroForm"));
         if (!acroFormRef) return [];
         const acroForm = context.lookup(acroFormRef);
-        const fieldsRef = acroForm.get(PDFName2.of("Fields"));
+        const fieldsRef = acroForm.get(PDFName.of("Fields"));
         const fieldsArray = fieldsRef ? context.lookup(fieldsRef) : null;
         if (!fieldsArray) return [];
         const leaves = [];
@@ -95912,7 +95912,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
   var require_pdf_renamer = __commonJS({
     "src/pdf-converter-v2/lib/pdf-renamer.js"(exports, module) {
       "use strict";
-      var { PDFDocument, PDFName: PDFName2, PDFHexString, PDFString, PDFArray } = require_cjs();
+      var { PDFDocument, PDFName, PDFHexString, PDFString, PDFArray } = require_cjs();
       var DIRTY_VALUES = /* @__PURE__ */ new Set([
         "undefined",
         "undefine",
@@ -95928,13 +95928,13 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         for (const { oldName, newName } of renameMapping) {
           nameMap.set(oldName, newName);
         }
-        const acroFormRef = doc.catalog.get(PDFName2.of("AcroForm"));
+        const acroFormRef = doc.catalog.get(PDFName.of("AcroForm"));
         if (!acroFormRef) {
           warnings.push({ type: "no_acroform", reason: "PDF has no AcroForm" });
           return { pdfBytes: await doc.save(), warnings, renamedCount: 0, summary: {} };
         }
         const acroForm = context.lookup(acroFormRef);
-        const fieldsRef = acroForm.get(PDFName2.of("Fields"));
+        const fieldsRef = acroForm.get(PDFName.of("Fields"));
         const fieldsArray = fieldsRef ? context.lookup(fieldsRef) : null;
         if (!fieldsArray) {
           warnings.push({ type: "no_fields", reason: "AcroForm has no Fields array" });
@@ -95949,8 +95949,8 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           const fullName = leaf.fullName;
           const newName = nameMap.get(fullName);
           if (newName) {
-            leaf.dict.set(PDFName2.of("T"), PDFHexString.fromText(newName));
-            leaf.dict.delete(PDFName2.of("Parent"));
+            leaf.dict.set(PDFName.of("T"), PDFHexString.fromText(newName));
+            leaf.dict.delete(PDFName.of("Parent"));
             ensureFieldType(leaf.dict, context);
             cleanDirtyValues(leaf.dict, fullName, context);
             let ref = context.getObjectRef(leaf.dict);
@@ -95959,8 +95959,8 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             renamedCount++;
             renamedFields.push({ oldName: fullName, newName });
           } else {
-            leaf.dict.set(PDFName2.of("T"), PDFHexString.fromText(fullName));
-            leaf.dict.delete(PDFName2.of("Parent"));
+            leaf.dict.set(PDFName.of("T"), PDFHexString.fromText(fullName));
+            leaf.dict.delete(PDFName.of("Parent"));
             ensureFieldType(leaf.dict, context);
             cleanDirtyValues(leaf.dict, fullName, context);
             let ref = context.getObjectRef(leaf.dict);
@@ -95975,7 +95975,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             }
           }
         }
-        acroForm.set(PDFName2.of("Fields"), newRootFields);
+        acroForm.set(PDFName.of("Fields"), newRootFields);
         const leafNames = new Set(leaves.map((l) => l.fullName));
         for (const [oldName, newName] of nameMap) {
           if (!leafNames.has(oldName)) {
@@ -96017,15 +96017,15 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           const ref = fieldsArray.get(i);
           const dict = context.lookup(ref);
           if (!dict || typeof dict.get !== "function") continue;
-          const tVal = dict.get(PDFName2.of("T"));
+          const tVal = dict.get(PDFName.of("T"));
           const partialName = tVal ? readStringValue(tVal) : "";
           const fullName = parentName ? parentName + "." + partialName : partialName;
-          const kidsRef = dict.get(PDFName2.of("Kids"));
+          const kidsRef = dict.get(PDFName.of("Kids"));
           if (kidsRef) {
             const kids = context.lookup(kidsRef);
             if (kids && typeof kids.size === "function" && kids.size() > 0) {
               const firstKid = context.lookup(kids.get(0));
-              const firstKidHasT = firstKid && firstKid.get && firstKid.get(PDFName2.of("T"));
+              const firstKidHasT = firstKid && firstKid.get && firstKid.get(PDFName.of("T"));
               if (firstKidHasT) {
                 collectLeaves(kids, context, fullName, result);
                 continue;
@@ -96038,44 +96038,44 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       }
       function collectInherited(dict, context) {
         const INHERITABLE = ["FT", "Ff", "V", "DV", "DA", "DR", "Q"];
-        let parentRef = dict.get(PDFName2.of("Parent"));
+        let parentRef = dict.get(PDFName.of("Parent"));
         while (parentRef) {
           const parent = context.lookup(parentRef);
           if (!parent || typeof parent.get !== "function") break;
           for (const key of INHERITABLE) {
-            const pdfKey = PDFName2.of(key);
+            const pdfKey = PDFName.of(key);
             if (dict.get(pdfKey) === void 0) {
               const val = parent.get(pdfKey);
               if (val !== void 0) dict.set(pdfKey, val);
             }
           }
-          parentRef = parent.get(PDFName2.of("Parent"));
+          parentRef = parent.get(PDFName.of("Parent"));
         }
       }
       function ensureFieldType(dict, context) {
-        if (dict.get(PDFName2.of("FT"))) return;
-        const kidsRef = dict.get(PDFName2.of("Kids"));
+        if (dict.get(PDFName.of("FT"))) return;
+        const kidsRef = dict.get(PDFName.of("Kids"));
         if (kidsRef) {
           const kids = context.lookup(kidsRef);
           if (kids && typeof kids.size === "function") {
             for (let i = 0; i < kids.size(); i++) {
               const kid = context.lookup(kids.get(i));
               if (kid && kid.get) {
-                const asVal = kid.get(PDFName2.of("AS"));
+                const asVal = kid.get(PDFName.of("AS"));
                 if (asVal) {
-                  dict.set(PDFName2.of("FT"), PDFName2.of("Btn"));
+                  dict.set(PDFName.of("FT"), PDFName.of("Btn"));
                   return;
                 }
               }
             }
           }
         }
-        dict.set(PDFName2.of("FT"), PDFName2.of("Tx"));
+        dict.set(PDFName.of("FT"), PDFName.of("Tx"));
       }
       function cleanDirtyValues(dict, oldName, context) {
         const keysToCheck = ["V", "DV", "TU", "TM"];
         for (const key of keysToCheck) {
-          const pdfKey = PDFName2.of(key);
+          const pdfKey = PDFName.of(key);
           const val = dict.get(pdfKey);
           if (!val) continue;
           const strVal = readStringValue(val);
@@ -97483,7 +97483,7 @@ ${pagesHtml}</body>
         return generateSignframeJson({ matrixBytes, pdfBytes, targetJsonText });
       }
       async function mergePdfs(pdfFiles) {
-        const { PDFDocument, PDFName: PDFName2, PDFArray } = require_cjs();
+        const { PDFDocument, PDFName, PDFArray } = require_cjs();
         const merged = await PDFDocument.create();
         const context = merged.context;
         const stats = [];
@@ -97495,11 +97495,30 @@ ${pagesHtml}</body>
           for (const page of copiedPages) merged.addPage(page);
           stats.push({ name: file.name, pages: pageCount });
         }
+        function findTopParentLocal(ref2, dict2) {
+          let curRef = ref2, cur = dict2, depth = 20;
+          while (depth-- > 0) {
+            const pRef = cur.get(PDFName.of("Parent"));
+            if (!pRef) return curRef;
+            const p = context.lookup(pRef);
+            if (!p || typeof p.get !== "function") return curRef;
+            curRef = pRef;
+            cur = p;
+          }
+          return curRef;
+        }
+        function refInArrayLocal(r2, arr) {
+          const s = String(r2);
+          for (let i = 0; i < arr.length; i++) {
+            if (String(arr[i]) === s) return true;
+          }
+          return false;
+        }
         const allFieldRefs = [];
         const pages = merged.getPages();
         for (let pi = 0; pi < pages.length; pi++) {
           const pageNode = pages[pi].node;
-          const annotsRef = pageNode.get(PDFName2.of("Annots"));
+          const annotsRef = pageNode.get(PDFName.of("Annots"));
           if (!annotsRef) continue;
           const annots = context.lookup(annotsRef);
           if (!annots || typeof annots.size !== "function") continue;
@@ -97507,60 +97526,39 @@ ${pagesHtml}</body>
             const ref = annots.get(ai);
             const dict = context.lookup(ref);
             if (!dict || typeof dict.get !== "function") continue;
-            const subtype = dict.get(PDFName2.of("Subtype"));
-            const hasFieldType = dict.get(PDFName2.of("FT"));
-            const hasFieldName = dict.get(PDFName2.of("T"));
-            const hasParent = dict.get(PDFName2.of("Parent"));
+            const subtype = dict.get(PDFName.of("Subtype"));
+            const hasFieldType = dict.get(PDFName.of("FT"));
+            const hasFieldName = dict.get(PDFName.of("T"));
+            const hasParent = dict.get(PDFName.of("Parent"));
             const isWidget = subtype && subtype.toString() === "/Widget" || hasFieldType || hasFieldName;
             if (!isWidget) continue;
             if (hasParent) {
-              const topRef = findTopParent(ref, dict, context);
-              if (topRef && !refInArray(topRef, allFieldRefs)) {
+              const topRef = findTopParentLocal(ref, dict);
+              if (topRef && !refInArrayLocal(topRef, allFieldRefs)) {
                 allFieldRefs.push(topRef);
               }
             } else {
-              if (!refInArray(ref, allFieldRefs)) {
+              if (!refInArrayLocal(ref, allFieldRefs)) {
                 allFieldRefs.push(ref);
               }
             }
           }
         }
         if (allFieldRefs.length > 0) {
-          let acroFormRef = merged.catalog.get(PDFName2.of("AcroForm"));
+          let acroFormRef = merged.catalog.get(PDFName.of("AcroForm"));
           let acroForm;
           if (acroFormRef) {
             acroForm = context.lookup(acroFormRef);
           } else {
             acroForm = context.obj({});
-            merged.catalog.set(PDFName2.of("AcroForm"), acroForm);
+            merged.catalog.set(PDFName.of("AcroForm"), acroForm);
           }
           const fieldsArray = PDFArray.withContext(context);
           for (const ref of allFieldRefs) fieldsArray.push(ref);
-          acroForm.set(PDFName2.of("Fields"), fieldsArray);
+          acroForm.set(PDFName.of("Fields"), fieldsArray);
         }
         const savedBytes = await merged.save({ updateFieldAppearances: false });
         return { pdfBytes: new Uint8Array(savedBytes), stats, totalPages: merged.getPageCount() };
-      }
-      function findTopParent(ref, dict, context) {
-        let currentRef = ref;
-        let current = dict;
-        let maxDepth = 20;
-        while (maxDepth-- > 0) {
-          const parentRef = current.get(PDFName.of("Parent"));
-          if (!parentRef) return currentRef;
-          const parent = context.lookup(parentRef);
-          if (!parent || typeof parent.get !== "function") return currentRef;
-          currentRef = parentRef;
-          current = parent;
-        }
-        return currentRef;
-      }
-      function refInArray(ref, arr) {
-        const refStr = String(ref);
-        for (let i = 0; i < arr.length; i++) {
-          if (String(arr[i]) === refStr) return true;
-        }
-        return false;
       }
       async function generateLabeledPdf(pdfBytes) {
         const { PDFDocument, rgb, StandardFonts } = require_cjs();

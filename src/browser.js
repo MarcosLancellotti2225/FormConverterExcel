@@ -678,6 +678,24 @@ async function mergePdfs(pdfFiles) {
         stats.push({ name: file.name, pages: pageCount });
     }
 
+    function findTopParentLocal(ref2, dict2) {
+        let curRef = ref2, cur = dict2, depth = 20;
+        while (depth-- > 0) {
+            const pRef = cur.get(PDFName.of('Parent'));
+            if (!pRef) return curRef;
+            const p = context.lookup(pRef);
+            if (!p || typeof p.get !== 'function') return curRef;
+            curRef = pRef; cur = p;
+        }
+        return curRef;
+    }
+
+    function refInArrayLocal(r, arr) {
+        const s = String(r);
+        for (let i = 0; i < arr.length; i++) { if (String(arr[i]) === s) return true; }
+        return false;
+    }
+
     // Rebuild AcroForm from widget annotations on all copied pages
     const allFieldRefs = [];
     const pages = merged.getPages();
@@ -693,7 +711,6 @@ async function mergePdfs(pdfFiles) {
             const dict = context.lookup(ref);
             if (!dict || typeof dict.get !== 'function') continue;
 
-            // Check if this annotation is a Widget (form field)
             const subtype = dict.get(PDFName.of('Subtype'));
             const hasFieldType = dict.get(PDFName.of('FT'));
             const hasFieldName = dict.get(PDFName.of('T'));
@@ -702,14 +719,13 @@ async function mergePdfs(pdfFiles) {
             const isWidget = (subtype && subtype.toString() === '/Widget') || hasFieldType || hasFieldName;
             if (!isWidget) continue;
 
-            // If this widget has a Parent, we need the top-level parent in Fields
             if (hasParent) {
-                const topRef = findTopParent(ref, dict, context);
-                if (topRef && !refInArray(topRef, allFieldRefs)) {
+                const topRef = findTopParentLocal(ref, dict);
+                if (topRef && !refInArrayLocal(topRef, allFieldRefs)) {
                     allFieldRefs.push(topRef);
                 }
             } else {
-                if (!refInArray(ref, allFieldRefs)) {
+                if (!refInArrayLocal(ref, allFieldRefs)) {
                     allFieldRefs.push(ref);
                 }
             }
@@ -733,29 +749,6 @@ async function mergePdfs(pdfFiles) {
 
     const savedBytes = await merged.save({ updateFieldAppearances: false });
     return { pdfBytes: new Uint8Array(savedBytes), stats, totalPages: merged.getPageCount() };
-}
-
-function findTopParent(ref, dict, context) {
-    let currentRef = ref;
-    let current = dict;
-    let maxDepth = 20;
-    while (maxDepth-- > 0) {
-        const parentRef = current.get(PDFName.of('Parent'));
-        if (!parentRef) return currentRef;
-        const parent = context.lookup(parentRef);
-        if (!parent || typeof parent.get !== 'function') return currentRef;
-        currentRef = parentRef;
-        current = parent;
-    }
-    return currentRef;
-}
-
-function refInArray(ref, arr) {
-    const refStr = String(ref);
-    for (let i = 0; i < arr.length; i++) {
-        if (String(arr[i]) === refStr) return true;
-    }
-    return false;
 }
 
 async function generateLabeledPdf(pdfBytes) {
