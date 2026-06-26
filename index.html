@@ -49,6 +49,18 @@
                 </ul>
                 <button class="primary">Empezar</button>
             </div>
+            <div class="mode-card" data-mode="merge-pdf">
+                <div class="mode-icon">📎</div>
+                <h2>Concatenar PDFs</h2>
+                <p>Combiná múltiples archivos PDF en uno solo. Arrastrá para reordenar.</p>
+                <ul class="mode-features">
+                    <li>Subir varios PDFs a la vez</li>
+                    <li>Reordenar con drag & drop</li>
+                    <li>Preview de páginas totales</li>
+                    <li>100% client-side</li>
+                </ul>
+                <button class="primary">Empezar</button>
+            </div>
         </div>
 
         <!-- ============ CONVERT PDF FLOW ============ -->
@@ -185,6 +197,53 @@
             </section>
         </div>
 
+        <!-- ============ MERGE PDF FLOW ============ -->
+        <div id="mergePdfFlow" hidden>
+            <section class="panel">
+                <h2>1. Cargar PDFs</h2>
+                <p class="hint">Seleccioná varios PDFs. Podés reordenarlos arrastrando antes de concatenar.</p>
+                <div class="inputs-grid">
+                    <label class="file-slot required" data-slot="merge-pdfs">
+                        <span class="label">PDFs a concatenar</span>
+                        <span class="desc">Seleccioná 2 o más archivos PDF</span>
+                        <input type="file" accept=".pdf" id="mergePdfInput" multiple>
+                        <span class="file-status" id="mergePdfStatus"></span>
+                    </label>
+                </div>
+            </section>
+
+            <section class="panel" id="mergeListPanel" hidden>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                    <h2 style="margin:0;">Orden de archivos</h2>
+                    <span id="mergeFileCount" class="hint"></span>
+                </div>
+                <p class="hint" style="margin-bottom:8px;">Arrastrá las filas para cambiar el orden. El PDF final se genera en este orden de arriba a abajo.</p>
+                <div class="match-table-wrap" style="max-height:400px;">
+                    <table class="match-table" id="mergeTable">
+                        <thead>
+                            <tr>
+                                <th style="width:32px;"></th>
+                                <th>#</th>
+                                <th>Archivo</th>
+                                <th>Tamaño</th>
+                                <th style="width:32px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="mergeTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>2. Concatenar</h2>
+                <div class="actions">
+                    <button id="btnMerge" class="primary" disabled>Concatenar PDFs</button>
+                    <button id="btnDownloadMerged" class="primary" hidden>Descargar PDF combinado</button>
+                </div>
+                <div id="mergeStatus" class="status"></div>
+            </section>
+        </div>
+
         <!-- ============ DETECT FIELDS FLOW ============ -->
         <div id="detectFieldsFlow" hidden>
             <section class="panel">
@@ -247,7 +306,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=27"></script>
-    <script src="app.js?v=27"></script>
+    <script src="bundle.js?v=28"></script>
+    <script src="app.js?v=28"></script>
 </body>
 </html>

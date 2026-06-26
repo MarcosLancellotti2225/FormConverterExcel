@@ -14,6 +14,7 @@
         wireBackButton();
         initConvertPdfFlow();
         initDetectFieldsFlow();
+        initMergePdfFlow();
 
         selectMode(null);
     }
@@ -37,6 +38,7 @@
         $('#modeSelector').hidden = !!mode;
         $('#convertPdfFlow').hidden = mode !== 'convert-pdf';
         $('#detectFieldsFlow').hidden = mode !== 'detect-fields';
+        $('#mergePdfFlow').hidden = mode !== 'merge-pdf';
         $('#btnBackToHome').hidden = !mode;
         var main = document.querySelector('main');
         if (mode === 'convert-pdf' || mode === 'detect-fields') {
@@ -2348,6 +2350,139 @@
             div.appendChild(btn);
             container.appendChild(div);
         }
+    }
+
+    // ==================== MERGE PDF FLOW ====================
+
+    var mergeState = {
+        files: [],
+        resultBytes: null,
+        dragIdx: null
+    };
+
+    function initMergePdfFlow() {
+        $('#mergePdfInput').addEventListener('change', function(e) {
+            var newFiles = Array.from(e.target.files || []);
+            if (!newFiles.length) return;
+            for (var i = 0; i < newFiles.length; i++) mergeState.files.push(newFiles[i]);
+            renderMergeTable();
+            updateMergeStatus();
+        });
+        $('#btnMerge').addEventListener('click', runMerge);
+        $('#btnDownloadMerged').addEventListener('click', downloadMerged);
+    }
+
+    function updateMergeStatus() {
+        var count = mergeState.files.length;
+        var el = $('#mergePdfStatus');
+        var slot = el.closest('.file-slot');
+        if (count > 0) {
+            slot.classList.add('loaded');
+            el.textContent = '✓ ' + count + ' archivo' + (count > 1 ? 's' : '') + ' cargado' + (count > 1 ? 's' : '');
+        } else {
+            slot.classList.remove('loaded');
+            el.textContent = '';
+        }
+        $('#btnMerge').disabled = count < 2;
+        $('#mergeListPanel').hidden = count === 0;
+        $('#mergeFileCount').textContent = count + ' archivo' + (count > 1 ? 's' : '');
+    }
+
+    function renderMergeTable() {
+        var tbody = $('#mergeTableBody');
+        tbody.innerHTML = '';
+        for (var i = 0; i < mergeState.files.length; i++) {
+            var f = mergeState.files[i];
+            var tr = document.createElement('tr');
+            tr.draggable = true;
+            tr.dataset.idx = i;
+            tr.innerHTML =
+                '<td style="cursor:grab;text-align:center;color:var(--text-dim);">⠿</td>' +
+                '<td style="color:var(--text-dim);text-align:right;width:30px;">' + (i + 1) + '</td>' +
+                '<td style="font-family:monospace;font-size:0.85rem;">' + escapeHtml(f.name) + '</td>' +
+                '<td style="color:var(--text-muted);font-size:0.8rem;">' + formatSize(f.size) + '</td>' +
+                '<td style="width:32px;text-align:center;"><button class="merge-remove-btn" data-idx="' + i + '" title="Quitar">✕</button></td>';
+            tbody.appendChild(tr);
+        }
+
+        tbody.querySelectorAll('.merge-remove-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var idx = parseInt(this.dataset.idx, 10);
+                mergeState.files.splice(idx, 1);
+                mergeState.resultBytes = null;
+                $('#btnDownloadMerged').hidden = true;
+                renderMergeTable();
+                updateMergeStatus();
+            });
+        });
+
+        // Drag & drop reordering
+        var rows = tbody.querySelectorAll('tr');
+        rows.forEach(function(row) {
+            row.addEventListener('dragstart', function(e) {
+                mergeState.dragIdx = parseInt(row.dataset.idx, 10);
+                row.classList.add('merge-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            row.addEventListener('dragend', function() {
+                row.classList.remove('merge-dragging');
+                mergeState.dragIdx = null;
+                tbody.querySelectorAll('tr').forEach(function(r) { r.classList.remove('merge-drag-over'); });
+            });
+            row.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                tbody.querySelectorAll('tr').forEach(function(r) { r.classList.remove('merge-drag-over'); });
+                row.classList.add('merge-drag-over');
+            });
+            row.addEventListener('dragleave', function() {
+                row.classList.remove('merge-drag-over');
+            });
+            row.addEventListener('drop', function(e) {
+                e.preventDefault();
+                var fromIdx = mergeState.dragIdx;
+                var toIdx = parseInt(row.dataset.idx, 10);
+                if (fromIdx == null || fromIdx === toIdx) return;
+                var item = mergeState.files.splice(fromIdx, 1)[0];
+                mergeState.files.splice(toIdx, 0, item);
+                mergeState.resultBytes = null;
+                $('#btnDownloadMerged').hidden = true;
+                renderMergeTable();
+                updateMergeStatus();
+            });
+        });
+    }
+
+    async function runMerge() {
+        var statusEl = $('#mergeStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Concatenando ' + mergeState.files.length + ' PDFs...';
+        $('#btnMerge').disabled = true;
+
+        try {
+            var t0 = performance.now();
+            var result = await InsPipelineBundle.mergePdfs(mergeState.files);
+            var t1 = performance.now();
+            mergeState.resultBytes = result.pdfBytes;
+
+            var details = result.stats.map(function(s) { return s.name + ' (' + s.pages + ' pág)'; }).join(' + ');
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ ' + result.totalPages + ' páginas totales en ' + Math.round(t1 - t0) + 'ms — ' + details;
+
+            $('#btnDownloadMerged').hidden = false;
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
+        $('#btnMerge').disabled = mergeState.files.length < 2;
+    }
+
+    function downloadMerged() {
+        if (!mergeState.resultBytes) return;
+        var blob = new Blob([mergeState.resultBytes], { type: 'application/pdf' });
+        var name = 'merged_' + mergeState.files.length + '_files.pdf';
+        InsPipelineBundle.downloadBlob(blob, name);
     }
 
     // ==================== INIT ====================
