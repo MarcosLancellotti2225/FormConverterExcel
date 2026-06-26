@@ -664,8 +664,9 @@ async function runSignframeGenerator(inputs) {
 }
 
 async function mergePdfs(pdfFiles) {
-    const { PDFDocument } = require('pdf-lib');
+    const { PDFDocument, PDFName, PDFArray } = require('pdf-lib');
     const merged = await PDFDocument.create();
+    const context = merged.context;
     const stats = [];
 
     for (const file of pdfFiles) {
@@ -677,8 +678,84 @@ async function mergePdfs(pdfFiles) {
         stats.push({ name: file.name, pages: pageCount });
     }
 
-    const savedBytes = await merged.save();
+    // Rebuild AcroForm from widget annotations on all copied pages
+    const allFieldRefs = [];
+    const pages = merged.getPages();
+    for (let pi = 0; pi < pages.length; pi++) {
+        const pageNode = pages[pi].node;
+        const annotsRef = pageNode.get(PDFName.of('Annots'));
+        if (!annotsRef) continue;
+        const annots = context.lookup(annotsRef);
+        if (!annots || typeof annots.size !== 'function') continue;
+
+        for (let ai = 0; ai < annots.size(); ai++) {
+            const ref = annots.get(ai);
+            const dict = context.lookup(ref);
+            if (!dict || typeof dict.get !== 'function') continue;
+
+            // Check if this annotation is a Widget (form field)
+            const subtype = dict.get(PDFName.of('Subtype'));
+            const hasFieldType = dict.get(PDFName.of('FT'));
+            const hasFieldName = dict.get(PDFName.of('T'));
+            const hasParent = dict.get(PDFName.of('Parent'));
+
+            const isWidget = (subtype && subtype.toString() === '/Widget') || hasFieldType || hasFieldName;
+            if (!isWidget) continue;
+
+            // If this widget has a Parent, we need the top-level parent in Fields
+            if (hasParent) {
+                const topRef = findTopParent(ref, dict, context);
+                if (topRef && !refInArray(topRef, allFieldRefs)) {
+                    allFieldRefs.push(topRef);
+                }
+            } else {
+                if (!refInArray(ref, allFieldRefs)) {
+                    allFieldRefs.push(ref);
+                }
+            }
+        }
+    }
+
+    if (allFieldRefs.length > 0) {
+        let acroFormRef = merged.catalog.get(PDFName.of('AcroForm'));
+        let acroForm;
+        if (acroFormRef) {
+            acroForm = context.lookup(acroFormRef);
+        } else {
+            acroForm = context.obj({});
+            merged.catalog.set(PDFName.of('AcroForm'), acroForm);
+        }
+
+        const fieldsArray = PDFArray.withContext(context);
+        for (const ref of allFieldRefs) fieldsArray.push(ref);
+        acroForm.set(PDFName.of('Fields'), fieldsArray);
+    }
+
+    const savedBytes = await merged.save({ updateFieldAppearances: false });
     return { pdfBytes: new Uint8Array(savedBytes), stats, totalPages: merged.getPageCount() };
+}
+
+function findTopParent(ref, dict, context) {
+    let currentRef = ref;
+    let current = dict;
+    let maxDepth = 20;
+    while (maxDepth-- > 0) {
+        const parentRef = current.get(PDFName.of('Parent'));
+        if (!parentRef) return currentRef;
+        const parent = context.lookup(parentRef);
+        if (!parent || typeof parent.get !== 'function') return currentRef;
+        currentRef = parentRef;
+        current = parent;
+    }
+    return currentRef;
+}
+
+function refInArray(ref, arr) {
+    const refStr = String(ref);
+    for (let i = 0; i < arr.length; i++) {
+        if (String(arr[i]) === refStr) return true;
+    }
+    return false;
 }
 
 async function generateLabeledPdf(pdfBytes) {
