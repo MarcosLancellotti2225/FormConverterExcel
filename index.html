@@ -61,18 +61,6 @@
                 </ul>
                 <button class="primary">Empezar</button>
             </div>
-            <div class="mode-card" data-mode="canonical-matrix">
-                <div class="mode-icon">▦</div>
-                <h2>Matriz Canónica</h2>
-                <p>Desde el xlsx de mapeo, colapsa los sourceNames a una matriz canónica (1 fila por campo lógico) lista para completar.</p>
-                <ul class="mode-features">
-                    <li>Agrupa por raíz: simple, radio, repeater, lookup</li>
-                    <li>Enfermedades (prefijo configurable) → 1 fila</li>
-                    <li>Sección auto por prefijo + columnas de negocio vacías</li>
-                    <li>Input del Generador de JSON</li>
-                </ul>
-                <button class="primary">Empezar</button>
-            </div>
             <div class="mode-card" data-mode="merge-pdf">
                 <div class="mode-icon">📎</div>
                 <h2>Concatenar PDFs</h2>
@@ -353,47 +341,6 @@
             </div>
         </div>
 
-        <!-- ============ CANONICAL MATRIX FLOW ============ -->
-        <div id="canonicalFlow" hidden>
-            <section class="panel">
-                <h2>1. Archivo</h2>
-                <p class="hint">Cargá el xlsx de mapeo del PDF renombrado (columna de sourceNames en orden de lectura, + tipo + página). Los prefijos especiales (enfermedades, etc.) se configuran en <code>src/signframe-generator/canonical-config.js</code>.</p>
-                <div class="inputs-grid">
-                    <label class="file-slot required" data-slot="canon-mapping">
-                        <span class="label">XLSX de mapeo</span>
-                        <span class="desc">sourceNames + tipo + página (PDF renombrado)</span>
-                        <input type="file" accept=".xlsx,.xls" id="canonMappingInput">
-                        <span class="file-status" id="canonMappingStatus"></span>
-                    </label>
-                </div>
-            </section>
-
-            <section class="panel">
-                <h2>2. Generar matriz canónica</h2>
-                <div class="actions">
-                    <button id="btnCanonGenerate" class="primary" disabled>Generar matriz canónica</button>
-                    <button id="btnCanonDownload" class="primary" hidden>Descargar XLSX</button>
-                </div>
-                <div id="canonStatus" class="status"></div>
-            </section>
-
-            <section class="panel" id="canonResultPanel" hidden>
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                    <h2 style="margin:0;">Vista previa</h2>
-                    <span id="canonSummary" style="font-size:12px;color:var(--text-muted);"></span>
-                </div>
-                <div id="canonStats" class="sf-stats" style="margin-bottom:0.75rem;"></div>
-                <div class="match-table-wrap" style="max-height:calc(100vh - 360px);">
-                    <table class="match-table" id="canonTable">
-                        <thead>
-                            <tr><th>#</th><th>Sección</th><th>tipoCampo</th><th>grupo</th><th>catálogo</th><th>#campos</th><th>Pág</th><th>sourceNames</th></tr>
-                        </thead>
-                        <tbody id="canonTableBody"></tbody>
-                    </table>
-                </div>
-            </section>
-        </div>
-
         <!-- ============ MERGE PDF FLOW ============ -->
         <div id="mergePdfFlow" hidden>
             <section class="panel">
@@ -503,7 +450,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=37"></script>
-    <script src="app.js?v=37"></script>
+    <script src="bundle.js?v=38"></script>
+    <script src="app.js?v=38"></script>
 </body>
 </html>
