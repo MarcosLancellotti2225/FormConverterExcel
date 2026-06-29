@@ -687,6 +687,18 @@ async function runSignframePrepare(inputs) {
     return prepareMapping({ signframeJson, matrixBytes });
 }
 
+// CANONICAL MATRIX GENERATOR — collapse the renamed-PDF mapping xlsx into a
+// canonical 2-sheet business matrix (Campos + Opciones). Optionally merges
+// business rules from the Ficha original.
+async function runCanonicalMatrix(inputs) {
+    const { buildCanonicalMatrix } = require('./signframe-generator/canonical-matrix');
+    const { mappingFile, fichaFile } = inputs;
+    if (!mappingFile) throw new Error('Cargá el xlsx de mapeo del PDF renombrado');
+    const mappingBytes = await fileToUint8Array(mappingFile);
+    const fichaBytes = fichaFile ? await fileToUint8Array(fichaFile) : null;
+    return buildCanonicalMatrix(mappingBytes, fichaBytes);
+}
+
 // GROUP FLOW — ETAPA 1: parse mapping xlsx + matrix + signframe JSON, return
 // logical groups (by sourceName root) and matrix rows for the alignment editor.
 async function runSignframePrepareGroups(inputs) {
@@ -872,7 +884,7 @@ async function generateLabeledPdf(pdfBytes) {
 }
 
 if (typeof window !== 'undefined') {
-    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups };
+    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
 }
 
-module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups };
+module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };

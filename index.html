@@ -61,6 +61,18 @@
                 </ul>
                 <button class="primary">Empezar</button>
             </div>
+            <div class="mode-card" data-mode="canonical-matrix">
+                <div class="mode-icon">▦</div>
+                <h2>Matriz Canónica</h2>
+                <p>Colapsa el xlsx de mapeo a una matriz canónica de 2 hojas (Campos + Opciones) y fusiona el negocio de la Ficha.</p>
+                <ul class="mode-features">
+                    <li>Agrupa por raíz: simple, radio, repeater, lookup</li>
+                    <li>Hoja 1 Campos (pregunta + negocio), Hoja 2 Opciones (detalle)</li>
+                    <li>Fusiona la Ficha por sourceName</li>
+                    <li>Input del Generador de JSON</li>
+                </ul>
+                <button class="primary">Empezar</button>
+            </div>
             <div class="mode-card" data-mode="merge-pdf">
                 <div class="mode-icon">📎</div>
                 <h2>Concatenar PDFs</h2>
@@ -341,6 +353,53 @@
             </div>
         </div>
 
+        <!-- ============ CANONICAL MATRIX FLOW ============ -->
+        <div id="canonicalFlow" hidden>
+            <section class="panel">
+                <h2>1. Archivos</h2>
+                <p class="hint">Requerido: el xlsx de mapeo del PDF renombrado (sourceNames en orden + tipo + página). Opcional: la Ficha original (negocio) para fusionar columnas por sourceName. Prefijos especiales (enfermedades, etc.) en <code>canonical-config.js</code>.</p>
+                <div class="inputs-grid">
+                    <label class="file-slot required" data-slot="canon-mapping">
+                        <span class="label">XLSX de mapeo</span>
+                        <span class="desc">sourceNames + tipo + página (PDF renombrado)</span>
+                        <input type="file" accept=".xlsx,.xls" id="canonMappingInput">
+                        <span class="file-status" id="canonMappingStatus"></span>
+                    </label>
+                    <label class="file-slot" data-slot="canon-ficha">
+                        <span class="label">Ficha original (opcional)</span>
+                        <span class="desc">Reglas de negocio — se fusionan por sourceName</span>
+                        <input type="file" accept=".xlsx,.xls" id="canonFichaInput">
+                        <span class="file-status" id="canonFichaStatus"></span>
+                    </label>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>2. Generar matriz canónica (2 hojas)</h2>
+                <div class="actions">
+                    <button id="btnCanonGenerate" class="primary" disabled>Generar matriz canónica</button>
+                    <button id="btnCanonDownload" class="primary" hidden>Descargar XLSX</button>
+                </div>
+                <div id="canonStatus" class="status"></div>
+            </section>
+
+            <section class="panel" id="canonResultPanel" hidden>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                    <h2 style="margin:0;">Vista previa — Hoja Campos</h2>
+                    <span id="canonSummary" style="font-size:12px;color:var(--text-muted);"></span>
+                </div>
+                <div id="canonStats" class="sf-stats" style="margin-bottom:0.75rem;"></div>
+                <div class="match-table-wrap" style="max-height:calc(100vh - 360px);">
+                    <table class="match-table" id="canonTable">
+                        <thead>
+                            <tr><th>#</th><th>Sección</th><th>tipoCampo</th><th>grupo</th><th>#campos</th><th>Nombre en formulario</th><th>salidaJSON</th><th>Oblig</th></tr>
+                        </thead>
+                        <tbody id="canonTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
         <!-- ============ MERGE PDF FLOW ============ -->
         <div id="mergePdfFlow" hidden>
             <section class="panel">
@@ -450,7 +509,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=38"></script>
-    <script src="app.js?v=38"></script>
+    <script src="bundle.js?v=39"></script>
+    <script src="app.js?v=39"></script>
 </body>
 </html>

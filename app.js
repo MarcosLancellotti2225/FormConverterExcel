@@ -16,6 +16,7 @@
         initDetectFieldsFlow();
         initMergePdfFlow();
         initSignframeFlow();
+        initCanonicalFlow();
 
         selectMode(null);
     }
@@ -41,9 +42,10 @@
         $('#detectFieldsFlow').hidden = mode !== 'detect-fields';
         $('#mergePdfFlow').hidden = mode !== 'merge-pdf';
         $('#signframeFlow').hidden = mode !== 'signframe';
+        $('#canonicalFlow').hidden = mode !== 'canonical-matrix';
         $('#btnBackToHome').hidden = !mode;
         var main = document.querySelector('main');
-        if (mode === 'convert-pdf' || mode === 'detect-fields' || mode === 'signframe') {
+        if (mode === 'convert-pdf' || mode === 'detect-fields' || mode === 'signframe' || mode === 'canonical-matrix') {
             main.classList.add('wide-mode');
         } else {
             main.classList.remove('wide-mode');
@@ -3011,6 +3013,96 @@
         var blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
         var name = (sfState.pdf ? sfState.pdf.name.replace(/\.pdf$/i, '') : 'form') + '_signframe_report.txt';
         InsPipelineBundle.downloadBlob(blob, name);
+    }
+
+    // ==================== CANONICAL MATRIX FLOW ====================
+
+    var canonState = { mapping: null, ficha: null, result: null };
+
+    function initCanonicalFlow() {
+        $('#canonMappingInput').addEventListener('change', function(e) {
+            canonState.mapping = e.target.files[0] || null;
+            updateSfFileStatus('canonMappingStatus', canonState.mapping);
+            $('#btnCanonGenerate').disabled = !canonState.mapping;
+        });
+        $('#canonFichaInput').addEventListener('change', function(e) {
+            canonState.ficha = e.target.files[0] || null;
+            updateSfFileStatus('canonFichaStatus', canonState.ficha);
+        });
+        $('#btnCanonGenerate').addEventListener('click', runCanonGenerate);
+        $('#btnCanonDownload').addEventListener('click', downloadCanon);
+    }
+
+    async function runCanonGenerate() {
+        var statusEl = $('#canonStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Colapsando sourceNames y fusionando negocio...';
+        $('#btnCanonGenerate').disabled = true;
+        try {
+            var t0 = performance.now();
+            var result = await InsPipelineBundle.runCanonicalMatrix({
+                mappingFile: canonState.mapping,
+                fichaFile: canonState.ficha || undefined,
+            });
+            var t1 = performance.now();
+            canonState.result = result;
+
+            var s = result.stats;
+            var byType = Object.keys(s.byType).map(function(k) { return k + ': ' + s.byType[k]; }).join(', ');
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ ' + s.totalFields + ' campos → ' + s.totalRows +
+                ' filas en ' + Math.round(t1 - t0) + 'ms (' + byType + ')' +
+                (s.fichaRows ? '. Negocio fusionado: ' + s.mergedBySource + '/' + s.totalRows + ' filas.' : '');
+
+            $('#btnCanonDownload').hidden = false;
+            renderCanonResult(result);
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
+        $('#btnCanonGenerate').disabled = !canonState.mapping;
+    }
+
+    function renderCanonResult(result) {
+        $('#canonResultPanel').hidden = false;
+        var s = result.stats;
+        $('#canonSummary').textContent = s.totalFields + ' campos → ' + s.totalRows + ' filas' +
+            (s.fichaRows ? ' · ' + s.mergedBySource + ' con negocio' : '');
+
+        var order = ['simple', 'radio', 'repeater', 'repeaterLookup'];
+        var keys = order.filter(function(k) { return s.byType[k] != null; })
+            .concat(Object.keys(s.byType).filter(function(k) { return order.indexOf(k) === -1; }));
+        $('#canonStats').innerHTML = keys.map(function(k) {
+            return '<div class="sf-stat"><span class="sf-stat-label">' + escapeHtml(k) +
+                '</span><span class="sf-stat-value">' + s.byType[k] + '</span></div>';
+        }).join('');
+
+        var tbody = $('#canonTableBody');
+        var rows = result.rows;
+        var html = '';
+        for (var i = 0; i < rows.length; i++) {
+            var r = rows[i];
+            var b = r.business || {};
+            html += '<tr>' +
+                '<td style="color:var(--text-dim);text-align:right;">' + (i + 1) + '</td>' +
+                '<td>' + escapeHtml(r.seccion) + '</td>' +
+                '<td><span class="sf-g-kind ' + (r.tipoCampo === 'radio' ? 'radio' : (r.tipoCampo.indexOf('repeater') === 0 ? 'repeater' : '')) + '">' + escapeHtml(r.tipoCampo) + '</span></td>' +
+                '<td class="sf-g-root">' + escapeHtml(r.grupo) + '</td>' +
+                '<td style="text-align:center;">' + r.count + '</td>' +
+                '<td>' + escapeHtml(b.nombreFormulario || '') + '</td>' +
+                '<td style="font-family:monospace;font-size:0.72rem;">' + escapeHtml(b.salidaJSON || '') + '</td>' +
+                '<td style="text-align:center;">' + escapeHtml(b.obligatorio || '') + '</td>' +
+                '</tr>';
+        }
+        tbody.innerHTML = html;
+    }
+
+    function downloadCanon() {
+        if (!canonState.result) return;
+        var blob = new Blob([canonState.result.xlsxBytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        var base = canonState.mapping ? canonState.mapping.name.replace(/\.(xlsx|xls)$/i, '') : 'matriz';
+        InsPipelineBundle.downloadBlob(blob, base + '_canonica.xlsx');
     }
 
     // ==================== MERGE PDF FLOW ====================

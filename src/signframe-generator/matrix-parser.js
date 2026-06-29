@@ -193,6 +193,7 @@ function parseFlexibleMatrix(excelBytes) {
             patron: '',
             formato: '',
             visibilidadCondicional: String(get(r, 'visualizacion') || '').trim(),
+            observaciones: String(get(r, 'observaciones') || '').trim(),
             catalogoNombre: '',
             optionsParsed: null,
             optionsRaw: '',

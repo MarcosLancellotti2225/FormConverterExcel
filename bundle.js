@@ -94761,6 +94761,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             patron: "",
             formato: "",
             visibilidadCondicional: String(get(r, "visualizacion") || "").trim(),
+            observaciones: String(get(r, "observaciones") || "").trim(),
             catalogoNombre: "",
             optionsParsed: null,
             optionsRaw: "",
@@ -98359,6 +98360,419 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     }
   });
 
+  // src/signframe-generator/canonical-config.js
+  var require_canonical_config = __commonJS({
+    "src/signframe-generator/canonical-config.js"(exports, module) {
+      "use strict";
+      module.exports = {
+        // Sufijos de opción (radios Si/No/NoAplica). Se prueban como sufijo del
+        // sourceName, con o sin separador "_". Orden: del más largo al más corto.
+        optionSuffixes: ["NoAplica", "Si", "No"],
+        // Prefijos "lookup": TODOS los sourceNames que empiezan con el prefijo
+        // colapsan en UNA sola fila canónica (tipoCampo = repeaterLookup), porque
+        // se resuelven contra un catálogo. Ej: las ~106 enfermedades en 1 fila.
+        lookupPrefixes: [
+          {
+            prefix: "enf",
+            catalogo: "Cat\xE1logo Enfermedades",
+            seccion: "Cuestionario de Salud",
+            grupo: "enfermedades"
+          }
+        ],
+        // Derivación de Sección por prefijo del sourceName. Gana el prefijo más
+        // largo que matchee (startsWith). Si ninguno matchea -> defaultSection.
+        sectionByPrefix: {
+          titular: "Datos del Titular",
+          tomador: "Datos del Tomador",
+          dep: "Dependientes",
+          depTit: "Dependientes",
+          benef: "Beneficiarios",
+          benefDep: "Beneficiarios",
+          cuest: "Cuestionario",
+          riesgo: "Cuestionario de Salud",
+          intermediario: "Datos del Asesor",
+          pago: "Forma de Pago",
+          vigencia: "Vigencia",
+          moneda: "Datos de la P\xF3liza",
+          plan: "Plan / Coberturas",
+          firma: "Firmas",
+          decl: "Declaraciones",
+          jurada: "Declaraci\xF3n Jurada"
+        },
+        defaultSection: "General",
+        // Prefijos que, además, son "repeaters de entidad" (dependientes,
+        // beneficiarios): informativo para el generador de JSON. No cambia el
+        // colapso (los [n] ya se agrupan por raíz), pero se marca el grupo.
+        entityPrefixes: ["dep", "depTit", "benef", "benefDep"]
+      };
+    }
+  });
+
+  // src/signframe-generator/canonical-matrix.js
+  var require_canonical_matrix = __commonJS({
+    "src/signframe-generator/canonical-matrix.js"(exports, module) {
+      "use strict";
+      var XLSX = require_xlsx();
+      var config = require_canonical_config();
+      var matrixParser = require_matrix_parser();
+      function norm(s) {
+        return String(s == null ? "" : s).trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+      }
+      function stripIndex(sn) {
+        return sn.replace(/\[\d+\]$/, "");
+      }
+      function hasIndex(sn) {
+        return /\[\d+\]$/.test(sn);
+      }
+      function indexOf(sn) {
+        var m = sn.match(/\[(\d+)\]$/);
+        return m ? Number(m[1]) : null;
+      }
+      function optionSuffix(sn) {
+        var sfx = config.optionSuffixes || [];
+        for (var i = 0; i < sfx.length; i++) {
+          var re = new RegExp("_?" + sfx[i] + "$");
+          if (re.test(sn) && sn.replace(re, "").length > 0) return sfx[i];
+        }
+        return null;
+      }
+      function stripOption(sn) {
+        var sfx = config.optionSuffixes || [];
+        for (var i = 0; i < sfx.length; i++) {
+          var re = new RegExp("_?" + sfx[i] + "$");
+          if (re.test(sn)) {
+            var b = sn.replace(re, "");
+            if (b.length) return b;
+          }
+        }
+        return sn;
+      }
+      function matchedLookup(sn) {
+        var lps = config.lookupPrefixes || [];
+        var best = null;
+        for (var i = 0; i < lps.length; i++) {
+          if (sn.indexOf(lps[i].prefix) === 0 && (!best || lps[i].prefix.length > best.prefix.length)) best = lps[i];
+        }
+        return best;
+      }
+      function sectionFor(root) {
+        var map = config.sectionByPrefix || {};
+        var bestKey = null;
+        for (var key in map) {
+          if (map.hasOwnProperty(key) && root.indexOf(key) === 0 && (!bestKey || key.length > bestKey.length)) bestKey = key;
+        }
+        return bestKey ? map[bestKey] : config.defaultSection || "General";
+      }
+      function isEntity(root) {
+        var eps = config.entityPrefixes || [];
+        var best = "";
+        for (var i = 0; i < eps.length; i++) {
+          if (root.indexOf(eps[i]) === 0 && eps[i].length > best.length) best = eps[i];
+        }
+        return best || "";
+      }
+      function humanize(s) {
+        return String(s).replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[_]+/g, " ").replace(/\s+/g, " ").trim();
+      }
+      var SOURCENAME_HEADERS = [
+        /nombre\s+interno/i,
+        /sourcename/i,
+        /source\s*name/i,
+        /acroform\s+propuesto/i,
+        /nombre\s+del\s+campo\s+en\s+el\s+pdf/i,
+        /nombre\s+del\s+campo\s+en\s+pdf/i,
+        /propuesto/i,
+        /acroform/i
+      ];
+      function detectColumn(headers, patterns) {
+        for (var p = 0; p < patterns.length; p++) {
+          for (var c = 0; c < headers.length; c++) {
+            if (patterns[p].test(String(headers[c] || ""))) return c;
+          }
+        }
+        return -1;
+      }
+      function readMappingItems(mappingBytes) {
+        var wb = XLSX.read(mappingBytes, { type: "array" });
+        var ws = wb.Sheets[wb.SheetNames[0]];
+        var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+        if (!raw.length) throw new Error("El xlsx de mapeo est\xE1 vac\xEDo");
+        var headers = raw[0];
+        var colSn = detectColumn(headers, SOURCENAME_HEADERS);
+        if (colSn === -1) {
+          throw new Error("No encontr\xE9 la columna de sourceNames. Headers: " + headers.map(function(h) {
+            return String(h);
+          }).join(" | "));
+        }
+        var colTipo = detectColumn(headers, [/^tipo$/i, /tipo/i]);
+        var colPag = detectColumn(headers, [/p[áa]gina/i, /^p[áa]g/i]);
+        var items = [];
+        for (var i = 1; i < raw.length; i++) {
+          var r = raw[i];
+          var sn = String(r[colSn] || "").trim();
+          if (!sn) continue;
+          items.push({
+            sourceName: sn,
+            tipo: colTipo !== -1 ? String(r[colTipo] || "").trim() : "",
+            page: colPag !== -1 ? r[colPag] !== "" ? r[colPag] : null : null,
+            idx: items.length
+          });
+        }
+        return items;
+      }
+      function collapse(items) {
+        var groups = [];
+        var byKey = {};
+        function ensure(key, tipoCampo, extra) {
+          if (byKey[key]) return byKey[key];
+          var g2 = {
+            key,
+            tipoCampo,
+            grupo: extra && extra.grupo != null ? extra.grupo : key,
+            catalogo: extra && extra.catalogo ? extra.catalogo : "",
+            seccion: extra && extra.seccion ? extra.seccion : "",
+            members: [],
+            page: null,
+            order: null
+          };
+          byKey[key] = g2;
+          groups.push(g2);
+          return g2;
+        }
+        var optBaseCount = {};
+        for (var t = 0; t < items.length; t++) {
+          var it0 = items[t];
+          if (matchedLookup(it0.sourceName) || hasIndex(it0.sourceName)) continue;
+          var ob = stripOption(it0.sourceName);
+          if (ob !== it0.sourceName) optBaseCount[ob] = (optBaseCount[ob] || 0) + 1;
+        }
+        for (var i = 0; i < items.length; i++) {
+          var it = items[i];
+          var sn = it.sourceName;
+          var g;
+          var lookup = matchedLookup(sn);
+          if (lookup) {
+            g = ensure(
+              "lookup:" + lookup.prefix,
+              "repeaterLookup",
+              { grupo: lookup.grupo || lookup.prefix, catalogo: lookup.catalogo || "", seccion: lookup.seccion || "" }
+            );
+          } else if (hasIndex(sn)) {
+            g = ensure("rep:" + stripIndex(sn), "repeater", { grupo: stripIndex(sn) });
+          } else {
+            var ob2 = stripOption(sn);
+            var isRadio = ob2 !== sn && (optBaseCount[ob2] || 0) >= 2;
+            g = isRadio ? ensure("radio:" + ob2, "radio", { grupo: ob2 }) : ensure("simple:" + sn, "simple", { grupo: sn });
+          }
+          g.members.push(it);
+          if (g.order == null) {
+            g.order = it.idx;
+            g.page = it.page;
+          }
+        }
+        var rows = groups.map(function(g2) {
+          return {
+            seccion: g2.seccion || sectionFor(g2.grupo),
+            tipoCampo: g2.tipoCampo,
+            grupo: g2.grupo,
+            catalogo: g2.catalogo,
+            entity: isEntity(g2.grupo),
+            members: g2.members.slice(),
+            // {sourceName, tipo, page, idx}
+            count: g2.members.length,
+            page: g2.page,
+            order: g2.order
+          };
+        });
+        rows.sort(function(a, b) {
+          return a.order - b.order;
+        });
+        return rows;
+      }
+      function buildFichaIndex(fichaBytes) {
+        var parsed = matrixParser.parseMatrixAuto(fichaBytes);
+        var bySource = {};
+        var byEtiqueta = {};
+        for (var i = 0; i < parsed.rows.length; i++) {
+          var r = parsed.rows[i];
+          var sn = r.sourceName || r.acroActual || r.acroPropuesto;
+          if (sn && bySource[sn] === void 0) bySource[sn] = r;
+          var e = norm(r.etiqueta);
+          if (e && byEtiqueta[e] === void 0) byEtiqueta[e] = r;
+        }
+        return { bySource, byEtiqueta, rows: parsed.rows };
+      }
+      function fichaBusiness(fr) {
+        if (!fr) {
+          return { nombreFormulario: "", salidaJSON: "", obligatorio: "", regla: "", visibilidad: "", valorOpciones: "", observaciones: "", seccionJson: "" };
+        }
+        return {
+          nombreFormulario: fr.etiqueta || "",
+          salidaJSON: fr.pathPrincipal || "",
+          obligatorio: fr.obligatorio === true ? "S\xED" : fr.obligatorio === false ? "No" : "",
+          regla: fr.reglaOriginal || "",
+          visibilidad: fr.visibilidadCondicional || "",
+          valorOpciones: fr.valor || "",
+          observaciones: fr.observaciones || "",
+          seccionJson: fr.seccionJson || ""
+        };
+      }
+      function mergeBusiness(rows, fichaIdx, stats) {
+        for (var i = 0; i < rows.length; i++) {
+          var row = rows[i];
+          var fr = null;
+          var cands = [row.grupo].concat(row.members.map(function(m) {
+            return m.sourceName;
+          }));
+          for (var c = 0; c < cands.length && !fr; c++) {
+            if (fichaIdx.bySource[cands[c]]) fr = fichaIdx.bySource[cands[c]];
+          }
+          if (fr) {
+            stats.mergedBySource++;
+          }
+          row.business = fichaBusiness(fr);
+          row._matched = !!fr;
+        }
+        return rows;
+      }
+      var CAMPOS_HEADERS = [
+        "#",
+        "Secci\xF3n",
+        "tipoCampo",
+        "grupo",
+        "cat\xE1logo",
+        "sourceNames",
+        "#campos",
+        "P\xE1gina",
+        "Nombre en formulario",
+        "salidaJSON",
+        "Obligatorio",
+        "Regla",
+        "Visibilidad condicional",
+        "Valor/opciones",
+        "Observaciones",
+        "Secci\xF3n JSON"
+      ];
+      var OPCIONES_HEADERS = [
+        "grupo",
+        "tipoCampo",
+        "sourceName",
+        "opci\xF3n",
+        "jsonValue",
+        "pdfValue",
+        "item",
+        "needle"
+      ];
+      function buildOptionRows(rows) {
+        var out = [];
+        for (var i = 0; i < rows.length; i++) {
+          var r = rows[i];
+          if (r.tipoCampo === "simple") continue;
+          for (var m = 0; m < r.members.length; m++) {
+            var sn = r.members[m].sourceName;
+            var opcion = "", jsonValue = "", pdfValue = "", item = "", needle = "";
+            if (r.tipoCampo === "radio") {
+              opcion = optionSuffix(sn) || "";
+              jsonValue = opcion;
+              pdfValue = opcion;
+            } else if (r.tipoCampo === "repeater") {
+              var idx = indexOf(sn);
+              item = idx != null ? idx : "";
+            } else if (r.tipoCampo === "repeaterLookup") {
+              opcion = optionSuffix(sn) || "";
+              var lk = matchedLookup(sn);
+              var base = stripOption(sn);
+              if (lk) base = base.slice(lk.prefix.length);
+              needle = humanize(base);
+              pdfValue = opcion ? "X" : "";
+            }
+            out.push([r.grupo, r.tipoCampo, sn, opcion, jsonValue, pdfValue, item, needle]);
+          }
+        }
+        return out;
+      }
+      function buildWorkbook(rows) {
+        var camposAoa = [CAMPOS_HEADERS];
+        for (var i = 0; i < rows.length; i++) {
+          var r = rows[i];
+          var b = r.business || fichaBusiness(null);
+          camposAoa.push([
+            i + 1,
+            r.seccion,
+            r.tipoCampo,
+            r.grupo,
+            r.catalogo,
+            r.members.map(function(m) {
+              return m.sourceName;
+            }).join(", "),
+            r.count,
+            r.page != null ? r.page : "",
+            b.nombreFormulario,
+            b.salidaJSON,
+            b.obligatorio,
+            b.regla,
+            b.visibilidad,
+            b.valorOpciones,
+            b.observaciones,
+            b.seccionJson
+          ]);
+        }
+        var wsCampos = XLSX.utils.aoa_to_sheet(camposAoa);
+        wsCampos["!cols"] = [
+          { wch: 5 },
+          { wch: 22 },
+          { wch: 15 },
+          { wch: 26 },
+          { wch: 20 },
+          { wch: 44 },
+          { wch: 8 },
+          { wch: 7 },
+          { wch: 26 },
+          { wch: 30 },
+          { wch: 11 },
+          { wch: 26 },
+          { wch: 24 },
+          { wch: 24 },
+          { wch: 26 },
+          { wch: 20 }
+        ];
+        var opcionesAoa = [OPCIONES_HEADERS].concat(buildOptionRows(rows));
+        var wsOpciones = XLSX.utils.aoa_to_sheet(opcionesAoa);
+        wsOpciones["!cols"] = [
+          { wch: 26 },
+          { wch: 15 },
+          { wch: 32 },
+          { wch: 10 },
+          { wch: 12 },
+          { wch: 10 },
+          { wch: 6 },
+          { wch: 30 }
+        ];
+        var wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, wsCampos, "Campos");
+        XLSX.utils.book_append_sheet(wb, wsOpciones, "Opciones");
+        return new Uint8Array(XLSX.write(wb, { type: "array", bookType: "xlsx" }));
+      }
+      function buildCanonicalMatrix(mappingBytes, fichaBytes) {
+        var items = readMappingItems(mappingBytes);
+        var rows = collapse(items);
+        var stats = { totalFields: items.length, totalRows: rows.length, byType: {}, mergedBySource: 0, fichaRows: 0 };
+        if (fichaBytes) {
+          var fichaIdx = buildFichaIndex(fichaBytes);
+          stats.fichaRows = fichaIdx.rows.length;
+          mergeBusiness(rows, fichaIdx, stats);
+        } else {
+          for (var i = 0; i < rows.length; i++) rows[i].business = fichaBusiness(null);
+        }
+        for (var k = 0; k < rows.length; k++) {
+          stats.byType[rows[k].tipoCampo] = (stats.byType[rows[k].tipoCampo] || 0) + 1;
+        }
+        return { rows, stats, xlsxBytes: buildWorkbook(rows) };
+      }
+      module.exports = { buildCanonicalMatrix, collapse, readMappingItems, buildFichaIndex };
+    }
+  });
+
   // src/browser.js
   var require_browser = __commonJS({
     "src/browser.js"(exports, module) {
@@ -98954,6 +99368,14 @@ ${pagesHtml}</body>
         const signframeJson = JSON.parse(await fileToText(signframeJsonFile));
         return prepareMapping({ signframeJson, matrixBytes });
       }
+      async function runCanonicalMatrix(inputs) {
+        const { buildCanonicalMatrix } = require_canonical_matrix();
+        const { mappingFile, fichaFile } = inputs;
+        if (!mappingFile) throw new Error("Carg\xE1 el xlsx de mapeo del PDF renombrado");
+        const mappingBytes = await fileToUint8Array(mappingFile);
+        const fichaBytes = fichaFile ? await fileToUint8Array(fichaFile) : null;
+        return buildCanonicalMatrix(mappingBytes, fichaBytes);
+      }
       async function runSignframePrepareGroups(inputs) {
         const { prepareGroupMapping } = require_mapper();
         const { matrixFile, signframeJsonFile, mappingFile } = inputs;
@@ -99114,9 +99536,9 @@ ${pagesHtml}</body>
         return new Uint8Array(savedBytes);
       }
       if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups };
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
       }
-      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups };
+      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
     }
   });
   return require_browser();
