@@ -213,14 +213,8 @@
         <div id="signframeFlow" hidden>
             <section class="panel">
                 <h2>1. Archivos</h2>
-                <p class="hint">Cargá el PDF original, la Matriz XLSX y el JSON de Signframe. Opcionalmente un JSON destino para validar paths.</p>
+                <p class="hint">Mínimo: <strong>Signframe JSON + Matriz XLSX</strong> (con la columna sourceName). El cruce es exacto por sourceName. El PDF y el XLSX de mapeo son opcionales (este último habilita el aligner por orden de lectura).</p>
                 <div class="inputs-grid">
-                    <label class="file-slot required" data-slot="sf-pdf">
-                        <span class="label">PDF original</span>
-                        <span class="desc">El PDF del formulario INS (referencia para nombres de descarga)</span>
-                        <input type="file" accept=".pdf" id="sfPdfInput">
-                        <span class="file-status" id="sfPdfStatus"></span>
-                    </label>
                     <label class="file-slot required" data-slot="sf-json">
                         <span class="label">Signframe JSON</span>
                         <span class="desc">El JSON de Signframe con los campos y sourceMeta</span>
@@ -229,13 +223,19 @@
                     </label>
                     <label class="file-slot required" data-slot="sf-matrix">
                         <span class="label">Matriz XLSX</span>
-                        <span class="desc">Matriz de negocio (1 fila = 1 pregunta, secciones, reglas, paths)</span>
+                        <span class="desc">Con sourceName + sección/subsección, reglas y paths (1 fila = 1 pregunta)</span>
                         <input type="file" accept=".xlsx,.xls" id="sfMatrixInput">
                         <span class="file-status" id="sfMatrixStatus"></span>
                     </label>
-                    <label class="file-slot required" data-slot="sf-mapping">
-                        <span class="label">XLSX de mapeo (PDF renombrado)</span>
-                        <span class="desc">sourceNames en orden de lectura + Sección del PDF + Página (22 col)</span>
+                    <label class="file-slot" data-slot="sf-pdf">
+                        <span class="label">PDF original (opcional)</span>
+                        <span class="desc">Solo para el nombre de descarga</span>
+                        <input type="file" accept=".pdf" id="sfPdfInput">
+                        <span class="file-status" id="sfPdfStatus"></span>
+                    </label>
+                    <label class="file-slot" data-slot="sf-mapping">
+                        <span class="label">XLSX de mapeo (opcional)</span>
+                        <span class="desc">sourceNames en orden de lectura — habilita el aligner por grupos</span>
                         <input type="file" accept=".xlsx,.xls" id="sfMappingInput">
                         <span class="file-status" id="sfMappingStatus"></span>
                     </label>
@@ -248,9 +248,9 @@
                 </div>
             </section>
 
-            <section class="panel">
-                <h2>2. Alinear grupos ↔ matriz</h2>
-                <p class="hint">Los sourceNames se agrupan por raíz (radios Si/No, repeaters [n], campos simples) y se alinean contra las filas de la matriz por orden de lectura. Seleccioná un grupo a la izquierda y hacé click en su fila de matriz a la derecha. Se guarda solo.</p>
+            <section class="panel" id="sfAlignSection" hidden>
+                <h2>2. Alinear grupos ↔ matriz (opcional)</h2>
+                <p class="hint">Solo si cargaste el XLSX de mapeo. Los sourceNames se agrupan por raíz (radios Si/No, repeaters [n], campos simples) y se alinean contra las filas de la matriz por orden de lectura. Seleccioná un grupo a la izquierda y hacé click en su fila de matriz a la derecha. Se guarda solo.</p>
                 <div class="actions">
                     <button id="btnSfPrepare" class="primary" disabled>Preparar alineación</button>
                     <button id="btnSfAutoPos" class="secondary btn-sm" hidden>Auto-alinear por posición</button>
@@ -299,8 +299,8 @@
                 </div>
             </div>
 
-            <section class="panel" id="sfGeneratePanel" hidden>
-                <h2>3. Generar</h2>
+            <section class="panel" id="sfGeneratePanel">
+                <h2>2. Generar JSON</h2>
                 <div class="actions">
                     <button id="btnSignframeGenerate" class="primary" disabled>Generar JSON Signframe</button>
                     <button id="btnSignframeDownload" class="primary" hidden>Descargar JSON</button>
@@ -450,7 +450,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=34"></script>
-    <script src="app.js?v=34"></script>
+    <script src="bundle.js?v=35"></script>
+    <script src="app.js?v=35"></script>
 </body>
 </html>

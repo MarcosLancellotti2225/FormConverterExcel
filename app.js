@@ -2438,8 +2438,13 @@
     }
 
     function refreshSfButton() {
-        $('#btnSfPrepare').disabled = !(sfState.matrix && sfState.mapping && sfState.signframeJson);
-        $('#btnSignframeGenerate').disabled = !sfMapState.prepared;
+        var base = !!(sfState.matrix && sfState.signframeJson);
+        var hasMapping = !!sfState.mapping;
+        // Aligner (group flow) is optional — only when the mapping xlsx is loaded.
+        $('#sfAlignSection').hidden = !hasMapping;
+        $('#btnSfPrepare').disabled = !(base && hasMapping);
+        // Generate: json + matrix is enough (exact cross by sourceName).
+        $('#btnSignframeGenerate').disabled = !base;
     }
 
     // ─── Etapa 1: alineación de grupos ↔ matriz ───────────────────────────────
@@ -2766,13 +2771,24 @@
 
         try {
             var t0 = performance.now();
-            var result = await InsPipelineBundle.runSignframeGenerateGroups({
-                matrixFile: sfState.matrix,
-                signframeJsonFile: sfState.signframeJson,
-                mappingFile: sfState.mapping,
-                targetJsonFile: sfState.targetJson || undefined,
-                mapping: { version: 2, groupLinks: sfMapState.links },
-            });
+            var result;
+            if (sfState.mapping && sfMapState.prepared) {
+                // Group flow (aligner): grupos por raíz ↔ matriz por orden de lectura
+                result = await InsPipelineBundle.runSignframeGenerateGroups({
+                    matrixFile: sfState.matrix,
+                    signframeJsonFile: sfState.signframeJson,
+                    mappingFile: sfState.mapping,
+                    targetJsonFile: sfState.targetJson || undefined,
+                    mapping: { version: 2, groupLinks: sfMapState.links },
+                });
+            } else {
+                // 2-file flow: cruce exacto por sourceName (la matriz ya los trae)
+                result = await InsPipelineBundle.runSignframeCombine({
+                    matrixFile: sfState.matrix,
+                    signframeJsonFile: sfState.signframeJson,
+                    targetJsonFile: sfState.targetJson || undefined,
+                });
+            }
             var t1 = performance.now();
 
             sfState.result = result;

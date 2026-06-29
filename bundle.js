@@ -97037,7 +97037,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         var matrixBytes = opts.matrixBytes;
         var targetJsonText = opts.targetJsonText || null;
         var warnings = [];
-        var matrix = matrixParser.parseMatrix(matrixBytes);
+        var matrix = matrixParser.parseMatrixAuto(matrixBytes);
         var matrixRows = matrix.rows;
         if (matrix.warnings.length) {
           for (var w = 0; w < matrix.warnings.length; w++) {
@@ -97051,12 +97051,10 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           var mrow = matrixRows[mi];
           var sn = mrow.sourceName;
           var aa = mrow.acroActual;
-          if (sn) {
-            mxBySource[String(sn)] = mrow;
-          }
-          if (aa) {
-            mxByAcro[String(aa)] = mrow;
-          }
+          var ap = mrow.acroPropuesto;
+          if (sn) mxBySource[String(sn)] = mrow;
+          if (aa) mxByAcro[String(aa)] = mrow;
+          if (ap && !mxByAcro[String(ap)]) mxByAcro[String(ap)] = mrow;
         }
         var labelToId = {};
         for (var li = 0; li < matrixRows.length; li++) {

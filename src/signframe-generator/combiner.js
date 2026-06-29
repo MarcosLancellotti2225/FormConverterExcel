@@ -24,8 +24,8 @@ async function combineWithSignframe(opts) {
     var targetJsonText = opts.targetJsonText || null;
     var warnings = [];
 
-    // 1. Parse matrix
-    var matrix = matrixParser.parseMatrix(matrixBytes);
+    // 1. Parse matrix (auto-detect layout: flexible descriptive vs 22-column)
+    var matrix = matrixParser.parseMatrixAuto(matrixBytes);
     var matrixRows = matrix.rows;
     if (matrix.warnings.length) {
         for (var w = 0; w < matrix.warnings.length; w++) {
@@ -38,19 +38,17 @@ async function combineWithSignframe(opts) {
     // 3. Extract all fields from signframeJson sections -> subsections -> fields
     var sfFields = collectSignframeFields(signframeJson);
 
-    // 4. Build lookup: matrix rows by sourceName and acroActual
+    // 4. Build lookup: matrix rows by sourceName, acroActual and acroPropuesto
     var mxBySource = {};
     var mxByAcro = {};
     for (var mi = 0; mi < matrixRows.length; mi++) {
         var mrow = matrixRows[mi];
         var sn = mrow.sourceName;
         var aa = mrow.acroActual;
-        if (sn) {
-            mxBySource[String(sn)] = mrow;
-        }
-        if (aa) {
-            mxByAcro[String(aa)] = mrow;
-        }
+        var ap = mrow.acroPropuesto;
+        if (sn) mxBySource[String(sn)] = mrow;
+        if (aa) mxByAcro[String(aa)] = mrow;
+        if (ap && !mxByAcro[String(ap)]) mxByAcro[String(ap)] = mrow;
     }
 
     // 5. Build label -> fieldId lookup for conditional visibility
