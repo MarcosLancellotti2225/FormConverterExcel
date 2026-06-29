@@ -2366,11 +2366,13 @@
     };
 
     // Etapa 1 — assisted mapping state
+    var SF_AUTO_THRESHOLD = 0.9; // auto-confirm exact / normalized-exact suggestions
     var sfMapState = {
         jsonFields: [],     // [{sourceName, page, type, label, suggestionRowNum, suggestionScore, suggestionLabel}]
         matrixRows: [],     // [{rowNum, etiqueta, seccionPdf, ...}]
         rowByNum: {},       // rowNum -> matrix row
         links: {},          // sourceName -> rowNum (number) | 'NONE'
+        auto: {},           // sourceName -> true (auto-confirmed this session, still editable)
         current: 0,
         storageKey: null,
         prepared: false,
@@ -2488,7 +2490,9 @@
             sfMapState.current = 0;
             sfMapState.storageKey = sfStorageKey();
             sfMapState.links = {};
+            sfMapState.auto = {};
             loadSfMapping();
+            var autoCount = autoLinkExact();
             sfMapState.prepared = true;
 
             $('#sfMapPanel').hidden = false;
@@ -2503,13 +2507,32 @@
             renderSfMapper();
             statusEl.className = 'status active success';
             statusEl.textContent = '✓ ' + result.jsonFields.length + ' campos del JSON y ' +
-                result.matrixRows.length + ' filas de matriz. Vinculá cada campo abajo.';
+                result.matrixRows.length + ' filas de matriz. ' +
+                (autoCount ? autoCount + ' matches exactos auto-confirmados (editables). ' : '') +
+                'Revisá los pendientes abajo.';
             refreshSfButton();
         } catch (err) {
             console.error(err);
             statusEl.className = 'status active error';
             statusEl.textContent = '✗ ' + err.message;
         }
+    }
+
+    // Auto-confirm fields whose suggestion is an exact / normalized-exact match.
+    // Never overwrites an already-saved (human-confirmed) link. Returns count.
+    function autoLinkExact() {
+        var n = 0;
+        for (var i = 0; i < sfMapState.jsonFields.length; i++) {
+            var jf = sfMapState.jsonFields[i];
+            if (sfMapState.links[jf.sourceName] !== undefined) continue;
+            if (jf.suggestionRowNum != null && jf.suggestionScore >= SF_AUTO_THRESHOLD) {
+                sfMapState.links[jf.sourceName] = jf.suggestionRowNum;
+                sfMapState.auto[jf.sourceName] = true;
+                n++;
+            }
+        }
+        if (n) saveSfMapping();
+        return n;
     }
 
     function linkStatusOf(sourceName) {
@@ -2539,6 +2562,7 @@
         var jf = sfMapState.jsonFields[sfMapState.current];
         if (!jf) return;
         sfMapState.links[jf.sourceName] = rowNumOrNone;
+        if (sfMapState.auto[jf.sourceName]) delete sfMapState.auto[jf.sourceName]; // manual override
         saveSfMapping();
         var next = findNextPending(sfMapState.current);
         if (next >= 0) sfMapState.current = next;
@@ -2585,7 +2609,8 @@
         statusChip.className = 'sf-map-chip sf-map-chip-status ' + st;
         if (st === 'linked') {
             var row = sfMapState.rowByNum[sfMapState.links[jf.sourceName]];
-            statusChip.textContent = '✓ ' + (row ? ('F' + row.rowNum) : 'vinculado');
+            statusChip.textContent = '✓ ' + (row ? ('F' + row.rowNum) : 'vinculado') +
+                (sfMapState.auto[jf.sourceName] ? ' (auto)' : '');
         } else if (st === 'none') {
             statusChip.textContent = '✗ no en matriz';
         } else {
@@ -2650,7 +2675,8 @@
             var linkText, linkCls;
             if (st === 'linked') {
                 var row = sfMapState.rowByNum[sfMapState.links[jf.sourceName]];
-                linkText = row ? ('F' + row.rowNum + ' ' + (row.etiqueta || row.acroActual || '')) : 'vinculado';
+                linkText = (row ? ('F' + row.rowNum + ' ' + (row.etiqueta || row.acroActual || '')) : 'vinculado') +
+                    (sfMapState.auto[jf.sourceName] ? ' (auto)' : '');
                 linkCls = 'sf-map-link-linked';
             } else if (st === 'none') {
                 linkText = 'no en matriz';
@@ -2703,6 +2729,7 @@
                 var parsed = JSON.parse(reader.result);
                 if (parsed && parsed.links) {
                     sfMapState.links = parsed.links;
+                    sfMapState.auto = {};
                     saveSfMapping();
                     var fp = findNextPending(-1);
                     sfMapState.current = fp >= 0 ? fp : 0;
@@ -2722,6 +2749,7 @@
     function clearSfMapping() {
         if (!confirm('¿Borrar todos los vínculos confirmados?')) return;
         sfMapState.links = {};
+        sfMapState.auto = {};
         saveSfMapping();
         sfMapState.current = 0;
         renderSfMapper();
