@@ -120,7 +120,11 @@ var FLEX_HEADER_PATTERNS = [
     ['formularioVisualizar', /formulario\s+a\s+visual/i],
     ['visualizacion', /visualizaci[oó]n/i],
     ['observaciones', /observacion/i],
-    ['pathJson', /nombre.*campo.*json|nombre.*json/i],
+    // "Nombre de la sección del JSON" — must win over pathJson (no "campo")
+    ['seccionJson', /nombre.*secci[oó]n.*json/i],
+    // path requires "campo" so it never grabs the section-json column
+    ['pathJson', /nombre.*campo.*json/i],
+    // "Nombre del campo en el PDF" = the sourceName
     ['nombreCampoPdf', /nombre.*campo.*pdf$/i],
 ];
 
@@ -170,6 +174,7 @@ function parseFlexibleMatrix(excelBytes) {
             rowNum: i,
             pasos: String(get(r, 'pasos') || '').trim(),
             seccionPdf: String(get(r, 'seccion') || '').trim(),
+            seccionJson: String(get(r, 'seccionJson') || '').trim(),
             nombrePdf: nombrePdf,
             etiqueta: etiqueta,
             acroActual: acro,

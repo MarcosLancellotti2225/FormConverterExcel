@@ -107,9 +107,12 @@ async function combineWithSignframe(opts) {
         if (mx) {
             usedMxKeys[String(mx.sourceName || '')] = true;
             usedMxKeys[String(mx.acroActual || '')] = true;
-            var secName = String(mx.seccionPdf || 'Sin Seccion').trim();
+            usedMxKeys[String(mx.acroPropuesto || '')] = true;
+            // Two-level hierarchy: section = "Pasos Formulario", subsection = "Sección"
+            var secName = String(mx.pasos || mx.seccionPdf || 'Sin Seccion').trim();
+            var subName = String(mx.seccionPdf || secName).trim();
             enrichField(field, mx, radioGroups, labelToId);
-            fieldsWithSection.push({ field: field, sectionName: secName });
+            fieldsWithSection.push({ field: field, sectionName: secName, subsectionName: subName });
         } else {
             unmatchedSf.push(field);
             warnings.push({
@@ -144,8 +147,8 @@ async function combineWithSignframe(opts) {
         }
     }
 
-    // 9. Organize into sections using seccionPdf
-    var sections = organizeSections(fieldsWithSection, unmatchedSf);
+    // 9. Organize into a two-level hierarchy (Pasos → Sección → campos)
+    var sections = organizeSectionsTwoLevel(fieldsWithSection, unmatchedSf);
 
     // 10. Validate: fix order=0, checkbox values, conditional operators
     validateOutput(sections, warnings);
@@ -613,6 +616,75 @@ function assignOrder(fields) {
 }
 
 /**
+ * Organize fields into an explicit two-level hierarchy from two matrix columns:
+ * sectionName ("Pasos Formulario") → subsectionName ("Sección") → fields.
+ * Order follows first appearance. Unmatched signframe fields go to a hidden
+ * "Sistema" section. id and sourceMeta are never touched.
+ */
+function organizeSectionsTwoLevel(items, unmatchedSf) {
+    var secOrder = [];
+    var secMap = {};
+    for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        var sec = String(it.sectionName || 'Sin Sección').trim() || 'Sin Sección';
+        var sub = String(it.subsectionName || sec).trim() || sec;
+        if (!secMap[sec]) { secMap[sec] = { subOrder: [], subMap: {} }; secOrder.push(sec); }
+        var S = secMap[sec];
+        if (!S.subMap[sub]) { S.subMap[sub] = []; S.subOrder.push(sub); }
+        S.subMap[sub].push(it.field);
+    }
+
+    var sections = [];
+    var secIdx = 1;
+    for (var s = 0; s < secOrder.length; s++) {
+        var secName = secOrder[s];
+        var S2 = secMap[secName];
+        var subs = [];
+        var subIdx = 1;
+        for (var u = 0; u < S2.subOrder.length; u++) {
+            var subName = S2.subOrder[u];
+            var flds = S2.subMap[subName];
+            assignOrder(flds);
+            subs.push({
+                id: 'subsection_' + toKey(secName) + '_' + toKey(subName),
+                title: titleCase(subName),
+                order: subIdx++,
+                fields: flds,
+                childrenOrder: flds.map(function (f) { return { kind: 'field', id: f.id }; }),
+            });
+        }
+        sections.push({
+            id: 'section_' + toKey(secName),
+            title: titleCase(secName),
+            order: secIdx++,
+            subsections: subs,
+            childrenOrder: subs.map(function (ss) { return { kind: 'subsection', id: ss.id }; }),
+        });
+    }
+
+    if (unmatchedSf.length > 0) {
+        assignOrder(unmatchedSf);
+        var sysSub = {
+            id: 'subsection_sistema_oculto',
+            title: 'Datos del Sistema (oculto)',
+            order: 1,
+            conditionalVisibility: NEVER_CONDITION,
+            fields: unmatchedSf,
+            childrenOrder: unmatchedSf.map(function (f) { return { kind: 'field', id: f.id }; }),
+        };
+        sections.push({
+            id: 'section_sistema',
+            title: 'Sistema',
+            order: secIdx++,
+            subsections: [sysSub],
+            childrenOrder: [{ kind: 'subsection', id: sysSub.id }],
+        });
+    }
+
+    return sections;
+}
+
+/**
  * Organize fields into sections based on the matrix seccionPdf column.
  */
 function organizeSections(fieldsWithSection, unmatchedSf) {
@@ -851,6 +923,7 @@ module.exports = {
     buildConditionalVisibilityWithLabels,
     enrichField,
     organizeSections,
+    organizeSectionsTwoLevel,
     validateOutput,
     sourceKey,
 };
