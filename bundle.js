@@ -97768,6 +97768,63 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     }
   });
 
+  // src/signframe-generator/canonical-config.js
+  var require_canonical_config = __commonJS({
+    "src/signframe-generator/canonical-config.js"(exports, module) {
+      "use strict";
+      module.exports = {
+        // Sufijos de opción (radios Si/No/NoAplica). Se prueban como sufijo del
+        // sourceName, con o sin separador "_". Orden: del más largo al más corto.
+        optionSuffixes: ["NoAplica", "Si", "No"],
+        // Prefijos "lookup": TODOS los sourceNames que empiezan con el prefijo
+        // colapsan en UNA sola fila canónica (tipoCampo = repeaterLookup), porque
+        // se resuelven contra un catálogo. Ej: las ~106 enfermedades en 1 fila.
+        lookupPrefixes: [
+          {
+            prefix: "enf",
+            catalogo: "Cat\xE1logo Enfermedades",
+            seccion: "Cuestionario de Salud",
+            grupo: "enfermedades"
+          }
+        ],
+        // Derivación de Sección por prefijo del sourceName. Gana el prefijo más
+        // largo que matchee (startsWith). Si ninguno matchea -> defaultSection.
+        sectionByPrefix: {
+          titular: "Datos del Titular",
+          tomador: "Datos del Tomador",
+          dep: "Dependientes",
+          depTit: "Dependientes",
+          benef: "Beneficiarios",
+          benefDep: "Beneficiarios",
+          cuest: "Cuestionario",
+          riesgo: "Cuestionario de Salud",
+          intermediario: "Datos del Asesor",
+          pago: "Forma de Pago",
+          vigencia: "Vigencia",
+          moneda: "Datos de la P\xF3liza",
+          plan: "Plan / Coberturas",
+          firma: "Firmas",
+          decl: "Declaraciones",
+          jurada: "Declaraci\xF3n Jurada"
+        },
+        defaultSection: "General",
+        // Prefijos que, además, son "repeaters de entidad" (dependientes,
+        // beneficiarios): informativo para el generador de JSON. No cambia el
+        // colapso (los [n] ya se agrupan por raíz), pero se marca el grupo.
+        entityPrefixes: ["benefDep", "depTit", "benef", "dep"],
+        // Repeaters de entidad: los subcampos [n] que comparten prefijo se agrupan
+        // en UN repeater con subcampos. El patrón de slots PDF se DERIVA de los
+        // sourceName reales (no se asume), y se valida 1:1. maxItems = nº de slots
+        // reales del PDF. jsonPath = raíz del array de salida (se le agrega
+        // [{i0}].{sub}). Editar por formulario.
+        entityRepeaters: {
+          dep: { itemLabel: "Dependiente", itemLabelPlural: "Dependientes", addButtonLabel: "Agregar dependiente", maxItems: 5, jsonPath: "datosFormulario.personas" },
+          benef: { itemLabel: "Beneficiario", itemLabelPlural: "Beneficiarios", addButtonLabel: "Agregar beneficiario", maxItems: 4, jsonPath: "datosFormulario.beneficiarios" }
+        }
+      };
+    }
+  });
+
   // src/signframe-generator/canonical-to-json.js
   var require_canonical_to_json = __commonJS({
     "src/signframe-generator/canonical-to-json.js"(exports, module) {
@@ -97775,8 +97832,57 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       var XLSX = require_xlsx();
       var combiner = require_combiner();
       var validator = require_validator();
+      var config = require_canonical_config();
       function clone(o) {
         return JSON.parse(JSON.stringify(o));
+      }
+      function entityOf(grupo) {
+        var ers = config.entityRepeaters || {};
+        var best = null;
+        for (var k in ers) {
+          if (ers.hasOwnProperty(k) && grupo.indexOf(k) === 0 && (!best || k.length > best.length)) best = k;
+        }
+        return best;
+      }
+      function quoteNeedle(n) {
+        return /[,()/]/.test(n) ? '"' + n + '"' : n;
+      }
+      function lastPathSegment(p) {
+        if (!p) return "";
+        var parts = String(p).replace(/\[[^\]]*\]/g, "").split(".");
+        return parts[parts.length - 1] || "";
+      }
+      function derivePdfPattern(entity, subRows) {
+        var real = {};
+        var maxIdx = -1;
+        var subs = [];
+        for (var s = 0; s < subRows.length; s++) {
+          var grupo = subRows[s].grupo;
+          var suffix = grupo.slice(entity.length);
+          var indices = [];
+          for (var m = 0; m < subRows[s].members.length; m++) {
+            var sn = subRows[s].members[m];
+            real[sn] = true;
+            var mm = sn.match(/\[(\d+)\]$/);
+            if (mm) {
+              var idx = Number(mm[1]);
+              indices.push(idx);
+              if (idx > maxIdx) maxIdx = idx;
+            }
+          }
+          subs.push({ suffix, jsonKey: subRows[s].jsonKey, indices, type: subRows[s].type, label: subRows[s].label, required: subRows[s].required });
+        }
+        var pattern = entity + "{sub}[{i0}]";
+        var reproduced = {};
+        for (var si = 0; si < subs.length; si++) {
+          for (var ii = 0; ii < subs[si].indices.length; ii++) {
+            var gen = entity + subs[si].suffix + "[" + subs[si].indices[ii] + "]";
+            reproduced[gen] = true;
+          }
+        }
+        var extra = [];
+        for (var rn in real) if (real.hasOwnProperty(rn) && !reproduced[rn]) extra.push(rn);
+        return { pdfSlotPattern: pattern, subfields: subs, maxIdx, extra, ok: extra.length === 0 };
       }
       function norm(s) {
         return String(s == null ? "" : s).trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -97876,8 +97982,8 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         var sfByName = {};
         for (var i = 0; i < sfFields.length; i++) sfByName[sourceNameOf(sfFields[i])] = sfFields[i];
         var idForSource = function(sn2) {
-          var f = sfByName[sn2];
-          return f ? f.id : "field_" + sn2;
+          var f2 = sfByName[sn2];
+          return f2 ? f2.id : "field_" + sn2;
         };
         var fieldsWithSection = [];
         var usedNames = {};
@@ -97917,6 +98023,67 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           fieldsWithSection.push({ field, sectionName: secName2, subsectionName: extra.subName || secName2 });
           return field;
         }
+        var entityRows = {};
+        var entityFirstCi = {};
+        for (var pci = 0; pci < campos.length; pci++) {
+          if (String(campos[pci].tipoCampo || "").trim() !== "repeater") continue;
+          var pgrupo = String(campos[pci].grupo || "").trim();
+          var ent = entityOf(pgrupo);
+          if (!ent) continue;
+          if (!entityRows[ent]) {
+            entityRows[ent] = [];
+            entityFirstCi[ent] = pci;
+          }
+          var pmembers = (opcionesByGrupo[pgrupo] || []).map(function(m) {
+            return String(m.sourceName).trim();
+          }).filter(Boolean);
+          var pbiz = bizFromCampo(campos[pci]);
+          entityRows[ent].push({ grupo: pgrupo, members: pmembers, jsonKey: lastPathSegment(pbiz.path), type: "text", label: pbiz.label || pgrupo, required: pbiz.required, businessPath: pbiz.path });
+        }
+        function buildEntityRepeater(entity2, secName2) {
+          var cfg = (config.entityRepeaters || {})[entity2] || {};
+          var subRows = entityRows[entity2];
+          var derived = derivePdfPattern(entity2, subRows);
+          for (var sr = 0; sr < subRows.length; sr++) {
+            for (var mm = 0; mm < subRows[sr].members.length; mm++) {
+              usedNames[subRows[sr].members[mm]] = true;
+              stats.paintsPdf++;
+            }
+          }
+          var maxItems = cfg.maxItems || derived.maxIdx + 1;
+          var subfields = derived.subfields.map(function(s) {
+            var sub = { id: s.suffix, type: s.type || "text", label: s.label || s.suffix, required: !!s.required };
+            return sub;
+          });
+          var field = {
+            id: "field_" + entity2,
+            type: "repeater",
+            label: cfg.itemLabelPlural || entity2,
+            itemLabel: cfg.itemLabel || entity2,
+            itemLabelPlural: cfg.itemLabelPlural || entity2,
+            addButtonLabel: cfg.addButtonLabel || "Agregar " + (cfg.itemLabel || entity2),
+            minItems: 0,
+            maxItems,
+            fields: subfields,
+            pdfSlotPattern: derived.pdfSlotPattern,
+            jsonSlotPattern: (cfg.jsonPath || "datosFormulario." + entity2) + "[{i0}].{sub}",
+            sourceMeta: null,
+            readOnly: false,
+            hidden: false,
+            width: "full",
+            excludeFromJson: false,
+            conditionalVisibility: null,
+            conditionalRequired: null,
+            order: 0
+          };
+          if (!derived.ok) {
+            warnings.push({ stage: "repeater", detail: 'Repeater "' + entity2 + '": el patr\xF3n "' + derived.pdfSlotPattern + '" NO reproduce ' + derived.extra.length + " sourceName reales (" + derived.extra.slice(0, 5).join(", ") + "). El PDF no se rellenar\xEDa \u2014 revisar." });
+          } else {
+            warnings.push({ stage: "repeater", detail: 'Repeater "' + entity2 + '": patr\xF3n "' + derived.pdfSlotPattern + '" reproduce 1:1 los sourceName (' + subfields.length + " subcampos, maxItems=" + maxItems + ")." });
+          }
+          stats.repeaterEntities = (stats.repeaterEntities || 0) + 1;
+          fieldsWithSection.push({ field, sectionName: secName2, subsectionName: secName2 });
+        }
         for (var ci = 0; ci < campos.length; ci++) {
           var campo = campos[ci];
           var tipoCampo = String(campo.tipoCampo || "simple").trim();
@@ -97948,20 +98115,95 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
               });
             }
           } else if (tipoCampo === "repeater") {
-            warnings.push({ stage: "repeater", detail: 'Repeater "' + grupo + '" (' + members.length + " items): items emitidos sueltos; falta modelado repeaterConfig/aggregate (schema)." });
-            for (var ri = 0; ri < members.length; ri++) {
-              var snr = String(members[ri].sourceName).trim();
-              if (!snr) continue;
-              var item = members[ri].item;
-              emit(snr, biz, secName, { subName, labelOverride: biz.label ? biz.label + " (" + (Number(item) + 1) + ")" : void 0 });
+            var entity = entityOf(grupo);
+            if (entity) {
+              if (ci === entityFirstCi[entity]) buildEntityRepeater(entity, secName);
+            } else {
+              var snames = members.map(function(m) {
+                return String(m.sourceName).trim();
+              }).filter(Boolean);
+              snames.forEach(function(sn2) {
+                usedNames[sn2] = true;
+              });
+              var maxI = -1;
+              snames.forEach(function(sn2) {
+                var mm = sn2.match(/\[(\d+)\]$/);
+                if (mm) maxI = Math.max(maxI, Number(mm[1]));
+              });
+              fieldsWithSection.push({
+                field: {
+                  id: "field_" + grupo,
+                  type: "repeater",
+                  label: biz.label || grupo,
+                  itemLabel: biz.label || grupo,
+                  itemLabelPlural: biz.label || grupo,
+                  addButtonLabel: "Agregar",
+                  minItems: 0,
+                  maxItems: maxI + 1,
+                  fields: [{ id: "value", type: "text", label: biz.label || grupo, required: biz.required }],
+                  pdfSlotPattern: grupo + "[{i0}]",
+                  jsonSlotPattern: (biz.path || "datosFormulario." + grupo) + "[{i0}]",
+                  sourceMeta: null,
+                  readOnly: false,
+                  hidden: false,
+                  width: "full",
+                  excludeFromJson: false,
+                  conditionalVisibility: null,
+                  conditionalRequired: null,
+                  order: 0
+                },
+                sectionName: secName,
+                subsectionName: subName
+              });
+              stats.paintsPdf += snames.length;
+              warnings.push({ stage: "repeater", detail: 'Repeater standalone "' + grupo + '": patr\xF3n "' + grupo + '[{i0}]" (maxItems=' + (maxI + 1) + ")." });
             }
           } else if (tipoCampo === "repeaterLookup") {
-            warnings.push({ stage: "repeaterLookup", detail: 'repeaterLookup "' + grupo + '" (' + members.length + " opciones): checkboxes emitidos heredando sourceMeta; falta modelado repeaterLookup ifFound (schema)." });
+            var repeaterId = "field_" + grupo;
+            var catalogo = String(campo["cat\xE1logo"] || campo.catalogo || "").trim();
+            fieldsWithSection.push({
+              field: {
+                id: repeaterId,
+                type: "repeater",
+                label: biz.label || grupo,
+                itemLabel: "Enfermedad",
+                itemLabelPlural: biz.label || grupo,
+                addButtonLabel: "Agregar",
+                minItems: 0,
+                maxItems: members.length || 0,
+                catalog: catalogo || null,
+                fields: [{ id: "enfermedad", type: "select", label: "Enfermedad", required: false, catalog: catalogo || null }],
+                pdfSlotPattern: null,
+                jsonSlotPattern: biz.path || "datosFormulario." + grupo,
+                sourceMeta: null,
+                readOnly: false,
+                hidden: false,
+                width: "full",
+                excludeFromJson: false,
+                conditionalVisibility: null,
+                conditionalRequired: null,
+                order: 0
+              },
+              sectionName: secName,
+              subsectionName: subName
+            });
             for (var li = 0; li < members.length; li++) {
               var snl = String(members[li].sourceName).trim();
               if (!snl) continue;
-              emit(snl, biz, secName, { subName, type: "checkbox" });
+              var opc = String(members[li]["opci\xF3n"] || members[li].opcion || "").trim();
+              var needle = quoteNeedle(String(members[li].needle || "").trim());
+              var f = emit(snl, biz, secName, { subName, type: "checkbox", labelOverride: String(members[li].needle || "").trim() || biz.label });
+              f.autoFillConcat = {
+                parts: [{
+                  type: "repeaterLookup",
+                  repeaterId,
+                  needle,
+                  ifFound: opc === "Si" ? "X" : "",
+                  ifNotFound: opc === "Si" ? "" : "X"
+                }]
+              };
             }
+            warnings.push({ stage: "repeaterLookup", detail: 'repeaterLookup "' + grupo + '": ' + members.length + " checkboxes con autoFillConcat\u2192repeaterLookup (ifFound). Si Signframe no lo soporta nativo, quedan como checkboxes con sourceMeta para configurar el lookup a mano." });
           } else {
             var snList = String(campo.sourceNames || "").split(",").map(function(x) {
               return x.trim();
@@ -98015,6 +98257,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             sections: sections.length,
             radioGroups: stats.byType.radio || 0,
             repeaters: stats.byType.repeater || 0,
+            repeaterEntities: stats.repeaterEntities || 0,
             repeaterLookups: stats.byType.repeaterLookup || 0,
             paintsPdf: stats.paintsPdf,
             createdNew: stats.createdNew,
@@ -98618,54 +98861,6 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         generateFromGroupMapping,
         classifyGroups,
         NONE
-      };
-    }
-  });
-
-  // src/signframe-generator/canonical-config.js
-  var require_canonical_config = __commonJS({
-    "src/signframe-generator/canonical-config.js"(exports, module) {
-      "use strict";
-      module.exports = {
-        // Sufijos de opción (radios Si/No/NoAplica). Se prueban como sufijo del
-        // sourceName, con o sin separador "_". Orden: del más largo al más corto.
-        optionSuffixes: ["NoAplica", "Si", "No"],
-        // Prefijos "lookup": TODOS los sourceNames que empiezan con el prefijo
-        // colapsan en UNA sola fila canónica (tipoCampo = repeaterLookup), porque
-        // se resuelven contra un catálogo. Ej: las ~106 enfermedades en 1 fila.
-        lookupPrefixes: [
-          {
-            prefix: "enf",
-            catalogo: "Cat\xE1logo Enfermedades",
-            seccion: "Cuestionario de Salud",
-            grupo: "enfermedades"
-          }
-        ],
-        // Derivación de Sección por prefijo del sourceName. Gana el prefijo más
-        // largo que matchee (startsWith). Si ninguno matchea -> defaultSection.
-        sectionByPrefix: {
-          titular: "Datos del Titular",
-          tomador: "Datos del Tomador",
-          dep: "Dependientes",
-          depTit: "Dependientes",
-          benef: "Beneficiarios",
-          benefDep: "Beneficiarios",
-          cuest: "Cuestionario",
-          riesgo: "Cuestionario de Salud",
-          intermediario: "Datos del Asesor",
-          pago: "Forma de Pago",
-          vigencia: "Vigencia",
-          moneda: "Datos de la P\xF3liza",
-          plan: "Plan / Coberturas",
-          firma: "Firmas",
-          decl: "Declaraciones",
-          jurada: "Declaraci\xF3n Jurada"
-        },
-        defaultSection: "General",
-        // Prefijos que, además, son "repeaters de entidad" (dependientes,
-        // beneficiarios): informativo para el generador de JSON. No cambia el
-        // colapso (los [n] ya se agrupan por raíz), pero se marca el grupo.
-        entityPrefixes: ["dep", "depTit", "benef", "benefDep"]
       };
     }
   });

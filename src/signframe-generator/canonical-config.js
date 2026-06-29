@@ -50,5 +50,15 @@ module.exports = {
     // Prefijos que, además, son "repeaters de entidad" (dependientes,
     // beneficiarios): informativo para el generador de JSON. No cambia el
     // colapso (los [n] ya se agrupan por raíz), pero se marca el grupo.
-    entityPrefixes: ['dep', 'depTit', 'benef', 'benefDep'],
+    entityPrefixes: ['benefDep', 'depTit', 'benef', 'dep'],
+
+    // Repeaters de entidad: los subcampos [n] que comparten prefijo se agrupan
+    // en UN repeater con subcampos. El patrón de slots PDF se DERIVA de los
+    // sourceName reales (no se asume), y se valida 1:1. maxItems = nº de slots
+    // reales del PDF. jsonPath = raíz del array de salida (se le agrega
+    // [{i0}].{sub}). Editar por formulario.
+    entityRepeaters: {
+        dep:   { itemLabel: 'Dependiente',  itemLabelPlural: 'Dependientes',  addButtonLabel: 'Agregar dependiente',  maxItems: 5, jsonPath: 'datosFormulario.personas' },
+        benef: { itemLabel: 'Beneficiario', itemLabelPlural: 'Beneficiarios', addButtonLabel: 'Agregar beneficiario', maxItems: 4, jsonPath: 'datosFormulario.beneficiarios' },
+    },
 };
