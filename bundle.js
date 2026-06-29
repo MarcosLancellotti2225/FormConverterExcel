@@ -97768,6 +97768,268 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     }
   });
 
+  // src/signframe-generator/canonical-to-json.js
+  var require_canonical_to_json = __commonJS({
+    "src/signframe-generator/canonical-to-json.js"(exports, module) {
+      "use strict";
+      var XLSX = require_xlsx();
+      var combiner = require_combiner();
+      var validator = require_validator();
+      function clone(o) {
+        return JSON.parse(JSON.stringify(o));
+      }
+      function norm(s) {
+        return String(s == null ? "" : s).trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+      }
+      function sourceNameOf(field) {
+        var sm = field.sourceMeta;
+        if (sm && sm.sourceName) return sm.sourceName;
+        var fid = field.id || "";
+        return fid.indexOf("field_") === 0 ? fid.substring(6) : fid;
+      }
+      function sheetToObjects(ws) {
+        var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+        if (!raw.length) return [];
+        var headers = raw[0].map(function(h) {
+          return String(h || "").trim();
+        });
+        var out = [];
+        for (var i = 1; i < raw.length; i++) {
+          var r = raw[i];
+          var obj = {};
+          var any = false;
+          for (var c = 0; c < headers.length; c++) {
+            if (!headers[c]) continue;
+            var v = r[c];
+            obj[headers[c]] = v;
+            if (v !== "" && v != null) any = true;
+          }
+          if (any) out.push(obj);
+        }
+        return out;
+      }
+      function isCanonicalWorkbook(matrixBytes) {
+        try {
+          var wb = XLSX.read(matrixBytes, { type: "array" });
+          return wb.SheetNames.indexOf("Campos") !== -1 && wb.SheetNames.indexOf("Opciones") !== -1;
+        } catch (e) {
+          return false;
+        }
+      }
+      function readCanonical(matrixBytes) {
+        var wb = XLSX.read(matrixBytes, { type: "array" });
+        var campos = sheetToObjects(wb.Sheets["Campos"]);
+        var opciones = wb.Sheets["Opciones"] ? sheetToObjects(wb.Sheets["Opciones"]) : [];
+        var opcionesByGrupo = {};
+        for (var i = 0; i < opciones.length; i++) {
+          var g = String(opciones[i].grupo || "").trim();
+          if (!g) continue;
+          (opcionesByGrupo[g] = opcionesByGrupo[g] || []).push(opciones[i]);
+        }
+        return { campos, opcionesByGrupo };
+      }
+      function applyBusiness(field, biz, opts) {
+        opts = opts || {};
+        if (biz.label) field.label = biz.label;
+        else if (field.label == null) field.label = sourceNameOf(field);
+        field.required = biz.required === true;
+        if (opts.type) field.type = opts.type;
+        field.readOnly = false;
+        if (field.hidden === void 0) field.hidden = false;
+        if (field.width === void 0) field.width = "full";
+        if (biz.path) {
+          field.salidaJSON = biz.path;
+          field.jsonOutputPath = biz.path;
+          field.prefillKey = biz.path;
+          field.excludeFromJson = false;
+        } else if (!field.salidaJSON) {
+          field.excludeFromJson = true;
+        }
+        if (biz.visibility) {
+          var cv = combiner.buildConditionalVisibilityWithLabels(biz.visibility, {});
+          if (cv) field.conditionalVisibility = cv;
+          else if (field.conditionalVisibility === void 0) field.conditionalVisibility = null;
+        } else if (field.conditionalVisibility === void 0) {
+          field.conditionalVisibility = null;
+        }
+        if (field.conditionalRequired === void 0) field.conditionalRequired = null;
+        return field;
+      }
+      function bizFromCampo(campo) {
+        return {
+          label: String(campo["Nombre en formulario"] || "").trim(),
+          path: String(campo["salidaJSON"] || "").trim(),
+          required: norm(campo["Obligatorio"]) === "si" || norm(campo["Obligatorio"]) === "s\xED",
+          visibility: String(campo["Visibilidad condicional"] || "").trim(),
+          seccionJson: String(campo["Secci\xF3n JSON"] || "").trim()
+        };
+      }
+      function generateFromCanonical(opts) {
+        var signframeJson = opts.signframeJson;
+        var matrixBytes = opts.matrixBytes;
+        var targetJsonText = opts.targetJsonText || null;
+        var warnings = [];
+        var data = readCanonical(matrixBytes);
+        var campos = data.campos;
+        var opcionesByGrupo = data.opcionesByGrupo;
+        var sfFields = combiner.collectSignframeFields(signframeJson);
+        var sfByName = {};
+        for (var i = 0; i < sfFields.length; i++) sfByName[sourceNameOf(sfFields[i])] = sfFields[i];
+        var idForSource = function(sn2) {
+          var f = sfByName[sn2];
+          return f ? f.id : "field_" + sn2;
+        };
+        var fieldsWithSection = [];
+        var usedNames = {};
+        var stats = { paintsPdf: 0, createdNew: 0, byType: {}, sectionCounts: {} };
+        var pdfNameSeen = {};
+        var duplicates = [];
+        function emit(sn2, biz2, secName2, extra) {
+          extra = extra || {};
+          var field;
+          if (sfByName[sn2]) {
+            field = clone(sfByName[sn2]);
+            usedNames[sn2] = true;
+            stats.paintsPdf++;
+            if (field.sourceMeta && field.sourceMeta.sourceName) {
+              var key = field.sourceMeta.sourceName;
+              if (pdfNameSeen[key]) duplicates.push(key);
+              pdfNameSeen[key] = true;
+            }
+          } else {
+            field = { id: "field_" + sn2, type: extra.type || "text", sourceMeta: null };
+            stats.createdNew++;
+            warnings.push({ stage: "canonical", detail: 'sourceName "' + sn2 + '" no existe en el JSON \u2014 campo nuevo sin sourceMeta.' });
+          }
+          applyBusiness(field, biz2, extra);
+          if (field.type === "checkbox" && field.sourceMeta) {
+            field.checkedPdfValue = true;
+            field.checkedJsonValue = true;
+          }
+          if (extra.radio) {
+            field.type = "radio";
+            field.radioGroupLabel = extra.radio.groupLabel;
+            field.radioGroupFields = extra.radio.otherIds;
+            if (extra.radio.jsonValue !== void 0) field.jsonValue = extra.radio.jsonValue;
+            if (extra.radio.pdfValue !== void 0) field.pdfValue = extra.radio.pdfValue;
+          }
+          if (extra.labelOverride) field.label = extra.labelOverride;
+          fieldsWithSection.push({ field, sectionName: secName2, subsectionName: extra.subName || secName2 });
+          return field;
+        }
+        for (var ci = 0; ci < campos.length; ci++) {
+          var campo = campos[ci];
+          var tipoCampo = String(campo.tipoCampo || "simple").trim();
+          var grupo = String(campo.grupo || "").trim();
+          var secName = String(campo["Secci\xF3n"] || "Sin Secci\xF3n").trim() || "Sin Secci\xF3n";
+          var biz = bizFromCampo(campo);
+          var subName = biz.seccionJson || secName;
+          var members = opcionesByGrupo[grupo] || [];
+          stats.byType[tipoCampo] = (stats.byType[tipoCampo] || 0) + 1;
+          stats.sectionCounts[secName] = (stats.sectionCounts[secName] || 0) + 1;
+          if (tipoCampo === "radio") {
+            var ids = members.map(function(m) {
+              return idForSource(String(m.sourceName).trim());
+            });
+            for (var r = 0; r < members.length; r++) {
+              var sn = String(members[r].sourceName).trim();
+              if (!sn) continue;
+              var selfId = idForSource(sn);
+              emit(sn, biz, secName, {
+                subName,
+                radio: {
+                  groupLabel: biz.label || grupo,
+                  otherIds: ids.filter(function(id) {
+                    return id !== selfId;
+                  }),
+                  jsonValue: members[r].jsonValue !== "" ? members[r].jsonValue : members[r]["opci\xF3n"] || "",
+                  pdfValue: members[r].pdfValue !== "" ? members[r].pdfValue : members[r]["opci\xF3n"] || ""
+                }
+              });
+            }
+          } else if (tipoCampo === "repeater") {
+            warnings.push({ stage: "repeater", detail: 'Repeater "' + grupo + '" (' + members.length + " items): items emitidos sueltos; falta modelado repeaterConfig/aggregate (schema)." });
+            for (var ri = 0; ri < members.length; ri++) {
+              var snr = String(members[ri].sourceName).trim();
+              if (!snr) continue;
+              var item = members[ri].item;
+              emit(snr, biz, secName, { subName, labelOverride: biz.label ? biz.label + " (" + (Number(item) + 1) + ")" : void 0 });
+            }
+          } else if (tipoCampo === "repeaterLookup") {
+            warnings.push({ stage: "repeaterLookup", detail: 'repeaterLookup "' + grupo + '" (' + members.length + " opciones): checkboxes emitidos heredando sourceMeta; falta modelado repeaterLookup ifFound (schema)." });
+            for (var li = 0; li < members.length; li++) {
+              var snl = String(members[li].sourceName).trim();
+              if (!snl) continue;
+              emit(snl, biz, secName, { subName, type: "checkbox" });
+            }
+          } else {
+            var snList = String(campo.sourceNames || "").split(",").map(function(x) {
+              return x.trim();
+            }).filter(Boolean);
+            var sn0 = snList[0] || grupo;
+            emit(sn0, biz, secName, { subName });
+          }
+        }
+        var unmatchedSf = [];
+        for (var k = 0; k < sfFields.length; k++) {
+          var skn = sourceNameOf(sfFields[k]);
+          if (!usedNames[skn]) unmatchedSf.push(clone(sfFields[k]));
+        }
+        var sections = combiner.organizeSectionsTwoLevel(fieldsWithSection, unmatchedSf);
+        combiner.validateOutput(sections, warnings);
+        var output = {};
+        for (var topKey in signframeJson) {
+          if (signframeJson.hasOwnProperty(topKey) && topKey !== "sections") output[topKey] = signframeJson[topKey];
+        }
+        output.sections = sections;
+        var targetJson = null;
+        if (targetJsonText) {
+          try {
+            targetJson = JSON.parse(targetJsonText);
+          } catch (e) {
+            warnings.push({ stage: "target-json", detail: "No se pudo parsear JSON destino: " + e.message });
+          }
+        }
+        var pdfFieldsForValidation = [];
+        for (var vi = 0; vi < sfFields.length; vi++) {
+          var sm = sfFields[vi].sourceMeta;
+          if (sm && sm.sourceName) pdfFieldsForValidation.push({ name: sm.sourceName });
+        }
+        var validation = validator.validate(output, pdfFieldsForValidation, targetJson);
+        if (duplicates.length) {
+          warnings.push({ stage: "duplicate", detail: "sourceNames del PDF asignados a m\xE1s de un campo: " + duplicates.join(", ") });
+        }
+        var totalFields = 0;
+        for (var si = 0; si < sections.length; si++) {
+          var subs = sections[si].subsections || [];
+          for (var ssi = 0; ssi < subs.length; ssi++) totalFields += (subs[ssi].fields || []).length;
+        }
+        return {
+          json: output,
+          validation,
+          warnings,
+          stats: {
+            matrixRows: campos.length,
+            signframeFields: sfFields.length,
+            totalFields,
+            sections: sections.length,
+            radioGroups: stats.byType.radio || 0,
+            repeaters: stats.byType.repeater || 0,
+            repeaterLookups: stats.byType.repeaterLookup || 0,
+            paintsPdf: stats.paintsPdf,
+            createdNew: stats.createdNew,
+            unmatchedSignframe: unmatchedSf.length,
+            duplicates: duplicates.length,
+            unmatchedMatrix: 0,
+            byType: stats.byType,
+            sectionCounts: stats.sectionCounts
+          }
+        };
+      }
+      module.exports = { generateFromCanonical, isCanonicalWorkbook, readCanonical };
+    }
+  });
+
   // src/signframe-generator/mapper.js
   var require_mapper = __commonJS({
     "src/signframe-generator/mapper.js"(exports, module) {
@@ -99350,6 +99612,7 @@ ${pagesHtml}</body>
       }
       async function runSignframeCombine(inputs) {
         const { combineWithSignframe } = require_combiner();
+        const { generateFromCanonical, isCanonicalWorkbook } = require_canonical_to_json();
         const { matrixFile, signframeJsonFile, targetJsonFile } = inputs;
         if (!matrixFile) throw new Error("Carg\xE1 la matriz XLSX");
         if (!signframeJsonFile) throw new Error("Carg\xE1 el JSON skeleton de Signframe");
@@ -99357,6 +99620,9 @@ ${pagesHtml}</body>
         const signframeText = await fileToText(signframeJsonFile);
         const signframeJson = JSON.parse(signframeText);
         const targetJsonText = targetJsonFile ? await fileToText(targetJsonFile) : null;
+        if (isCanonicalWorkbook(matrixBytes)) {
+          return generateFromCanonical({ signframeJson, matrixBytes, targetJsonText });
+        }
         return combineWithSignframe({ signframeJson, matrixBytes, targetJsonText });
       }
       async function runSignframePrepare(inputs) {

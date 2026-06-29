@@ -665,6 +665,7 @@ async function runSignframeGenerator(inputs) {
 
 async function runSignframeCombine(inputs) {
     const { combineWithSignframe } = require('./signframe-generator/combiner');
+    const { generateFromCanonical, isCanonicalWorkbook } = require('./signframe-generator/canonical-to-json');
     const { matrixFile, signframeJsonFile, targetJsonFile } = inputs;
     if (!matrixFile) throw new Error('Cargá la matriz XLSX');
     if (!signframeJsonFile) throw new Error('Cargá el JSON skeleton de Signframe');
@@ -672,6 +673,10 @@ async function runSignframeCombine(inputs) {
     const signframeText = await fileToText(signframeJsonFile);
     const signframeJson = JSON.parse(signframeText);
     const targetJsonText = targetJsonFile ? await fileToText(targetJsonFile) : null;
+    // Matriz canónica de 2 hojas (Campos + Opciones) → generador canónico.
+    if (isCanonicalWorkbook(matrixBytes)) {
+        return generateFromCanonical({ signframeJson, matrixBytes, targetJsonText });
+    }
     return combineWithSignframe({ signframeJson, matrixBytes, targetJsonText });
 }
 
