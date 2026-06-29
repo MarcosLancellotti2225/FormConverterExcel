@@ -95432,6 +95432,11 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
               paintedSourceNames.add(sn);
             }
           }
+          if (f.type === "repeater" && f.pdfSlotPattern) {
+            expandRepeaterSlots(f).forEach(function(n) {
+              paintedSourceNames.add(n);
+            });
+          }
         }
         var unpainted = [];
         pdfFieldNames.forEach(function(name) {
@@ -95445,6 +95450,20 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           details: unpainted.length === 0 ? "Todos los campos del PDF est\xE1n cubiertos (sourceMeta o autoFillConcat)." : unpainted.length + " campo(s) del PDF sin pintar: " + unpainted.join(", "),
           items: unpainted
         };
+      }
+      function expandRepeaterSlots(f) {
+        var out = [];
+        var subs = (f.fields || []).map(function(s2) {
+          return s2.id;
+        });
+        if (!subs.length) subs = [""];
+        var max = f.maxItems || 0;
+        for (var i = 0; i < max; i++) {
+          for (var s = 0; s < subs.length; s++) {
+            out.push(String(f.pdfSlotPattern).replace(/\{sub\}/g, subs[s]).replace(/\{i0\}/g, String(i)).replace(/\{i1\}/g, String(i + 1)).replace(/\{i\}/g, String(i + 1)));
+          }
+        }
+        return out;
       }
       function checkCheckboxValues(fields) {
         var badCheckboxes = [];
@@ -97988,20 +98007,20 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         var fieldsWithSection = [];
         var usedNames = {};
         var stats = { paintsPdf: 0, createdNew: 0, byType: {}, sectionCounts: {} };
-        var pdfNameSeen = {};
+        var emittedSources = {};
         var duplicates = [];
         function emit(sn2, biz2, secName2, extra) {
           extra = extra || {};
+          if (emittedSources[sn2]) {
+            duplicates.push(sn2);
+            return null;
+          }
+          emittedSources[sn2] = true;
           var field;
           if (sfByName[sn2]) {
             field = clone(sfByName[sn2]);
             usedNames[sn2] = true;
             stats.paintsPdf++;
-            if (field.sourceMeta && field.sourceMeta.sourceName) {
-              var key = field.sourceMeta.sourceName;
-              if (pdfNameSeen[key]) duplicates.push(key);
-              pdfNameSeen[key] = true;
-            }
           } else {
             field = { id: "field_" + sn2, type: extra.type || "text", sourceMeta: null };
             stats.createdNew++;
@@ -98193,15 +98212,17 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
               var opc = String(members[li]["opci\xF3n"] || members[li].opcion || "").trim();
               var needle = quoteNeedle(String(members[li].needle || "").trim());
               var f = emit(snl, biz, secName, { subName, type: "checkbox", labelOverride: String(members[li].needle || "").trim() || biz.label });
-              f.autoFillConcat = {
-                parts: [{
-                  type: "repeaterLookup",
-                  repeaterId,
-                  needle,
-                  ifFound: opc === "Si" ? "X" : "",
-                  ifNotFound: opc === "Si" ? "" : "X"
-                }]
-              };
+              if (f) {
+                f.autoFillConcat = {
+                  parts: [{
+                    type: "repeaterLookup",
+                    repeaterId,
+                    needle,
+                    ifFound: opc === "Si" ? "X" : "",
+                    ifNotFound: opc === "Si" ? "" : "X"
+                  }]
+                };
+              }
             }
             warnings.push({ stage: "repeaterLookup", detail: 'repeaterLookup "' + grupo + '": ' + members.length + " checkboxes con autoFillConcat\u2192repeaterLookup (ifFound). Si Signframe no lo soporta nativo, quedan como checkboxes con sourceMeta para configurar el lookup a mano." });
           } else {

@@ -205,21 +205,20 @@ function generateFromCanonical(opts) {
     var fieldsWithSection = [];
     var usedNames = {};
     var stats = { paintsPdf: 0, createdNew: 0, byType: {}, sectionCounts: {} };
-    var pdfNameSeen = {};
+    var emittedSources = {};
     var duplicates = [];
 
     function emit(sn, biz, secName, extra) {
         extra = extra || {};
+        // dedupe: el mismo sourceName se emite una sola vez (algunos PDFs traen
+        // campos duplicados). Evita ids duplicados en el output.
+        if (emittedSources[sn]) { duplicates.push(sn); return null; }
+        emittedSources[sn] = true;
         var field;
         if (sfByName[sn]) {
             field = clone(sfByName[sn]); // keeps id + sourceMeta intact
             usedNames[sn] = true;
             stats.paintsPdf++;
-            if (field.sourceMeta && field.sourceMeta.sourceName) {
-                var key = field.sourceMeta.sourceName;
-                if (pdfNameSeen[key]) duplicates.push(key);
-                pdfNameSeen[key] = true;
-            }
         } else {
             // no existe en el JSON -> campo nuevo sin sourceMeta
             field = { id: 'field_' + sn, type: extra.type || 'text', sourceMeta: null };
@@ -390,15 +389,17 @@ function generateFromCanonical(opts) {
                 var opc = String(members[li]['opción'] || members[li].opcion || '').trim();
                 var needle = quoteNeedle(String(members[li].needle || '').trim());
                 var f = emit(snl, biz, secName, { subName: subName, type: 'checkbox', labelOverride: String(members[li].needle || '').trim() || biz.label });
-                f.autoFillConcat = {
-                    parts: [{
-                        type: 'repeaterLookup',
-                        repeaterId: repeaterId,
-                        needle: needle,
-                        ifFound: opc === 'Si' ? 'X' : '',
-                        ifNotFound: opc === 'Si' ? '' : 'X',
-                    }],
-                };
+                if (f) {
+                    f.autoFillConcat = {
+                        parts: [{
+                            type: 'repeaterLookup',
+                            repeaterId: repeaterId,
+                            needle: needle,
+                            ifFound: opc === 'Si' ? 'X' : '',
+                            ifNotFound: opc === 'Si' ? '' : 'X',
+                        }],
+                    };
+                }
             }
             warnings.push({ stage: 'repeaterLookup', detail: 'repeaterLookup "' + grupo + '": ' + members.length + ' checkboxes con autoFillConcat→repeaterLookup (ifFound). Si Signframe no lo soporta nativo, quedan como checkboxes con sourceMeta para configurar el lookup a mano.' });
         } else {

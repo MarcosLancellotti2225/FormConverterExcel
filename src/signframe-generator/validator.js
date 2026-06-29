@@ -112,6 +112,10 @@ function checkAllPdfFieldsPaint(fields, pdfFieldNames) {
                 paintedSourceNames.add(sn);
             }
         }
+        // repeater: pinta vía pdfSlotPattern × subcampos × items
+        if (f.type === 'repeater' && f.pdfSlotPattern) {
+            expandRepeaterSlots(f).forEach(function (n) { paintedSourceNames.add(n); });
+        }
     }
 
     var unpainted = [];
@@ -129,6 +133,26 @@ function checkAllPdfFieldsPaint(fields, pdfFieldNames) {
             : unpainted.length + ' campo(s) del PDF sin pintar: ' + unpainted.join(', '),
         items: unpainted,
     };
+}
+
+// Expand a repeater's pdfSlotPattern over its subfields × items into the real
+// PDF field names it covers. Placeholders: {sub}=subfield id, {i0}=0-based,
+// {i1}/{i}=1-based.
+function expandRepeaterSlots(f) {
+    var out = [];
+    var subs = (f.fields || []).map(function (s) { return s.id; });
+    if (!subs.length) subs = [''];
+    var max = f.maxItems || 0;
+    for (var i = 0; i < max; i++) {
+        for (var s = 0; s < subs.length; s++) {
+            out.push(String(f.pdfSlotPattern)
+                .replace(/\{sub\}/g, subs[s])
+                .replace(/\{i0\}/g, String(i))
+                .replace(/\{i1\}/g, String(i + 1))
+                .replace(/\{i\}/g, String(i + 1)));
+        }
+    }
+    return out;
 }
 
 function checkCheckboxValues(fields) {
