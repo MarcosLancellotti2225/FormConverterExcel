@@ -252,5 +252,6 @@ module.exports = {
     buildFieldId,
     resolveType,
     correctPath,
+    buildOptions,
     buildConditionalVisibility,
 };

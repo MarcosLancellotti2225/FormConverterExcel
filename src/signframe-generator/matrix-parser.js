@@ -106,6 +106,115 @@ function parseCustomMatrix(excelBytes, colActual, colPropuesto, colEtiqueta, col
     return { rows, warnings: [] };
 }
 
+// Header patterns for the descriptive "Vida Colectiva / Secciones" matrix layout
+// (the same flexible format that combine_form.py handles).
+var FLEX_HEADER_PATTERNS = [
+    ['pasos', /pasos/i],
+    ['seccion', /^secci[oó]n$/i],
+    ['nombrePdf', /nombre\s+en\s+pdf/i],
+    ['etiqueta', /nombre\s+del\s+campo\s+en\s+formulario/i],
+    ['tipoDato', /tipo\s+de\s+dato/i],
+    ['valor', /^valor$/i],
+    ['regla', /^regla$/i],
+    ['obligatorio', /obligatori/i],
+    ['formularioVisualizar', /formulario\s+a\s+visual/i],
+    ['visualizacion', /visualizaci[oó]n/i],
+    ['observaciones', /observacion/i],
+    ['pathJson', /nombre.*campo.*json|nombre.*json/i],
+    ['nombreCampoPdf', /nombre.*campo.*pdf$/i],
+];
+
+/**
+ * Detect whether an Excel uses the descriptive flexible layout (vs the 22-col one).
+ * Returns the detected column map (prop -> index), or null if it doesn't look flexible.
+ */
+function detectFlexHeaders(headerRow) {
+    var col = {};
+    for (var c = 0; c < headerRow.length; c++) {
+        var h = String(headerRow[c] || '').trim();
+        if (!h) continue;
+        for (var p = 0; p < FLEX_HEADER_PATTERNS.length; p++) {
+            var prop = FLEX_HEADER_PATTERNS[p][0];
+            var rx = FLEX_HEADER_PATTERNS[p][1];
+            if (col[prop] === undefined && rx.test(h)) { col[prop] = c; break; }
+        }
+    }
+    return col;
+}
+
+/**
+ * Parse the descriptive flexible matrix layout into the canonical row shape used
+ * downstream (enrichField / buildField / organizeSections).
+ */
+function parseFlexibleMatrix(excelBytes) {
+    var wb = XLSX.read(excelBytes, { type: 'array' });
+    var ws = wb.Sheets[wb.SheetNames[0]];
+    var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    if (!raw.length) throw new Error('El Excel de mapeo está vacío');
+
+    var col = detectFlexHeaders(raw[0]);
+    var get = function (r, prop) { return col[prop] !== undefined ? r[col[prop]] : ''; };
+
+    var rows = [];
+    for (var i = 1; i < raw.length; i++) {
+        var r = raw[i];
+        var etiqueta = String(get(r, 'etiqueta') || '').trim();
+        var nombrePdf = String(get(r, 'nombrePdf') || '').trim();
+        if (!etiqueta && !nombrePdf) continue;
+
+        var pathRaw = String(get(r, 'pathJson') || '').trim();
+        var paths = pathRaw.split(/[\n,]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+        var acro = String(get(r, 'nombreCampoPdf') || '').trim();
+
+        rows.push({
+            rowNum: i,
+            pasos: String(get(r, 'pasos') || '').trim(),
+            seccionPdf: String(get(r, 'seccion') || '').trim(),
+            nombrePdf: nombrePdf,
+            etiqueta: etiqueta,
+            acroActual: acro,
+            acroPropuesto: '',
+            sourceName: acro,
+            nativeType: '',
+            grupo: '',
+            pagina: null,
+            tipoDato: String(get(r, 'tipoDato') || '').trim().toLowerCase(),
+            valor: String(get(r, 'valor') || '').trim(),
+            pathPrincipal: paths[0] || '',
+            pathsSecundarios: paths.slice(1).join('|'),
+            preRellenado: null,
+            obligatorio: normalizeYesNo(get(r, 'obligatorio')),
+            maxLength: null,
+            patron: '',
+            formato: '',
+            visibilidadCondicional: String(get(r, 'visualizacion') || '').trim(),
+            catalogoNombre: '',
+            optionsParsed: null,
+            optionsRaw: '',
+            tipoDato2: '',
+            reglaOriginal: String(get(r, 'regla') || '').trim(),
+            hojaExcelCatalogo: '',
+        });
+    }
+    return { rows: rows, warnings: [], colMap: col };
+}
+
+/**
+ * Parse a matrix auto-detecting the layout: flexible descriptive vs 22-column.
+ */
+function parseMatrixAuto(excelBytes) {
+    var wb = XLSX.read(excelBytes, { type: 'array' });
+    var ws = wb.Sheets[wb.SheetNames[0]];
+    var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    if (!raw.length) throw new Error('El Excel de mapeo está vacío');
+    var flex = detectFlexHeaders(raw[0]);
+    // Need at least the descriptive label column to treat it as flexible.
+    if (flex.etiqueta !== undefined && flex.seccion !== undefined) {
+        return parseFlexibleMatrix(excelBytes);
+    }
+    return parseMatrix(excelBytes);
+}
+
 function validateHeaders(headerRow) {
     var warnings = [];
     if (!headerRow || headerRow.length < 20) {
@@ -130,4 +239,4 @@ function normalizeYesNo(val) {
     return null;
 }
 
-module.exports = { parseMatrix, parseCustomMatrix, EXPECTED_HEADERS };
+module.exports = { parseMatrix, parseCustomMatrix, parseFlexibleMatrix, parseMatrixAuto, EXPECTED_HEADERS };

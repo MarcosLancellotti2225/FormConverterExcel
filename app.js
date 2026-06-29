@@ -2365,6 +2365,17 @@
         jsonString: null,
     };
 
+    // Etapa 1 — assisted mapping state
+    var sfMapState = {
+        jsonFields: [],     // [{sourceName, page, type, label, suggestionRowNum, suggestionScore, suggestionLabel}]
+        matrixRows: [],     // [{rowNum, etiqueta, seccionPdf, ...}]
+        rowByNum: {},       // rowNum -> matrix row
+        links: {},          // sourceName -> rowNum (number) | 'NONE'
+        current: 0,
+        storageKey: null,
+        prepared: false,
+    };
+
     function initSignframeFlow() {
         $('#sfPdfInput').addEventListener('change', function(e) {
             sfState.pdf = e.target.files[0] || null;
@@ -2385,6 +2396,25 @@
             sfState.targetJson = e.target.files[0] || null;
             updateSfFileStatus('sfTargetStatus', sfState.targetJson);
         });
+
+        // Etapa 1
+        $('#btnSfPrepare').addEventListener('click', runSfPrepare);
+        $('#btnSfMapExport').addEventListener('click', exportSfMapping);
+        $('#sfMapImport').addEventListener('change', importSfMapping);
+        $('#btnSfMapClear').addEventListener('click', clearSfMapping);
+        $('#sfMapConfirm').addEventListener('click', function() { sfMapConfirm(); });
+        $('#sfMapNone').addEventListener('click', function() { sfMapSetCurrent('NONE'); });
+        $('#sfMapSkip').addEventListener('click', function() { sfMapGoTo(sfMapState.current + 1); });
+        $('#sfMapPrev').addEventListener('click', function() { sfMapGoTo(sfMapState.current - 1); });
+        $('#sfMapSearch').addEventListener('input', renderSfMapSelect);
+        $('#sfMapSelect').addEventListener('dblclick', function() { sfMapConfirm(); });
+        $('#sfMapSearch').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); sfMapConfirm(); }
+        });
+        $('#sfMapListFilter').addEventListener('input', renderSfMapList);
+        $('#sfMapListStatus').addEventListener('change', renderSfMapList);
+
+        // Etapa 2
         $('#btnSignframeGenerate').addEventListener('click', runSignframeGenerate);
         $('#btnSignframeDownload').addEventListener('click', downloadSignframeJson);
         $('#btnSignframeReport').addEventListener('click', downloadSignframeReport);
@@ -2406,7 +2436,295 @@
     }
 
     function refreshSfButton() {
-        $('#btnSignframeGenerate').disabled = !(sfState.pdf && sfState.matrix && sfState.signframeJson);
+        $('#btnSfPrepare').disabled = !(sfState.pdf && sfState.matrix && sfState.signframeJson);
+        $('#btnSignframeGenerate').disabled = !sfMapState.prepared;
+    }
+
+    // ─── Etapa 1: preparación + vínculo asistido ──────────────────────────────
+
+    function sfStorageKey() {
+        var parts = [
+            sfState.pdf ? sfState.pdf.name : '',
+            sfState.signframeJson ? sfState.signframeJson.name : '',
+            sfState.matrix ? sfState.matrix.name : '',
+            String(sfMapState.jsonFields.length),
+        ];
+        return 'sfmap:' + parts.join('|');
+    }
+
+    function saveSfMapping() {
+        if (!sfMapState.storageKey) return;
+        try {
+            localStorage.setItem(sfMapState.storageKey, JSON.stringify({ version: 1, links: sfMapState.links }));
+        } catch (e) { /* storage full / disabled — ignore */ }
+    }
+
+    function loadSfMapping() {
+        if (!sfMapState.storageKey) return;
+        try {
+            var raw = localStorage.getItem(sfMapState.storageKey);
+            if (raw) {
+                var parsed = JSON.parse(raw);
+                if (parsed && parsed.links) sfMapState.links = parsed.links;
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    async function runSfPrepare() {
+        var statusEl = $('#sfPrepareStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Leyendo JSON y matriz...';
+        try {
+            var result = await InsPipelineBundle.runSignframePrepare({
+                matrixFile: sfState.matrix,
+                signframeJsonFile: sfState.signframeJson,
+            });
+            sfMapState.jsonFields = result.jsonFields;
+            sfMapState.matrixRows = result.matrixRows;
+            sfMapState.rowByNum = {};
+            for (var i = 0; i < result.matrixRows.length; i++) {
+                sfMapState.rowByNum[result.matrixRows[i].rowNum] = result.matrixRows[i];
+            }
+            sfMapState.current = 0;
+            sfMapState.storageKey = sfStorageKey();
+            sfMapState.links = {};
+            loadSfMapping();
+            sfMapState.prepared = true;
+
+            $('#sfMapPanel').hidden = false;
+            $('#sfGeneratePanel').hidden = false;
+            $('#btnSfMapExport').hidden = false;
+            $('#btnSfMapImportLabel').hidden = false;
+            $('#btnSfMapClear').hidden = false;
+
+            var firstPending = findNextPending(-1);
+            sfMapState.current = firstPending >= 0 ? firstPending : 0;
+
+            renderSfMapper();
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ ' + result.jsonFields.length + ' campos del JSON y ' +
+                result.matrixRows.length + ' filas de matriz. Vinculá cada campo abajo.';
+            refreshSfButton();
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
+    }
+
+    function linkStatusOf(sourceName) {
+        var v = sfMapState.links[sourceName];
+        if (v === undefined) return 'pending';
+        if (v === 'NONE') return 'none';
+        return 'linked';
+    }
+
+    function findNextPending(from) {
+        var n = sfMapState.jsonFields.length;
+        for (var i = from + 1; i < n; i++) {
+            if (linkStatusOf(sfMapState.jsonFields[i].sourceName) === 'pending') return i;
+        }
+        return -1;
+    }
+
+    function sfMapGoTo(idx) {
+        var n = sfMapState.jsonFields.length;
+        if (idx < 0) idx = 0;
+        if (idx >= n) idx = n - 1;
+        sfMapState.current = idx;
+        renderSfMapper();
+    }
+
+    function sfMapSetCurrent(rowNumOrNone) {
+        var jf = sfMapState.jsonFields[sfMapState.current];
+        if (!jf) return;
+        sfMapState.links[jf.sourceName] = rowNumOrNone;
+        saveSfMapping();
+        var next = findNextPending(sfMapState.current);
+        if (next >= 0) sfMapState.current = next;
+        else sfMapState.current = Math.min(sfMapState.current + 1, sfMapState.jsonFields.length - 1);
+        renderSfMapper();
+    }
+
+    function sfMapConfirm() {
+        var sel = $('#sfMapSelect');
+        var val = sel.value;
+        if (val === '' || val == null) {
+            // no manual pick → use suggestion if any
+            var jf = sfMapState.jsonFields[sfMapState.current];
+            if (jf && jf.suggestionRowNum != null) {
+                sfMapSetCurrent(jf.suggestionRowNum);
+            } else {
+                $('#sfPrepareStatus').className = 'status active error';
+                $('#sfPrepareStatus').textContent = '✗ Elegí una fila de la matriz o marcá "No está en la matriz".';
+            }
+            return;
+        }
+        sfMapSetCurrent(Number(val));
+    }
+
+    function rowLabel(row) {
+        var sec = row.seccionPdf ? '[' + row.seccionPdf + '] ' : '';
+        var name = row.etiqueta || row.acroActual || ('fila ' + row.rowNum);
+        var extra = row.acroActual && row.acroActual !== row.etiqueta ? '  ·  ' + row.acroActual : '';
+        return 'F' + row.rowNum + '  ' + sec + name + extra;
+    }
+
+    function renderSfMapper() {
+        var jf = sfMapState.jsonFields[sfMapState.current];
+        if (!jf) return;
+        $('#sfMapPos').textContent = sfMapState.current + 1;
+        $('#sfMapTotal').textContent = sfMapState.jsonFields.length;
+        $('#sfMapSrcName').textContent = jf.sourceName;
+        $('#sfMapType').textContent = (jf.nativeType || jf.type || '?');
+        $('#sfMapPage').textContent = 'pág ' + (jf.page != null ? jf.page : '?');
+        $('#sfMapLabel').textContent = jf.label || '(sin label)';
+
+        var st = linkStatusOf(jf.sourceName);
+        var statusChip = $('#sfMapStatus');
+        statusChip.className = 'sf-map-chip sf-map-chip-status ' + st;
+        if (st === 'linked') {
+            var row = sfMapState.rowByNum[sfMapState.links[jf.sourceName]];
+            statusChip.textContent = '✓ ' + (row ? ('F' + row.rowNum) : 'vinculado');
+        } else if (st === 'none') {
+            statusChip.textContent = '✗ no en matriz';
+        } else {
+            statusChip.textContent = 'pendiente';
+        }
+
+        // Suggestion
+        var sug = $('#sfMapSuggestBox');
+        if (jf.suggestionRowNum != null) {
+            var srow = sfMapState.rowByNum[jf.suggestionRowNum];
+            var pct = Math.round((jf.suggestionScore || 0) * 100);
+            var lowCls = pct < 50 ? ' sf-sug-low' : '';
+            sug.innerHTML = 'Sugerencia<span class="' + lowCls.trim() + '"> (' + pct + '%)</span>: ' +
+                '<strong>' + escapeHtml(srow ? rowLabel(srow) : ('F' + jf.suggestionRowNum)) + '</strong>' +
+                '<button class="sf-sug-btn" id="sfMapUseSug">Usar sugerencia</button>';
+            var btn = $('#sfMapUseSug');
+            if (btn) btn.addEventListener('click', function() { sfMapSetCurrent(jf.suggestionRowNum); });
+        } else {
+            sug.innerHTML = '<span class="sf-sug-low">Sin sugerencia — elegí manualmente o marcá "No está en la matriz".</span>';
+        }
+
+        renderSfMapSelect();
+        renderSfMapList();
+        $('#sfMapPrev').disabled = sfMapState.current === 0;
+    }
+
+    function renderSfMapSelect() {
+        var jf = sfMapState.jsonFields[sfMapState.current];
+        if (!jf) return;
+        var q = $('#sfMapSearch').value.toLowerCase().trim();
+        var sel = $('#sfMapSelect');
+        var currentLink = sfMapState.links[jf.sourceName];
+        var html = '';
+        var rows = sfMapState.matrixRows;
+        var shown = 0;
+        for (var i = 0; i < rows.length; i++) {
+            var r = rows[i];
+            var label = rowLabel(r);
+            if (q && label.toLowerCase().indexOf(q) === -1) continue;
+            var selAttr = (currentLink != null && currentLink !== 'NONE' && Number(currentLink) === r.rowNum) ? ' selected' : '';
+            html += '<option value="' + r.rowNum + '"' + selAttr + '>' + escapeHtml(label) + '</option>';
+            shown++;
+            if (shown > 400) break;
+        }
+        sel.innerHTML = html || '<option value="" disabled>Sin coincidencias</option>';
+    }
+
+    function renderSfMapList() {
+        var tbody = $('#sfMapTableBody');
+        var q = $('#sfMapListFilter').value.toLowerCase().trim();
+        var statusFilter = $('#sfMapListStatus').value;
+        var rows = '';
+        var counts = { linked: 0, none: 0, pending: 0 };
+        for (var i = 0; i < sfMapState.jsonFields.length; i++) {
+            var jf = sfMapState.jsonFields[i];
+            var st = linkStatusOf(jf.sourceName);
+            counts[st]++;
+            if (statusFilter !== 'all' && statusFilter !== st) continue;
+            if (q && jf.sourceName.toLowerCase().indexOf(q) === -1 &&
+                (jf.label || '').toLowerCase().indexOf(q) === -1) continue;
+
+            var linkText, linkCls;
+            if (st === 'linked') {
+                var row = sfMapState.rowByNum[sfMapState.links[jf.sourceName]];
+                linkText = row ? ('F' + row.rowNum + ' ' + (row.etiqueta || row.acroActual || '')) : 'vinculado';
+                linkCls = 'sf-map-link-linked';
+            } else if (st === 'none') {
+                linkText = 'no en matriz';
+                linkCls = 'sf-map-link-none';
+            } else {
+                linkText = '—';
+                linkCls = 'sf-map-link-pending';
+            }
+            var active = i === sfMapState.current ? ' class="sf-map-active"' : '';
+            rows += '<tr' + active + ' data-idx="' + i + '">' +
+                '<td style="color:var(--text-dim);text-align:right;">' + (i + 1) + '</td>' +
+                '<td style="font-family:monospace;font-size:0.78rem;word-break:break-all;">' + escapeHtml(jf.sourceName) + '</td>' +
+                '<td style="text-align:center;">' + (jf.page != null ? jf.page : '') + '</td>' +
+                '<td class="' + linkCls + '" style="font-size:0.78rem;">' + escapeHtml(linkText) + '</td>' +
+                '</tr>';
+        }
+        tbody.innerHTML = rows;
+        $('#sfMapProgress').textContent = counts.linked + ' vinculados · ' + counts.none +
+            ' no-matriz · ' + counts.pending + ' pendientes';
+
+        if (tbody.dataset.wired !== '1') {
+            tbody.dataset.wired = '1';
+            tbody.addEventListener('click', function(e) {
+                var tr = e.target.closest('tr');
+                if (!tr || tr.dataset.idx == null) return;
+                sfMapGoTo(parseInt(tr.dataset.idx, 10));
+            });
+        }
+    }
+
+    function exportSfMapping() {
+        var data = {
+            version: 1,
+            pdf: sfState.pdf ? sfState.pdf.name : null,
+            signframe: sfState.signframeJson ? sfState.signframeJson.name : null,
+            matrix: sfState.matrix ? sfState.matrix.name : null,
+            links: sfMapState.links,
+        };
+        var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
+        var name = (sfState.pdf ? sfState.pdf.name.replace(/\.pdf$/i, '') : 'form') + '_vinculo.json';
+        InsPipelineBundle.downloadBlob(blob, name);
+    }
+
+    function importSfMapping(e) {
+        var file = e.target.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function() {
+            try {
+                var parsed = JSON.parse(reader.result);
+                if (parsed && parsed.links) {
+                    sfMapState.links = parsed.links;
+                    saveSfMapping();
+                    var fp = findNextPending(-1);
+                    sfMapState.current = fp >= 0 ? fp : 0;
+                    renderSfMapper();
+                    $('#sfPrepareStatus').className = 'status active success';
+                    $('#sfPrepareStatus').textContent = '✓ Vínculo importado.';
+                }
+            } catch (err) {
+                $('#sfPrepareStatus').className = 'status active error';
+                $('#sfPrepareStatus').textContent = '✗ Archivo de vínculo inválido: ' + err.message;
+            }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+    }
+
+    function clearSfMapping() {
+        if (!confirm('¿Borrar todos los vínculos confirmados?')) return;
+        sfMapState.links = {};
+        saveSfMapping();
+        sfMapState.current = 0;
+        renderSfMapper();
     }
 
     async function runSignframeGenerate() {
@@ -2417,10 +2735,11 @@
 
         try {
             var t0 = performance.now();
-            var result = await InsPipelineBundle.runSignframeCombine({
+            var result = await InsPipelineBundle.runSignframeGenerateFromMapping({
                 matrixFile: sfState.matrix,
                 signframeJsonFile: sfState.signframeJson,
                 targetJsonFile: sfState.targetJson || undefined,
+                mapping: { version: 1, links: sfMapState.links },
             });
             var t1 = performance.now();
 
@@ -2479,9 +2798,10 @@
             ['Campos totales', stats.totalFields],
             ['Secciones', stats.sections],
             ['Grupos radio', stats.radioGroups],
-            ['Sin match (signframe)', stats.unmatchedSignframe != null ? stats.unmatchedSignframe : stats.orphanedPdf],
-            ['Sin match (matriz)', stats.unmatchedMatrix],
         ];
+        if (stats.paintsPdf != null) items.push(['Pinta PDF (sourceMeta)', stats.paintsPdf]);
+        if (stats.createdNew != null) items.push(['Creados sin PDF', stats.createdNew]);
+        items.push(['Sin match (signframe)', stats.unmatchedSignframe != null ? stats.unmatchedSignframe : stats.orphanedPdf]);
         container.innerHTML = items.map(function(item) {
             var cls = (item[0].indexOf('uérfano') !== -1 || item[0].indexOf('Sin match') !== -1) && item[1] > 0
                 ? ' sf-stat-warn' : '';
@@ -2604,12 +2924,13 @@
         lines.push('--- Estadísticas ---');
         var s = sfState.result.stats;
         lines.push('Filas en matriz: ' + s.matrixRows);
-        lines.push('Campos en PDF: ' + s.pdfFields);
+        lines.push('Campos en Signframe JSON: ' + (s.signframeFields != null ? s.signframeFields : '?'));
         lines.push('Campos totales generados: ' + s.totalFields);
         lines.push('Secciones: ' + s.sections);
         lines.push('Grupos radio: ' + s.radioGroups);
-        lines.push('Huérfanos PDF: ' + s.orphanedPdf);
-        lines.push('Sin match (matriz): ' + s.unmatchedMatrix);
+        if (s.paintsPdf != null) lines.push('Pinta PDF (hereda sourceMeta): ' + s.paintsPdf);
+        if (s.createdNew != null) lines.push('Creados sin PDF: ' + s.createdNew);
+        lines.push('Sin vincular (-> Sistema oculto): ' + (s.unmatchedSignframe != null ? s.unmatchedSignframe : '?'));
         lines.push('');
 
         lines.push('--- Checks de Validación (' + sfState.result.validation.passed + '/' +

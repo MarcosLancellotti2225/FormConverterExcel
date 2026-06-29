@@ -211,12 +211,18 @@ async function combineWithSignframe(opts) {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 /**
- * Collect all fields from signframe sections -> subsections -> fields.
+ * Collect all fields from a signframe JSON, reading BOTH
+ * sections[].fields and sections[].subsections[].fields.
+ * (Some skeletons place fields directly on the section.)
  */
 function collectSignframeFields(data) {
     var fields = [];
     var sections = data.sections || [];
     for (var s = 0; s < sections.length; s++) {
+        var direct = sections[s].fields || [];
+        for (var d = 0; d < direct.length; d++) {
+            fields.push(direct[d]);
+        }
         var subs = sections[s].subsections || [];
         for (var ss = 0; ss < subs.length; ss++) {
             var ff = subs[ss].fields || [];
@@ -226,6 +232,50 @@ function collectSignframeFields(data) {
         }
     }
     return fields;
+}
+
+/**
+ * Build a label -> fieldId lookup for conditional visibility resolution.
+ */
+function buildLabelToId(matrixRows) {
+    var labelToId = {};
+    for (var li = 0; li < matrixRows.length; li++) {
+        var lrow = matrixRows[li];
+        var etiq = lrow.etiqueta;
+        var lsn = lrow.sourceName || lrow.acroActual || '';
+        if (etiq && lsn) {
+            labelToId[String(etiq).toLowerCase().trim()] = 'field_' + String(lsn);
+        }
+    }
+    return labelToId;
+}
+
+/**
+ * Detect radio groups: groups where at least one member has nativeType 'Btn'
+ * or a tipoDato containing 'radio'.
+ */
+function detectRadioGroups(matrixRows) {
+    var candidateGroups = {};
+    for (var gi = 0; gi < matrixRows.length; gi++) {
+        var grow = matrixRows[gi];
+        var grupo = grow.grupo;
+        if (grupo) {
+            grupo = String(grupo).trim();
+            if (!candidateGroups[grupo]) candidateGroups[grupo] = [];
+            candidateGroups[grupo].push(grow);
+        }
+    }
+    var radioGroups = {};
+    for (var gName in candidateGroups) {
+        var gRows = candidateGroups[gName];
+        var hasBtn = false, hasRadioType = false;
+        for (var bi = 0; bi < gRows.length; bi++) {
+            if (String(gRows[bi].nativeType || '').trim() === 'Btn') hasBtn = true;
+            if (String(gRows[bi].tipoDato || '').toLowerCase().indexOf('radio') !== -1) hasRadioType = true;
+        }
+        if (hasBtn || hasRadioType) radioGroups[gName] = gRows;
+    }
+    return radioGroups;
 }
 
 /**
@@ -795,4 +845,14 @@ function validateOutput(sections, warnings) {
     }
 }
 
-module.exports = { combineWithSignframe };
+module.exports = {
+    combineWithSignframe,
+    collectSignframeFields,
+    buildLabelToId,
+    detectRadioGroups,
+    buildConditionalVisibilityWithLabels,
+    enrichField,
+    organizeSections,
+    validateOutput,
+    sourceKey,
+};

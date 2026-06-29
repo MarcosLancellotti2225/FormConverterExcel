@@ -243,7 +243,74 @@
             </section>
 
             <section class="panel">
-                <h2>2. Generar</h2>
+                <h2>2. Vincular campos</h2>
+                <p class="hint">Recorré cada campo del JSON y confirmá a qué fila de la matriz corresponde. La herramienta propone la mejor coincidencia, pero vos decidís. El vínculo se guarda solo (no se pisa lo confirmado).</p>
+                <div class="actions">
+                    <button id="btnSfPrepare" class="primary" disabled>Preparar vínculo</button>
+                    <button id="btnSfMapExport" class="secondary btn-sm" hidden>Exportar vínculo</button>
+                    <label id="btnSfMapImportLabel" class="secondary btn-sm" hidden style="cursor:pointer;">Importar vínculo<input type="file" id="sfMapImport" accept=".json" hidden></label>
+                    <button id="btnSfMapClear" class="secondary btn-sm" hidden>Limpiar vínculo</button>
+                </div>
+                <div id="sfPrepareStatus" class="status"></div>
+            </section>
+
+            <div id="sfMapPanel" class="sf-map" hidden>
+                <section class="panel sf-map-current">
+                    <div class="sf-map-topbar">
+                        <h3 style="margin:0;">Campo <span id="sfMapPos">1</span> / <span id="sfMapTotal">0</span></h3>
+                        <span id="sfMapProgress" class="sf-map-progress"></span>
+                    </div>
+                    <div class="sf-map-fieldcard">
+                        <div class="sf-map-srcname" id="sfMapSrcName"></div>
+                        <div class="sf-map-meta">
+                            <span class="sf-map-chip" id="sfMapType"></span>
+                            <span class="sf-map-chip" id="sfMapPage"></span>
+                            <span class="sf-map-chip sf-map-chip-status" id="sfMapStatus"></span>
+                        </div>
+                        <div class="sf-map-label" id="sfMapLabel"></div>
+                    </div>
+
+                    <div class="sf-map-suggest" id="sfMapSuggestBox"></div>
+
+                    <input type="text" id="sfMapSearch" class="sf-map-search" placeholder="Buscar fila de la matriz por etiqueta / sección...">
+                    <select id="sfMapSelect" class="sf-map-select" size="8"></select>
+
+                    <div class="sf-map-actions">
+                        <button id="sfMapPrev" class="secondary btn-sm">← Anterior</button>
+                        <button id="sfMapConfirm" class="primary btn-sm">✓ Confirmar (Enter)</button>
+                        <button id="sfMapNone" class="secondary btn-sm">No está en la matriz</button>
+                        <button id="sfMapSkip" class="secondary btn-sm">Saltar →</button>
+                    </div>
+                </section>
+
+                <section class="panel sf-map-listpanel">
+                    <div class="sf-map-listhead">
+                        <input type="text" id="sfMapListFilter" class="sf-map-search" placeholder="Filtrar campos...">
+                        <select id="sfMapListStatus" class="sf-map-statusfilter">
+                            <option value="all">Todos</option>
+                            <option value="pending">Pendientes</option>
+                            <option value="linked">Vinculados</option>
+                            <option value="none">No en matriz</option>
+                        </select>
+                    </div>
+                    <div class="match-table-wrap" style="max-height:calc(100vh - 360px);">
+                        <table class="match-table" id="sfMapTable">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>sourceName</th>
+                                    <th>Pág</th>
+                                    <th>Vínculo</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sfMapTableBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+
+            <section class="panel" id="sfGeneratePanel" hidden>
+                <h2>3. Generar</h2>
                 <div class="actions">
                     <button id="btnSignframeGenerate" class="primary" disabled>Generar JSON Signframe</button>
                     <button id="btnSignframeDownload" class="primary" hidden>Descargar JSON</button>
@@ -393,7 +460,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=31"></script>
-    <script src="app.js?v=31"></script>
+    <script src="bundle.js?v=32"></script>
+    <script src="app.js?v=32"></script>
 </body>
 </html>
