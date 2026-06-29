@@ -2359,21 +2359,21 @@
     var sfState = {
         pdf: null,
         matrix: null,
+        mapping: null,       // xlsx de mapeo del PDF renombrado
         signframeJson: null,
         targetJson: null,
         result: null,
         jsonString: null,
     };
 
-    // Etapa 1 — assisted mapping state
-    var SF_AUTO_THRESHOLD = 0.9; // auto-confirm exact / normalized-exact suggestions
+    // Etapa 1 — group alignment state (grupos por raíz de sourceName ↔ filas matriz)
     var sfMapState = {
-        jsonFields: [],     // [{sourceName, page, type, label, suggestionRowNum, suggestionScore, suggestionLabel}]
-        matrixRows: [],     // [{rowNum, etiqueta, seccionPdf, ...}]
-        rowByNum: {},       // rowNum -> matrix row
-        links: {},          // sourceName -> rowNum (number) | 'NONE'
-        auto: {},           // sourceName -> true (auto-confirmed this session, still editable)
-        current: 0,
+        groups: [],          // [{root, kind, section, page, members, suggestionRowNum, suggestionKind}]
+        matrixRows: [],      // [{rowNum, etiqueta, seccionPdf, ...}]
+        rowByNum: {},        // rowNum -> matrix row
+        links: {},           // groupRoot -> rowNum (number) | 'NONE'
+        auto: {},            // groupRoot -> true (auto-aligned exact, still editable)
+        current: 0,          // index into groups (selected group)
         storageKey: null,
         prepared: false,
     };
@@ -2389,6 +2389,11 @@
             updateSfFileStatus('sfMatrixStatus', sfState.matrix);
             refreshSfButton();
         });
+        $('#sfMappingInput').addEventListener('change', function(e) {
+            sfState.mapping = e.target.files[0] || null;
+            updateSfFileStatus('sfMappingStatus', sfState.mapping);
+            refreshSfButton();
+        });
         $('#sfJsonInput').addEventListener('change', function(e) {
             sfState.signframeJson = e.target.files[0] || null;
             updateSfFileStatus('sfJsonStatus', sfState.signframeJson);
@@ -2399,22 +2404,17 @@
             updateSfFileStatus('sfTargetStatus', sfState.targetJson);
         });
 
-        // Etapa 1
+        // Etapa 1 — group aligner
         $('#btnSfPrepare').addEventListener('click', runSfPrepare);
+        $('#btnSfAutoPos').addEventListener('click', autoAlignByPosition);
         $('#btnSfMapExport').addEventListener('click', exportSfMapping);
         $('#sfMapImport').addEventListener('change', importSfMapping);
         $('#btnSfMapClear').addEventListener('click', clearSfMapping);
-        $('#sfMapConfirm').addEventListener('click', function() { sfMapConfirm(); });
-        $('#sfMapNone').addEventListener('click', function() { sfMapSetCurrent('NONE'); });
-        $('#sfMapSkip').addEventListener('click', function() { sfMapGoTo(sfMapState.current + 1); });
-        $('#sfMapPrev').addEventListener('click', function() { sfMapGoTo(sfMapState.current - 1); });
-        $('#sfMapSearch').addEventListener('input', renderSfMapSelect);
-        $('#sfMapSelect').addEventListener('dblclick', function() { sfMapConfirm(); });
-        $('#sfMapSearch').addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); sfMapConfirm(); }
-        });
-        $('#sfMapListFilter').addEventListener('input', renderSfMapList);
-        $('#sfMapListStatus').addEventListener('change', renderSfMapList);
+        $('#sfGroupNone').addEventListener('click', function() { sfSetGroup('NONE'); });
+        $('#sfGroupSkip').addEventListener('click', function() { sfGroupGoTo(sfMapState.current + 1); });
+        $('#sfMapListFilter').addEventListener('input', renderSfGroupTable);
+        $('#sfMapListStatus').addEventListener('change', renderSfGroupTable);
+        $('#sfRowFilter').addEventListener('input', renderSfRowTable);
 
         // Etapa 2
         $('#btnSignframeGenerate').addEventListener('click', runSignframeGenerate);
@@ -2438,27 +2438,27 @@
     }
 
     function refreshSfButton() {
-        $('#btnSfPrepare').disabled = !(sfState.pdf && sfState.matrix && sfState.signframeJson);
+        $('#btnSfPrepare').disabled = !(sfState.matrix && sfState.mapping && sfState.signframeJson);
         $('#btnSignframeGenerate').disabled = !sfMapState.prepared;
     }
 
-    // ─── Etapa 1: preparación + vínculo asistido ──────────────────────────────
+    // ─── Etapa 1: alineación de grupos ↔ matriz ───────────────────────────────
 
     function sfStorageKey() {
         var parts = [
-            sfState.pdf ? sfState.pdf.name : '',
             sfState.signframeJson ? sfState.signframeJson.name : '',
             sfState.matrix ? sfState.matrix.name : '',
-            String(sfMapState.jsonFields.length),
+            sfState.mapping ? sfState.mapping.name : '',
+            String(sfMapState.groups.length),
         ];
-        return 'sfmap:' + parts.join('|');
+        return 'sfalign:' + parts.join('|');
     }
 
     function saveSfMapping() {
         if (!sfMapState.storageKey) return;
         try {
-            localStorage.setItem(sfMapState.storageKey, JSON.stringify({ version: 1, links: sfMapState.links }));
-        } catch (e) { /* storage full / disabled — ignore */ }
+            localStorage.setItem(sfMapState.storageKey, JSON.stringify({ version: 2, links: sfMapState.links }));
+        } catch (e) { /* ignore */ }
     }
 
     function loadSfMapping() {
@@ -2475,13 +2475,14 @@
     async function runSfPrepare() {
         var statusEl = $('#sfPrepareStatus');
         statusEl.className = 'status active';
-        statusEl.textContent = '⟳ Leyendo JSON y matriz...';
+        statusEl.textContent = '⟳ Agrupando sourceNames y alineando...';
         try {
-            var result = await InsPipelineBundle.runSignframePrepare({
+            var result = await InsPipelineBundle.runSignframePrepareGroups({
                 matrixFile: sfState.matrix,
                 signframeJsonFile: sfState.signframeJson,
+                mappingFile: sfState.mapping,
             });
-            sfMapState.jsonFields = result.jsonFields;
+            sfMapState.groups = result.groups;
             sfMapState.matrixRows = result.matrixRows;
             sfMapState.rowByNum = {};
             for (var i = 0; i < result.matrixRows.length; i++) {
@@ -2492,24 +2493,29 @@
             sfMapState.links = {};
             sfMapState.auto = {};
             loadSfMapping();
-            var autoCount = autoLinkExact();
+            var autoCount = autoAlignExact();
             sfMapState.prepared = true;
 
             $('#sfMapPanel').hidden = false;
             $('#sfGeneratePanel').hidden = false;
+            $('#btnSfAutoPos').hidden = false;
             $('#btnSfMapExport').hidden = false;
             $('#btnSfMapImportLabel').hidden = false;
             $('#btnSfMapClear').hidden = false;
+            $('#sfGroupCount').textContent = result.groups.length;
 
-            var firstPending = findNextPending(-1);
+            var firstPending = findNextPendingGroup(-1);
             sfMapState.current = firstPending >= 0 ? firstPending : 0;
 
-            renderSfMapper();
+            renderSfAligner();
             statusEl.className = 'status active success';
-            statusEl.textContent = '✓ ' + result.jsonFields.length + ' campos del JSON y ' +
-                result.matrixRows.length + ' filas de matriz. ' +
-                (autoCount ? autoCount + ' matches exactos auto-confirmados (editables). ' : '') +
-                'Revisá los pendientes abajo.';
+            statusEl.textContent = '✓ ' + result.groups.length + ' grupos (de ' +
+                sumMembers(result.groups) + ' campos) y ' + result.matrixRows.length + ' filas de matriz. ' +
+                (autoCount ? autoCount + ' auto-alineados exactos. ' : '') +
+                'Alineá los pendientes.';
+            if (result.missing && result.missing.length) {
+                statusEl.textContent += ' ⚠ ' + result.missing.length + ' campos del JSON no están en el mapeo.';
+            }
             refreshSfButton();
         } catch (err) {
             console.error(err);
@@ -2518,16 +2524,36 @@
         }
     }
 
-    // Auto-confirm fields whose suggestion is an exact / normalized-exact match.
-    // Never overwrites an already-saved (human-confirmed) link. Returns count.
-    function autoLinkExact() {
+    function sumMembers(groups) {
         var n = 0;
-        for (var i = 0; i < sfMapState.jsonFields.length; i++) {
-            var jf = sfMapState.jsonFields[i];
-            if (sfMapState.links[jf.sourceName] !== undefined) continue;
-            if (jf.suggestionRowNum != null && jf.suggestionScore >= SF_AUTO_THRESHOLD) {
-                sfMapState.links[jf.sourceName] = jf.suggestionRowNum;
-                sfMapState.auto[jf.sourceName] = true;
+        for (var i = 0; i < groups.length; i++) n += groups[i].members.length;
+        return n;
+    }
+
+    function groupStatusOf(root) {
+        var v = sfMapState.links[root];
+        if (v === undefined) return 'pending';
+        if (v === 'NONE') return 'none';
+        return 'linked';
+    }
+
+    function findNextPendingGroup(from) {
+        var n = sfMapState.groups.length;
+        for (var i = from + 1; i < n; i++) {
+            if (groupStatusOf(sfMapState.groups[i].root) === 'pending') return i;
+        }
+        return -1;
+    }
+
+    // Auto-align groups whose exact match was found (root/member == matrix row).
+    function autoAlignExact() {
+        var n = 0;
+        for (var i = 0; i < sfMapState.groups.length; i++) {
+            var g = sfMapState.groups[i];
+            if (sfMapState.links[g.root] !== undefined) continue;
+            if (g.suggestionKind === 'exact' && g.suggestionRowNum != null) {
+                sfMapState.links[g.root] = g.suggestionRowNum;
+                sfMapState.auto[g.root] = true;
                 n++;
             }
         }
@@ -2535,188 +2561,165 @@
         return n;
     }
 
-    function linkStatusOf(sourceName) {
-        var v = sfMapState.links[sourceName];
-        if (v === undefined) return 'pending';
-        if (v === 'NONE') return 'none';
-        return 'linked';
-    }
-
-    function findNextPending(from) {
-        var n = sfMapState.jsonFields.length;
-        for (var i = from + 1; i < n; i++) {
-            if (linkStatusOf(sfMapState.jsonFields[i].sourceName) === 'pending') return i;
+    // Bulk: set every still-pending group to its positional suggestion.
+    function autoAlignByPosition() {
+        var n = 0;
+        for (var i = 0; i < sfMapState.groups.length; i++) {
+            var g = sfMapState.groups[i];
+            if (groupStatusOf(g.root) !== 'pending') continue;
+            if (g.suggestionRowNum != null) {
+                sfMapState.links[g.root] = g.suggestionRowNum;
+                sfMapState.auto[g.root] = true;
+                n++;
+            }
         }
-        return -1;
+        if (n) saveSfMapping();
+        var fp = findNextPendingGroup(-1);
+        sfMapState.current = fp >= 0 ? fp : sfMapState.current;
+        renderSfAligner();
+        $('#sfPrepareStatus').className = 'status active success';
+        $('#sfPrepareStatus').textContent = '✓ ' + n + ' grupos alineados por posición (editables).';
     }
 
-    function sfMapGoTo(idx) {
-        var n = sfMapState.jsonFields.length;
+    function sfGroupGoTo(idx) {
+        var n = sfMapState.groups.length;
         if (idx < 0) idx = 0;
         if (idx >= n) idx = n - 1;
         sfMapState.current = idx;
-        renderSfMapper();
+        renderSfAligner();
     }
 
-    function sfMapSetCurrent(rowNumOrNone) {
-        var jf = sfMapState.jsonFields[sfMapState.current];
-        if (!jf) return;
-        sfMapState.links[jf.sourceName] = rowNumOrNone;
-        if (sfMapState.auto[jf.sourceName]) delete sfMapState.auto[jf.sourceName]; // manual override
+    function sfSetGroup(rowNumOrNone) {
+        var g = sfMapState.groups[sfMapState.current];
+        if (!g) return;
+        sfMapState.links[g.root] = rowNumOrNone;
+        if (sfMapState.auto[g.root]) delete sfMapState.auto[g.root];
         saveSfMapping();
-        var next = findNextPending(sfMapState.current);
-        if (next >= 0) sfMapState.current = next;
-        else sfMapState.current = Math.min(sfMapState.current + 1, sfMapState.jsonFields.length - 1);
-        renderSfMapper();
-    }
-
-    function sfMapConfirm() {
-        var sel = $('#sfMapSelect');
-        var val = sel.value;
-        if (val === '' || val == null) {
-            // no manual pick → use suggestion if any
-            var jf = sfMapState.jsonFields[sfMapState.current];
-            if (jf && jf.suggestionRowNum != null) {
-                sfMapSetCurrent(jf.suggestionRowNum);
-            } else {
-                $('#sfPrepareStatus').className = 'status active error';
-                $('#sfPrepareStatus').textContent = '✗ Elegí una fila de la matriz o marcá "No está en la matriz".';
-            }
-            return;
-        }
-        sfMapSetCurrent(Number(val));
+        var next = findNextPendingGroup(sfMapState.current);
+        sfMapState.current = next >= 0 ? next : Math.min(sfMapState.current + 1, sfMapState.groups.length - 1);
+        renderSfAligner();
     }
 
     function rowLabel(row) {
         var sec = row.seccionPdf ? '[' + row.seccionPdf + '] ' : '';
-        var name = row.etiqueta || row.acroActual || ('fila ' + row.rowNum);
-        var extra = row.acroActual && row.acroActual !== row.etiqueta ? '  ·  ' + row.acroActual : '';
-        return 'F' + row.rowNum + '  ' + sec + name + extra;
+        return 'F' + row.rowNum + '  ' + sec + (row.etiqueta || ('fila ' + row.rowNum));
     }
 
-    function renderSfMapper() {
-        var jf = sfMapState.jsonFields[sfMapState.current];
-        if (!jf) return;
-        $('#sfMapPos').textContent = sfMapState.current + 1;
-        $('#sfMapTotal').textContent = sfMapState.jsonFields.length;
-        $('#sfMapSrcName').textContent = jf.sourceName;
-        $('#sfMapType').textContent = (jf.nativeType || jf.type || '?');
-        $('#sfMapPage').textContent = 'pág ' + (jf.page != null ? jf.page : '?');
-        $('#sfMapLabel').textContent = jf.label || '(sin label)';
-
-        var st = linkStatusOf(jf.sourceName);
-        var statusChip = $('#sfMapStatus');
-        statusChip.className = 'sf-map-chip sf-map-chip-status ' + st;
-        if (st === 'linked') {
-            var row = sfMapState.rowByNum[sfMapState.links[jf.sourceName]];
-            statusChip.textContent = '✓ ' + (row ? ('F' + row.rowNum) : 'vinculado') +
-                (sfMapState.auto[jf.sourceName] ? ' (auto)' : '');
-        } else if (st === 'none') {
-            statusChip.textContent = '✗ no en matriz';
-        } else {
-            statusChip.textContent = 'pendiente';
-        }
-
-        // Suggestion
-        var sug = $('#sfMapSuggestBox');
-        if (jf.suggestionRowNum != null) {
-            var srow = sfMapState.rowByNum[jf.suggestionRowNum];
-            var pct = Math.round((jf.suggestionScore || 0) * 100);
-            var lowCls = pct < 50 ? ' sf-sug-low' : '';
-            sug.innerHTML = 'Sugerencia<span class="' + lowCls.trim() + '"> (' + pct + '%)</span>: ' +
-                '<strong>' + escapeHtml(srow ? rowLabel(srow) : ('F' + jf.suggestionRowNum)) + '</strong>' +
-                '<button class="sf-sug-btn" id="sfMapUseSug">Usar sugerencia</button>';
-            var btn = $('#sfMapUseSug');
-            if (btn) btn.addEventListener('click', function() { sfMapSetCurrent(jf.suggestionRowNum); });
-        } else {
-            sug.innerHTML = '<span class="sf-sug-low">Sin sugerencia — elegí manualmente o marcá "No está en la matriz".</span>';
-        }
-
-        renderSfMapSelect();
-        renderSfMapList();
-        $('#sfMapPrev').disabled = sfMapState.current === 0;
+    function renderSfAligner() {
+        renderSfGroupTable();
+        renderSfRowTable();
+        var counts = { linked: 0, none: 0, pending: 0 };
+        for (var i = 0; i < sfMapState.groups.length; i++) counts[groupStatusOf(sfMapState.groups[i].root)]++;
+        $('#sfMapProgress').textContent = counts.linked + ' alineados · ' + counts.none +
+            ' no-matriz · ' + counts.pending + ' pendientes';
     }
 
-    function renderSfMapSelect() {
-        var jf = sfMapState.jsonFields[sfMapState.current];
-        if (!jf) return;
-        var q = $('#sfMapSearch').value.toLowerCase().trim();
-        var sel = $('#sfMapSelect');
-        var currentLink = sfMapState.links[jf.sourceName];
-        var html = '';
-        var rows = sfMapState.matrixRows;
-        var shown = 0;
-        for (var i = 0; i < rows.length; i++) {
-            var r = rows[i];
-            var label = rowLabel(r);
-            if (q && label.toLowerCase().indexOf(q) === -1) continue;
-            var selAttr = (currentLink != null && currentLink !== 'NONE' && Number(currentLink) === r.rowNum) ? ' selected' : '';
-            html += '<option value="' + r.rowNum + '"' + selAttr + '>' + escapeHtml(label) + '</option>';
-            shown++;
-            if (shown > 400) break;
-        }
-        sel.innerHTML = html || '<option value="" disabled>Sin coincidencias</option>';
-    }
-
-    function renderSfMapList() {
-        var tbody = $('#sfMapTableBody');
+    function renderSfGroupTable() {
+        var tbody = $('#sfGroupTableBody');
         var q = $('#sfMapListFilter').value.toLowerCase().trim();
         var statusFilter = $('#sfMapListStatus').value;
-        var rows = '';
-        var counts = { linked: 0, none: 0, pending: 0 };
-        for (var i = 0; i < sfMapState.jsonFields.length; i++) {
-            var jf = sfMapState.jsonFields[i];
-            var st = linkStatusOf(jf.sourceName);
-            counts[st]++;
+        var html = '';
+        for (var i = 0; i < sfMapState.groups.length; i++) {
+            var g = sfMapState.groups[i];
+            var st = groupStatusOf(g.root);
             if (statusFilter !== 'all' && statusFilter !== st) continue;
-            if (q && jf.sourceName.toLowerCase().indexOf(q) === -1 &&
-                (jf.label || '').toLowerCase().indexOf(q) === -1) continue;
+            if (q && g.root.toLowerCase().indexOf(q) === -1) continue;
 
             var linkText, linkCls;
             if (st === 'linked') {
-                var row = sfMapState.rowByNum[sfMapState.links[jf.sourceName]];
-                linkText = (row ? ('F' + row.rowNum + ' ' + (row.etiqueta || row.acroActual || '')) : 'vinculado') +
-                    (sfMapState.auto[jf.sourceName] ? ' (auto)' : '');
-                linkCls = 'sf-map-link-linked';
+                var row = sfMapState.rowByNum[sfMapState.links[g.root]];
+                linkText = (row ? ('F' + row.rowNum + ' ' + (row.etiqueta || '')) : 'alineado') +
+                    (sfMapState.auto[g.root] ? ' (auto)' : '');
+                linkCls = 'sf-g-link-linked';
             } else if (st === 'none') {
-                linkText = 'no en matriz';
-                linkCls = 'sf-map-link-none';
+                linkText = 'no en matriz'; linkCls = 'sf-g-link-none';
             } else {
-                linkText = '—';
-                linkCls = 'sf-map-link-pending';
+                linkText = '—'; linkCls = 'sf-g-link-pending';
             }
-            var active = i === sfMapState.current ? ' class="sf-map-active"' : '';
-            rows += '<tr' + active + ' data-idx="' + i + '">' +
+            var kindCls = g.kind === 'radio' ? 'radio' : (g.kind === 'repeater' ? 'repeater' : '');
+            var kindLabel = g.kind + (g.members.length > 1 ? ' ×' + g.members.length : '');
+            var sel = i === sfMapState.current ? ' class="sf-sel"' : '';
+            html += '<tr' + sel + ' data-idx="' + i + '">' +
                 '<td style="color:var(--text-dim);text-align:right;">' + (i + 1) + '</td>' +
-                '<td style="font-family:monospace;font-size:0.78rem;word-break:break-all;">' + escapeHtml(jf.sourceName) + '</td>' +
-                '<td style="text-align:center;">' + (jf.page != null ? jf.page : '') + '</td>' +
-                '<td class="' + linkCls + '" style="font-size:0.78rem;">' + escapeHtml(linkText) + '</td>' +
+                '<td><span class="sf-g-root">' + escapeHtml(g.root) + '</span>' +
+                    (g.section ? '<div class="sf-g-auto">' + escapeHtml(g.section) + '</div>' : '') + '</td>' +
+                '<td><span class="sf-g-kind ' + kindCls + '">' + escapeHtml(kindLabel) + '</span></td>' +
+                '<td class="' + linkCls + '">' + escapeHtml(linkText) + '</td>' +
                 '</tr>';
         }
-        tbody.innerHTML = rows;
-        $('#sfMapProgress').textContent = counts.linked + ' vinculados · ' + counts.none +
-            ' no-matriz · ' + counts.pending + ' pendientes';
+        tbody.innerHTML = html;
 
         if (tbody.dataset.wired !== '1') {
             tbody.dataset.wired = '1';
             tbody.addEventListener('click', function(e) {
                 var tr = e.target.closest('tr');
                 if (!tr || tr.dataset.idx == null) return;
-                sfMapGoTo(parseInt(tr.dataset.idx, 10));
+                sfGroupGoTo(parseInt(tr.dataset.idx, 10));
+            });
+        }
+    }
+
+    function renderSfRowTable() {
+        var tbody = $('#sfRowTableBody');
+        var q = $('#sfRowFilter').value.toLowerCase().trim();
+        var g = sfMapState.groups[sfMapState.current];
+        var suggested = g ? g.suggestionRowNum : null;
+        var currentLink = g ? sfMapState.links[g.root] : null;
+
+        // rowNum -> [group roots aligned to it]
+        var consumedBy = {};
+        for (var root in sfMapState.links) {
+            if (!sfMapState.links.hasOwnProperty(root)) continue;
+            var v = sfMapState.links[root];
+            if (v === 'NONE' || v == null) continue;
+            (consumedBy[v] = consumedBy[v] || []).push(root);
+        }
+
+        var html = '';
+        for (var i = 0; i < sfMapState.matrixRows.length; i++) {
+            var r = sfMapState.matrixRows[i];
+            var label = (r.etiqueta || '') + ' ' + (r.seccionPdf || '');
+            if (q && label.toLowerCase().indexOf(q) === -1 && String(r.rowNum).indexOf(q) === -1) continue;
+
+            var cls = '';
+            if (suggested != null && Number(currentLink) !== r.rowNum && r.rowNum === suggested) cls = 'sf-row-suggest';
+            var consumers = consumedBy[r.rowNum] || [];
+            var isCurrent = currentLink != null && currentLink !== 'NONE' && Number(currentLink) === r.rowNum;
+            if (consumers.length && !isCurrent) cls = (cls ? cls + ' ' : '') + 'sf-row-consumed';
+
+            var grpText = '';
+            if (isCurrent) grpText = '◀ este grupo';
+            else if (consumers.length) grpText = consumers.length === 1 ? consumers[0] : (consumers.length + ' grupos');
+
+            html += '<tr class="' + cls + '" data-rownum="' + r.rowNum + '">' +
+                '<td>' + r.rowNum + (r.rowNum === suggested ? ' ★' : '') + '</td>' +
+                '<td style="font-size:0.74rem;">' + escapeHtml(r.seccionPdf || '') + '</td>' +
+                '<td>' + escapeHtml(r.etiqueta || '') + '</td>' +
+                '<td class="sf-g-auto">' + escapeHtml(grpText) + '</td>' +
+                '</tr>';
+        }
+        tbody.innerHTML = html;
+
+        if (tbody.dataset.wired !== '1') {
+            tbody.dataset.wired = '1';
+            tbody.addEventListener('click', function(e) {
+                var tr = e.target.closest('tr');
+                if (!tr || tr.dataset.rownum == null) return;
+                sfSetGroup(Number(tr.dataset.rownum));
             });
         }
     }
 
     function exportSfMapping() {
         var data = {
-            version: 1,
-            pdf: sfState.pdf ? sfState.pdf.name : null,
+            version: 2,
             signframe: sfState.signframeJson ? sfState.signframeJson.name : null,
             matrix: sfState.matrix ? sfState.matrix.name : null,
+            mapping: sfState.mapping ? sfState.mapping.name : null,
             links: sfMapState.links,
         };
         var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
-        var name = (sfState.pdf ? sfState.pdf.name.replace(/\.pdf$/i, '') : 'form') + '_vinculo.json';
+        var name = (sfState.mapping ? sfState.mapping.name.replace(/\.(xlsx|xls)$/i, '') : 'form') + '_alineacion.json';
         InsPipelineBundle.downloadBlob(blob, name);
     }
 
@@ -2731,15 +2734,15 @@
                     sfMapState.links = parsed.links;
                     sfMapState.auto = {};
                     saveSfMapping();
-                    var fp = findNextPending(-1);
+                    var fp = findNextPendingGroup(-1);
                     sfMapState.current = fp >= 0 ? fp : 0;
-                    renderSfMapper();
+                    renderSfAligner();
                     $('#sfPrepareStatus').className = 'status active success';
-                    $('#sfPrepareStatus').textContent = '✓ Vínculo importado.';
+                    $('#sfPrepareStatus').textContent = '✓ Alineación importada.';
                 }
             } catch (err) {
                 $('#sfPrepareStatus').className = 'status active error';
-                $('#sfPrepareStatus').textContent = '✗ Archivo de vínculo inválido: ' + err.message;
+                $('#sfPrepareStatus').textContent = '✗ Archivo inválido: ' + err.message;
             }
         };
         reader.readAsText(file);
@@ -2747,12 +2750,12 @@
     }
 
     function clearSfMapping() {
-        if (!confirm('¿Borrar todos los vínculos confirmados?')) return;
+        if (!confirm('¿Borrar toda la alineación?')) return;
         sfMapState.links = {};
         sfMapState.auto = {};
         saveSfMapping();
         sfMapState.current = 0;
-        renderSfMapper();
+        renderSfAligner();
     }
 
     async function runSignframeGenerate() {
@@ -2763,11 +2766,12 @@
 
         try {
             var t0 = performance.now();
-            var result = await InsPipelineBundle.runSignframeGenerateFromMapping({
+            var result = await InsPipelineBundle.runSignframeGenerateGroups({
                 matrixFile: sfState.matrix,
                 signframeJsonFile: sfState.signframeJson,
+                mappingFile: sfState.mapping,
                 targetJsonFile: sfState.targetJson || undefined,
-                mapping: { version: 1, links: sfMapState.links },
+                mapping: { version: 2, groupLinks: sfMapState.links },
             });
             var t1 = performance.now();
 

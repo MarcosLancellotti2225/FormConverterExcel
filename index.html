@@ -52,11 +52,11 @@
             <div class="mode-card" data-mode="signframe">
                 <div class="mode-icon">{ }</div>
                 <h2>Generador Signframe</h2>
-                <p>Genera el JSON de definición de formulario Signframe desde PDF + Matriz XLSX + JSON Signframe.</p>
+                <p>Agrupa los sourceNames por raíz y los alinea con la matriz por sección + orden de lectura.</p>
                 <ul class="mode-features">
-                    <li>Cruza matriz con JSON de Signframe</li>
-                    <li>Secciones y campos auto-organizados</li>
-                    <li>Radios desdoblados, checkboxes, helpers</li>
+                    <li>Agrupa radios Si/No, repeaters [n] y campos simples</li>
+                    <li>Editor de alineación grupo ↔ fila de matriz</li>
+                    <li>Radios desdoblados, sourceMeta intacto</li>
                     <li>8 checks de validación automáticos</li>
                 </ul>
                 <button class="primary">Empezar</button>
@@ -229,9 +229,15 @@
                     </label>
                     <label class="file-slot required" data-slot="sf-matrix">
                         <span class="label">Matriz XLSX</span>
-                        <span class="desc">Mapeo de campos (AcroForm Actual → Propuesto, tipos, secciones)</span>
+                        <span class="desc">Matriz de negocio (1 fila = 1 pregunta, secciones, reglas, paths)</span>
                         <input type="file" accept=".xlsx,.xls" id="sfMatrixInput">
                         <span class="file-status" id="sfMatrixStatus"></span>
+                    </label>
+                    <label class="file-slot required" data-slot="sf-mapping">
+                        <span class="label">XLSX de mapeo (PDF renombrado)</span>
+                        <span class="desc">sourceNames en orden de lectura + Sección del PDF + Página (22 col)</span>
+                        <input type="file" accept=".xlsx,.xls" id="sfMappingInput">
+                        <span class="file-status" id="sfMappingStatus"></span>
                     </label>
                     <label class="file-slot" data-slot="sf-target">
                         <span class="label">JSON destino (opcional)</span>
@@ -243,70 +249,54 @@
             </section>
 
             <section class="panel">
-                <h2>2. Vincular campos</h2>
-                <p class="hint">Recorré cada campo del JSON y confirmá a qué fila de la matriz corresponde. La herramienta propone la mejor coincidencia, pero vos decidís. El vínculo se guarda solo (no se pisa lo confirmado).</p>
+                <h2>2. Alinear grupos ↔ matriz</h2>
+                <p class="hint">Los sourceNames se agrupan por raíz (radios Si/No, repeaters [n], campos simples) y se alinean contra las filas de la matriz por orden de lectura. Seleccioná un grupo a la izquierda y hacé click en su fila de matriz a la derecha. Se guarda solo.</p>
                 <div class="actions">
-                    <button id="btnSfPrepare" class="primary" disabled>Preparar vínculo</button>
-                    <button id="btnSfMapExport" class="secondary btn-sm" hidden>Exportar vínculo</button>
-                    <label id="btnSfMapImportLabel" class="secondary btn-sm" hidden style="cursor:pointer;">Importar vínculo<input type="file" id="sfMapImport" accept=".json" hidden></label>
-                    <button id="btnSfMapClear" class="secondary btn-sm" hidden>Limpiar vínculo</button>
+                    <button id="btnSfPrepare" class="primary" disabled>Preparar alineación</button>
+                    <button id="btnSfAutoPos" class="secondary btn-sm" hidden>Auto-alinear por posición</button>
+                    <button id="btnSfMapExport" class="secondary btn-sm" hidden>Exportar alineación</button>
+                    <label id="btnSfMapImportLabel" class="secondary btn-sm" hidden style="cursor:pointer;">Importar<input type="file" id="sfMapImport" accept=".json" hidden></label>
+                    <button id="btnSfMapClear" class="secondary btn-sm" hidden>Limpiar</button>
                 </div>
                 <div id="sfPrepareStatus" class="status"></div>
             </section>
 
-            <div id="sfMapPanel" class="sf-map" hidden>
-                <section class="panel sf-map-current">
-                    <div class="sf-map-topbar">
-                        <h3 style="margin:0;">Campo <span id="sfMapPos">1</span> / <span id="sfMapTotal">0</span></h3>
-                        <span id="sfMapProgress" class="sf-map-progress"></span>
-                    </div>
-                    <div class="sf-map-fieldcard">
-                        <div class="sf-map-srcname" id="sfMapSrcName"></div>
-                        <div class="sf-map-meta">
-                            <span class="sf-map-chip" id="sfMapType"></span>
-                            <span class="sf-map-chip" id="sfMapPage"></span>
-                            <span class="sf-map-chip sf-map-chip-status" id="sfMapStatus"></span>
+            <div id="sfMapPanel" class="sf-align" hidden>
+                <div class="sf-align-topbar">
+                    <span id="sfMapProgress" class="sf-map-progress"></span>
+                    <input type="text" id="sfMapListFilter" class="sf-map-search" placeholder="Filtrar grupos..." style="max-width:220px;margin:0;">
+                    <select id="sfMapListStatus" class="sf-map-statusfilter">
+                        <option value="all">Todos</option>
+                        <option value="pending">Pendientes</option>
+                        <option value="linked">Alineados</option>
+                        <option value="none">No en matriz</option>
+                    </select>
+                </div>
+                <div class="sf-align-cols">
+                    <section class="panel sf-align-col">
+                        <div class="sf-align-colhead">Grupos (orden de lectura) — <span id="sfGroupCount">0</span></div>
+                        <div class="match-table-wrap" style="max-height:calc(100vh - 380px);">
+                            <table class="match-table" id="sfGroupTable">
+                                <thead><tr><th>#</th><th>Grupo</th><th>Tipo</th><th>Alineado a</th></tr></thead>
+                                <tbody id="sfGroupTableBody"></tbody>
+                            </table>
                         </div>
-                        <div class="sf-map-label" id="sfMapLabel"></div>
-                    </div>
-
-                    <div class="sf-map-suggest" id="sfMapSuggestBox"></div>
-
-                    <input type="text" id="sfMapSearch" class="sf-map-search" placeholder="Buscar fila de la matriz por etiqueta / sección...">
-                    <select id="sfMapSelect" class="sf-map-select" size="8"></select>
-
-                    <div class="sf-map-actions">
-                        <button id="sfMapPrev" class="secondary btn-sm">← Anterior</button>
-                        <button id="sfMapConfirm" class="primary btn-sm">✓ Confirmar (Enter)</button>
-                        <button id="sfMapNone" class="secondary btn-sm">No está en la matriz</button>
-                        <button id="sfMapSkip" class="secondary btn-sm">Saltar →</button>
-                    </div>
-                </section>
-
-                <section class="panel sf-map-listpanel">
-                    <div class="sf-map-listhead">
-                        <input type="text" id="sfMapListFilter" class="sf-map-search" placeholder="Filtrar campos...">
-                        <select id="sfMapListStatus" class="sf-map-statusfilter">
-                            <option value="all">Todos</option>
-                            <option value="pending">Pendientes</option>
-                            <option value="linked">Vinculados</option>
-                            <option value="none">No en matriz</option>
-                        </select>
-                    </div>
-                    <div class="match-table-wrap" style="max-height:calc(100vh - 360px);">
-                        <table class="match-table" id="sfMapTable">
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>sourceName</th>
-                                    <th>Pág</th>
-                                    <th>Vínculo</th>
-                                </tr>
-                            </thead>
-                            <tbody id="sfMapTableBody"></tbody>
-                        </table>
-                    </div>
-                </section>
+                        <div class="sf-align-actions">
+                            <button id="sfGroupNone" class="secondary btn-sm">No está en matriz</button>
+                            <button id="sfGroupSkip" class="secondary btn-sm">Saltar →</button>
+                        </div>
+                    </section>
+                    <section class="panel sf-align-col">
+                        <div class="sf-align-colhead">Filas de matriz — click para alinear el grupo seleccionado</div>
+                        <input type="text" id="sfRowFilter" class="sf-map-search" placeholder="Buscar fila de matriz...">
+                        <div class="match-table-wrap" style="max-height:calc(100vh - 420px);">
+                            <table class="match-table" id="sfRowTable">
+                                <thead><tr><th>F#</th><th>Sección</th><th>Pregunta</th><th>Grupo</th></tr></thead>
+                                <tbody id="sfRowTableBody"></tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
             </div>
 
             <section class="panel" id="sfGeneratePanel" hidden>
@@ -460,7 +450,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=33"></script>
-    <script src="app.js?v=33"></script>
+    <script src="bundle.js?v=34"></script>
+    <script src="app.js?v=34"></script>
 </body>
 </html>

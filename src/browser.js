@@ -687,6 +687,35 @@ async function runSignframePrepare(inputs) {
     return prepareMapping({ signframeJson, matrixBytes });
 }
 
+// GROUP FLOW — ETAPA 1: parse mapping xlsx + matrix + signframe JSON, return
+// logical groups (by sourceName root) and matrix rows for the alignment editor.
+async function runSignframePrepareGroups(inputs) {
+    const { prepareGroupMapping } = require('./signframe-generator/mapper');
+    const { matrixFile, signframeJsonFile, mappingFile } = inputs;
+    if (!signframeJsonFile) throw new Error('Cargá el JSON de Signframe');
+    if (!matrixFile) throw new Error('Cargá la matriz XLSX');
+    if (!mappingFile) throw new Error('Cargá el xlsx de mapeo del PDF renombrado');
+    const matrixBytes = await fileToUint8Array(matrixFile);
+    const mappingBytes = await fileToUint8Array(mappingFile);
+    const signframeJson = JSON.parse(await fileToText(signframeJsonFile));
+    return prepareGroupMapping({ signframeJson, matrixBytes, mappingBytes });
+}
+
+// GROUP FLOW — ETAPA 2: generate from the verified group→matrix alignment.
+async function runSignframeGenerateGroups(inputs) {
+    const { generateFromGroupMapping } = require('./signframe-generator/mapper');
+    const { matrixFile, signframeJsonFile, mappingFile, targetJsonFile, mapping } = inputs;
+    if (!signframeJsonFile) throw new Error('Cargá el JSON de Signframe');
+    if (!matrixFile) throw new Error('Cargá la matriz XLSX');
+    if (!mappingFile) throw new Error('Cargá el xlsx de mapeo del PDF renombrado');
+    if (!mapping) throw new Error('Falta la alineación (Etapa 1)');
+    const matrixBytes = await fileToUint8Array(matrixFile);
+    const mappingBytes = await fileToUint8Array(mappingFile);
+    const signframeJson = JSON.parse(await fileToText(signframeJsonFile));
+    const targetJsonText = targetJsonFile ? await fileToText(targetJsonFile) : null;
+    return generateFromGroupMapping({ signframeJson, matrixBytes, mappingBytes, mapping, targetJsonText });
+}
+
 // ETAPA 2: generate the form definition from the verified human mapping.
 async function runSignframeGenerateFromMapping(inputs) {
     const { generateFromMapping } = require('./signframe-generator/mapper');
@@ -843,7 +872,7 @@ async function generateLabeledPdf(pdfBytes) {
 }
 
 if (typeof window !== 'undefined') {
-    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping };
+    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups };
 }
 
-module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping };
+module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups };
