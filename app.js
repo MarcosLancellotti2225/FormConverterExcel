@@ -3111,7 +3111,7 @@
 
     // ==================== METADATA PDF FLOW ====================
 
-    var metaState = { pdf: null };
+    var metaState = { pdf: null, fields: null };
 
     function initMetadataFlow() {
         $('#metaPdfInput').addEventListener('change', function(e) {
@@ -3130,7 +3130,8 @@
         var reader = new FileReader();
         reader.onload = function() {
             try {
-                var m = JSON.parse(reader.result);
+                var parsed = JSON.parse(reader.result);
+                var m = parsed.document || parsed; // nuevo formato (document) o viejo (plano)
                 var setIf = function(id, v) { if (v !== undefined && v !== null) $(id).value = String(v); };
                 setIf('#metaTitle', m.title);
                 setIf('#metaAuthor', m.author);
@@ -3151,18 +3152,39 @@
         e.target.value = '';
     }
 
+    function round2(n) { return typeof n === 'number' ? Math.round(n * 100) / 100 : n; }
+
     function currentMetaObject() {
+        var fields = (metaState.fields || []).map(function(f, i) {
+            return {
+                index: i + 1,
+                sourceName: f.name,
+                type: f.type,
+                page: f.page,
+                rect: { x: round2(f.x), y: round2(f.y), width: round2(f.width), height: round2(f.height) },
+                isWidget: !!f._isWidget,
+                widgetIndex: f._widgetIndex,
+                widgetCount: f._widgetCount,
+            };
+        });
+        var byType = {};
+        fields.forEach(function(f) { byType[f.type] = (byType[f.type] || 0) + 1; });
         return {
             file: metaState.pdf ? metaState.pdf.name : null,
-            pageCount: ($('#metaPageCount').textContent.match(/\d+/) || [''])[0],
-            title: $('#metaTitle').value,
-            author: $('#metaAuthor').value,
-            subject: $('#metaSubject').value,
-            keywords: $('#metaKeywords').value,
-            creator: $('#metaCreator').value,
-            producer: $('#metaProducer').value,
-            creationDate: $('#metaCreationDate').value.trim(),
-            modificationDate: $('#metaModDate').value.trim(),
+            pageCount: Number(($('#metaPageCount').textContent.match(/(\d+)\s*páginas/) || [0, 0])[1]) || undefined,
+            fieldCount: fields.length,
+            fieldsByType: byType,
+            document: {
+                title: $('#metaTitle').value,
+                author: $('#metaAuthor').value,
+                subject: $('#metaSubject').value,
+                keywords: $('#metaKeywords').value,
+                creator: $('#metaCreator').value,
+                producer: $('#metaProducer').value,
+                creationDate: $('#metaCreationDate').value.trim(),
+                modificationDate: $('#metaModDate').value.trim(),
+            },
+            fields: fields,
         };
     }
 
@@ -3189,10 +3211,13 @@
             $('#metaProducer').value = m.producer;
             $('#metaCreationDate').value = m.creationDate;
             $('#metaModDate').value = m.modificationDate;
-            $('#metaPageCount').textContent = '(' + m.pageCount + ' páginas)';
+            // También detectamos los campos AcroForm (nombre, tipo, página, rect)
+            var det = await InsPipelineBundle.runDetectFields({ pdfFile: metaState.pdf });
+            metaState.fields = det.fields || [];
+            $('#metaPageCount').textContent = '(' + m.pageCount + ' páginas · ' + metaState.fields.length + ' campos AcroForm)';
             $('#metaFormPanel').hidden = false;
             statusEl.className = 'status active success';
-            statusEl.textContent = '✓ Metadata leída.';
+            statusEl.textContent = '✓ Metadata + ' + metaState.fields.length + ' campos leídos.';
         } catch (err) {
             console.error(err);
             statusEl.className = 'status active error';
