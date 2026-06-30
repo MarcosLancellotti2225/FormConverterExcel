@@ -52,6 +52,8 @@
         } else {
             main.classList.remove('wide-mode');
         }
+        // Home (sin modo): container más ancho para el selector de tarjetas
+        main.classList.toggle('home-mode', !mode);
     }
 
     function formatSize(n) {

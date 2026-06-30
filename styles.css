@@ -78,6 +78,12 @@ main {
     gap: 1.5rem;
 }
 
+/* Home (selector de modos): container más ancho para que las tarjetas respiren */
+main.home-mode {
+    max-width: 1320px;
+    margin-top: 1rem;
+}
+
 .panel {
     background: var(--bg-panel);
     border: 1px solid var(--border);
@@ -401,13 +407,15 @@ details summary:hover { color: var(--text); }
 /* Mode selector grid */
 .mode-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 2rem;
-    min-height: 60vh;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+    min-height: calc(100vh - 160px);
     align-items: stretch;
     align-content: center;
     width: 100%;
+    margin: 0 auto;
 }
+@media (max-width: 1100px) { .mode-grid { grid-template-columns: repeat(2, 1fr); } }
 
 .mode-card {
     background: var(--bg-panel);
