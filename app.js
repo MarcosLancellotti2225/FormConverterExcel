@@ -3121,6 +3121,34 @@
         });
         $('#btnMetaSave').addEventListener('click', saveMetadata);
         $('#btnMetaJson').addEventListener('click', downloadMetadataJson);
+        $('#metaJsonInput').addEventListener('change', importMetadataJson);
+    }
+
+    function importMetadataJson(e) {
+        var file = e.target.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function() {
+            try {
+                var m = JSON.parse(reader.result);
+                var setIf = function(id, v) { if (v !== undefined && v !== null) $(id).value = String(v); };
+                setIf('#metaTitle', m.title);
+                setIf('#metaAuthor', m.author);
+                setIf('#metaSubject', m.subject);
+                setIf('#metaKeywords', m.keywords);
+                setIf('#metaCreator', m.creator);
+                setIf('#metaProducer', m.producer);
+                setIf('#metaCreationDate', m.creationDate);
+                setIf('#metaModDate', m.modificationDate);
+                $('#metaStatus').className = 'status active success';
+                $('#metaStatus').textContent = '✓ Campos precargados desde el JSON. Revisá y guardá.';
+            } catch (err) {
+                $('#metaStatus').className = 'status active error';
+                $('#metaStatus').textContent = '✗ JSON inválido: ' + err.message;
+            }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
     }
 
     function currentMetaObject() {

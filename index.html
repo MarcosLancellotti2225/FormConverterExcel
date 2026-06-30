@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Form Tools</title>
-    <link rel="stylesheet" href="styles.css?v=45">
+    <link rel="stylesheet" href="styles.css?v=46">
     <link rel="stylesheet" href="src/pdf-converter-v2/ui/styles.css">
 </head>
 <body>
@@ -491,6 +491,7 @@
                 <div class="actions" style="margin-top:1rem;">
                     <button id="btnMetaSave" class="primary">Guardar metadata y descargar PDF</button>
                     <button id="btnMetaJson" class="secondary btn-sm">Descargar metadata (JSON)</button>
+                    <label id="btnMetaImportLabel" class="secondary btn-sm" style="cursor:pointer;">Importar JSON<input type="file" id="metaJsonInput" accept=".json" hidden></label>
                 </div>
             </section>
         </div>
@@ -557,7 +558,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=45"></script>
-    <script src="app.js?v=45"></script>
+    <script src="bundle.js?v=46"></script>
+    <script src="app.js?v=46"></script>
 </body>
 </html>
