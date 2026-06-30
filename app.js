@@ -3120,6 +3120,31 @@
             if (metaState.pdf) loadMetadata();
         });
         $('#btnMetaSave').addEventListener('click', saveMetadata);
+        $('#btnMetaJson').addEventListener('click', downloadMetadataJson);
+    }
+
+    function currentMetaObject() {
+        return {
+            file: metaState.pdf ? metaState.pdf.name : null,
+            pageCount: ($('#metaPageCount').textContent.match(/\d+/) || [''])[0],
+            title: $('#metaTitle').value,
+            author: $('#metaAuthor').value,
+            subject: $('#metaSubject').value,
+            keywords: $('#metaKeywords').value,
+            creator: $('#metaCreator').value,
+            producer: $('#metaProducer').value,
+            creationDate: $('#metaCreationDate').value.trim(),
+            modificationDate: $('#metaModDate').value.trim(),
+        };
+    }
+
+    function downloadMetadataJson() {
+        if (!metaState.pdf) return;
+        var blob = new Blob([JSON.stringify(currentMetaObject(), null, 2)], { type: 'application/json;charset=utf-8' });
+        var name = metaState.pdf.name.replace(/\.pdf$/i, '') + '_metadata.json';
+        InsPipelineBundle.downloadBlob(blob, name);
+        $('#metaStatus').className = 'status active success';
+        $('#metaStatus').textContent = '✓ Metadata descargada como ' + name;
     }
 
     async function loadMetadata() {
