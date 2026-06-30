@@ -17,6 +17,7 @@
         initMergePdfFlow();
         initSignframeFlow();
         initCanonicalFlow();
+        initMetadataFlow();
 
         selectMode(null);
     }
@@ -43,6 +44,7 @@
         $('#mergePdfFlow').hidden = mode !== 'merge-pdf';
         $('#signframeFlow').hidden = mode !== 'signframe';
         $('#canonicalFlow').hidden = mode !== 'canonical-matrix';
+        $('#metadataFlow').hidden = mode !== 'metadata-pdf';
         $('#btnBackToHome').hidden = !mode;
         var main = document.querySelector('main');
         if (mode === 'convert-pdf' || mode === 'detect-fields' || mode === 'signframe' || mode === 'canonical-matrix') {
@@ -3103,6 +3105,73 @@
         var blob = new Blob([canonState.result.xlsxBytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         var base = canonState.mapping ? canonState.mapping.name.replace(/\.(xlsx|xls)$/i, '') : 'matriz';
         InsPipelineBundle.downloadBlob(blob, base + '_canonica.xlsx');
+    }
+
+    // ==================== METADATA PDF FLOW ====================
+
+    var metaState = { pdf: null };
+
+    function initMetadataFlow() {
+        $('#metaPdfInput').addEventListener('change', function(e) {
+            metaState.pdf = e.target.files[0] || null;
+            updateSfFileStatus('metaPdfStatus', metaState.pdf);
+            if (metaState.pdf) loadMetadata();
+        });
+        $('#btnMetaSave').addEventListener('click', saveMetadata);
+    }
+
+    async function loadMetadata() {
+        var statusEl = $('#metaStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Leyendo metadata...';
+        try {
+            var m = await InsPipelineBundle.readPdfMetadata(metaState.pdf);
+            $('#metaTitle').value = m.title;
+            $('#metaAuthor').value = m.author;
+            $('#metaSubject').value = m.subject;
+            $('#metaKeywords').value = m.keywords;
+            $('#metaCreator').value = m.creator;
+            $('#metaProducer').value = m.producer;
+            $('#metaCreationDate').value = m.creationDate;
+            $('#metaModDate').value = m.modificationDate;
+            $('#metaPageCount').textContent = '(' + m.pageCount + ' páginas)';
+            $('#metaFormPanel').hidden = false;
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ Metadata leída.';
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
+    }
+
+    async function saveMetadata() {
+        if (!metaState.pdf) return;
+        var statusEl = $('#metaStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Guardando metadata...';
+        try {
+            var meta = {
+                title: $('#metaTitle').value,
+                author: $('#metaAuthor').value,
+                subject: $('#metaSubject').value,
+                keywords: $('#metaKeywords').value,
+                creator: $('#metaCreator').value,
+                producer: $('#metaProducer').value,
+                creationDate: $('#metaCreationDate').value.trim(),
+                modificationDate: $('#metaModDate').value.trim(),
+            };
+            var bytes = await InsPipelineBundle.writePdfMetadata(metaState.pdf, meta);
+            var blob = new Blob([bytes], { type: 'application/pdf' });
+            var name = metaState.pdf.name.replace(/\.pdf$/i, '') + '_metadata.pdf';
+            InsPipelineBundle.downloadBlob(blob, name);
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ Metadata guardada — descargado ' + name;
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
     }
 
     // ==================== MERGE PDF FLOW ====================

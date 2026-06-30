@@ -85,6 +85,18 @@
                 </ul>
                 <button class="primary">Empezar</button>
             </div>
+            <div class="mode-card" data-mode="metadata-pdf">
+                <div class="mode-icon">ⓘ</div>
+                <h2>Metadata PDF</h2>
+                <p>Ver y editar la metadata de un PDF (título, autor, asunto, keywords, fechas). Sirve para el de concatenar o el editado.</p>
+                <ul class="mode-features">
+                    <li>Lee el Document Info del PDF</li>
+                    <li>Editás cualquier campo</li>
+                    <li>Descargás el PDF con la metadata nueva</li>
+                    <li>100% client-side</li>
+                </ul>
+                <button class="primary">Empezar</button>
+            </div>
         </div>
 
         <!-- ============ CONVERT PDF FLOW ============ -->
@@ -447,6 +459,41 @@
             </section>
         </div>
 
+        <!-- ============ METADATA PDF FLOW ============ -->
+        <div id="metadataFlow" hidden>
+            <section class="panel">
+                <h2>1. Cargar PDF</h2>
+                <p class="hint">Cargá un PDF (el concatenado, el editado, o cualquiera). Se lee su metadata para verla y editarla.</p>
+                <div class="inputs-grid">
+                    <label class="file-slot required" data-slot="meta-pdf">
+                        <span class="label">PDF</span>
+                        <span class="desc">Se lee el Document Info (título, autor, etc.)</span>
+                        <input type="file" accept=".pdf" id="metaPdfInput">
+                        <span class="file-status" id="metaPdfStatus"></span>
+                    </label>
+                </div>
+                <div id="metaStatus" class="status"></div>
+            </section>
+
+            <section class="panel" id="metaFormPanel" hidden>
+                <h2>2. Metadata</h2>
+                <p class="hint">Editá los campos y descargá el PDF con la metadata actualizada. <span id="metaPageCount"></span></p>
+                <div class="meta-grid">
+                    <label class="meta-row"><span>Título</span><input type="text" id="metaTitle"></label>
+                    <label class="meta-row"><span>Autor</span><input type="text" id="metaAuthor"></label>
+                    <label class="meta-row"><span>Asunto</span><input type="text" id="metaSubject"></label>
+                    <label class="meta-row"><span>Keywords (coma)</span><input type="text" id="metaKeywords"></label>
+                    <label class="meta-row"><span>Creador</span><input type="text" id="metaCreator"></label>
+                    <label class="meta-row"><span>Productor</span><input type="text" id="metaProducer"></label>
+                    <label class="meta-row"><span>Creación (ISO)</span><input type="text" id="metaCreationDate" placeholder="2026-06-30T00:00:00.000Z"></label>
+                    <label class="meta-row"><span>Modificación (ISO)</span><input type="text" id="metaModDate" placeholder="2026-06-30T00:00:00.000Z"></label>
+                </div>
+                <div class="actions" style="margin-top:1rem;">
+                    <button id="btnMetaSave" class="primary">Guardar metadata y descargar</button>
+                </div>
+            </section>
+        </div>
+
         <!-- ============ DETECT FIELDS FLOW ============ -->
         <div id="detectFieldsFlow" hidden>
             <section class="panel">
@@ -509,7 +556,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=42"></script>
-    <script src="app.js?v=42"></script>
+    <script src="bundle.js?v=43"></script>
+    <script src="app.js?v=43"></script>
 </body>
 </html>

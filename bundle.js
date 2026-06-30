@@ -99988,6 +99988,55 @@ ${pagesHtml}</body>
         const savedBytes = await merged.save({ updateFieldAppearances: false });
         return { pdfBytes: new Uint8Array(savedBytes), stats, totalPages: merged.getPageCount(), renamedFields };
       }
+      async function readPdfMetadata(input) {
+        const { PDFDocument } = require_cjs();
+        const bytes = input instanceof Uint8Array ? input : await fileToUint8Array(input);
+        const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+        const iso = function(v) {
+          try {
+            return v ? v.toISOString() : "";
+          } catch (e) {
+            return "";
+          }
+        };
+        return {
+          title: doc.getTitle() || "",
+          author: doc.getAuthor() || "",
+          subject: doc.getSubject() || "",
+          keywords: doc.getKeywords() || "",
+          creator: doc.getCreator() || "",
+          producer: doc.getProducer() || "",
+          creationDate: iso(doc.getCreationDate()),
+          modificationDate: iso(doc.getModificationDate()),
+          pageCount: doc.getPageCount()
+        };
+      }
+      async function writePdfMetadata(input, meta) {
+        const { PDFDocument } = require_cjs();
+        const bytes = input instanceof Uint8Array ? input : await fileToUint8Array(input);
+        const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+        if (meta.title !== void 0) doc.setTitle(String(meta.title || ""));
+        if (meta.author !== void 0) doc.setAuthor(String(meta.author || ""));
+        if (meta.subject !== void 0) doc.setSubject(String(meta.subject || ""));
+        if (meta.keywords !== void 0) {
+          const kw = String(meta.keywords || "").split(",").map(function(k) {
+            return k.trim();
+          }).filter(Boolean);
+          doc.setKeywords(kw);
+        }
+        if (meta.creator !== void 0) doc.setCreator(String(meta.creator || ""));
+        if (meta.producer !== void 0) doc.setProducer(String(meta.producer || ""));
+        if (meta.creationDate) {
+          const dt = new Date(meta.creationDate);
+          if (!isNaN(dt.getTime())) doc.setCreationDate(dt);
+        }
+        if (meta.modificationDate) {
+          const dt = new Date(meta.modificationDate);
+          if (!isNaN(dt.getTime())) doc.setModificationDate(dt);
+        }
+        const saved = await doc.save({ updateFieldAppearances: false });
+        return new Uint8Array(saved);
+      }
       async function generateLabeledPdf(pdfBytes) {
         const { PDFDocument, rgb, StandardFonts } = require_cjs();
         const { detectFields: detect } = require_pdf_detect();
@@ -100043,9 +100092,9 @@ ${pagesHtml}</body>
         return new Uint8Array(savedBytes);
       }
       if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
       }
-      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
+      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
     }
   });
   return require_browser();

@@ -1779,3 +1779,13 @@ footer {
 .sf-g-link-none { color: var(--accent-red); }
 .sf-g-link-pending { color: var(--text-dim); }
 .sf-g-auto { font-size: 10px; color: var(--text-muted); }
+
+/* ============ METADATA PDF ============ */
+.meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem 1rem; }
+@media (max-width: 700px) { .meta-grid { grid-template-columns: 1fr; } }
+.meta-row { display: flex; flex-direction: column; gap: 3px; font-size: 0.82rem; }
+.meta-row > span { color: var(--text-muted); }
+.meta-row > input {
+    padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 0.85rem;
+}
