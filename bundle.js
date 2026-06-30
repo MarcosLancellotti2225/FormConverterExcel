@@ -99894,7 +99894,7 @@ ${pagesHtml}</body>
         return generateFromMapping({ signframeJson, matrixBytes, mapping, targetJsonText });
       }
       async function mergePdfs(pdfFiles) {
-        const { PDFDocument, PDFName, PDFArray } = require_cjs();
+        const { PDFDocument, PDFName, PDFArray, PDFHexString } = require_cjs();
         const merged = await PDFDocument.create();
         const context = merged.context;
         const stats = [];
@@ -99909,6 +99909,7 @@ ${pagesHtml}</body>
         const pages = merged.getPages();
         const allFieldRefs = [];
         const seenRefs = /* @__PURE__ */ new Set();
+        const topRefPage = /* @__PURE__ */ new Map();
         for (let pi = 0; pi < pages.length; pi++) {
           const pageRef = pages[pi].ref;
           const pageNode = pages[pi].node;
@@ -99944,8 +99945,32 @@ ${pagesHtml}</body>
             if (!seenRefs.has(key)) {
               seenRefs.add(key);
               allFieldRefs.push(topRef);
+              topRefPage.set(key, pi);
             }
           }
+        }
+        const renamedFields = [];
+        const usedNames = /* @__PURE__ */ new Set();
+        for (const ref of allFieldRefs) {
+          const dict = context.lookup(ref);
+          if (!dict || typeof dict.get !== "function") continue;
+          const tObj = dict.get(PDFName.of("T"));
+          if (!tObj || typeof tObj.decodeText !== "function") continue;
+          const name = tObj.decodeText();
+          if (!usedNames.has(name)) {
+            usedNames.add(name);
+            continue;
+          }
+          const page = (topRefPage.get(String(ref)) || 0) + 1;
+          let candidate = name + "__p" + page;
+          let n = 2;
+          while (usedNames.has(candidate)) {
+            candidate = name + "__p" + page + "_" + n;
+            n++;
+          }
+          usedNames.add(candidate);
+          dict.set(PDFName.of("T"), PDFHexString.fromText(candidate));
+          renamedFields.push({ from: name, to: candidate, page });
         }
         if (allFieldRefs.length > 0) {
           let acroFormRef = merged.catalog.get(PDFName.of("AcroForm"));
@@ -99961,7 +99986,7 @@ ${pagesHtml}</body>
           acroForm.set(PDFName.of("Fields"), fieldsArray);
         }
         const savedBytes = await merged.save({ updateFieldAppearances: false });
-        return { pdfBytes: new Uint8Array(savedBytes), stats, totalPages: merged.getPageCount() };
+        return { pdfBytes: new Uint8Array(savedBytes), stats, totalPages: merged.getPageCount(), renamedFields };
       }
       async function generateLabeledPdf(pdfBytes) {
         const { PDFDocument, rgb, StandardFonts } = require_cjs();

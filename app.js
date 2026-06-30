@@ -3219,8 +3219,10 @@
             mergeState.resultBytes = result.pdfBytes;
 
             var details = result.stats.map(function(s) { return s.name + ' (' + s.pages + ' pág)'; }).join(' + ');
+            var dups = (result.renamedFields && result.renamedFields.length) || 0;
             statusEl.className = 'status active success';
-            statusEl.textContent = '✓ ' + result.totalPages + ' páginas totales en ' + Math.round(t1 - t0) + 'ms — ' + details;
+            statusEl.textContent = '✓ ' + result.totalPages + ' páginas totales en ' + Math.round(t1 - t0) + 'ms — ' + details +
+                (dups ? ' · ' + dups + ' campo(s) con nombre duplicado desambiguados' : '');
 
             $('#btnDownloadMerged').hidden = false;
         } catch (err) {

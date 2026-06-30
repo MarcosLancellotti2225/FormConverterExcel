@@ -747,7 +747,7 @@ async function runSignframeGenerateFromMapping(inputs) {
 }
 
 async function mergePdfs(pdfFiles) {
-    const { PDFDocument, PDFName, PDFArray } = require('pdf-lib');
+    const { PDFDocument, PDFName, PDFArray, PDFHexString } = require('pdf-lib');
     const merged = await PDFDocument.create();
     const context = merged.context;
     const stats = [];
@@ -765,6 +765,7 @@ async function mergePdfs(pdfFiles) {
     const pages = merged.getPages();
     const allFieldRefs = [];
     const seenRefs = new Set();
+    const topRefPage = new Map(); // ref string -> page index where first seen
 
     for (let pi = 0; pi < pages.length; pi++) {
         const pageRef = pages[pi].ref;
@@ -807,8 +808,34 @@ async function mergePdfs(pdfFiles) {
             if (!seenRefs.has(key)) {
                 seenRefs.add(key);
                 allFieldRefs.push(topRef);
+                topRefPage.set(key, pi);
             }
         }
+    }
+
+    // Dedup colliding top-level field names (/T). Concatenating two PDFs can put
+    // two DISTINCT top-level fields with the same /T into /AcroForm/Fields, which
+    // makes viewers treat them as one field (checking one checks the other).
+    // We rename the duplicates with a deterministic suffix. Radio groups stay
+    // intact: a radio group is a single top-level field (one /T parent + kids
+    // without their own /T), so renaming the parent /T keeps the group whole.
+    const renamedFields = [];
+    const usedNames = new Set();
+    for (const ref of allFieldRefs) {
+        const dict = context.lookup(ref);
+        if (!dict || typeof dict.get !== 'function') continue;
+        const tObj = dict.get(PDFName.of('T'));
+        if (!tObj || typeof tObj.decodeText !== 'function') continue; // top-level sin /T propio
+        const name = tObj.decodeText();
+        if (!usedNames.has(name)) { usedNames.add(name); continue; }
+
+        const page = (topRefPage.get(String(ref)) || 0) + 1;
+        let candidate = name + '__p' + page;
+        let n = 2;
+        while (usedNames.has(candidate)) { candidate = name + '__p' + page + '_' + n; n++; }
+        usedNames.add(candidate);
+        dict.set(PDFName.of('T'), PDFHexString.fromText(candidate));
+        renamedFields.push({ from: name, to: candidate, page: page });
     }
 
     if (allFieldRefs.length > 0) {
@@ -827,7 +854,7 @@ async function mergePdfs(pdfFiles) {
     }
 
     const savedBytes = await merged.save({ updateFieldAppearances: false });
-    return { pdfBytes: new Uint8Array(savedBytes), stats, totalPages: merged.getPageCount() };
+    return { pdfBytes: new Uint8Array(savedBytes), stats, totalPages: merged.getPageCount(), renamedFields };
 }
 
 async function generateLabeledPdf(pdfBytes) {
