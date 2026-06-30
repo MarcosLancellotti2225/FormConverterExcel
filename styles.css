@@ -408,10 +408,11 @@ details summary:hover { color: var(--text); }
 .mode-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
+    grid-auto-rows: 1fr;          /* todas las filas misma altura */
     gap: 1.5rem;
     min-height: calc(100vh - 160px);
-    align-items: stretch;
-    align-content: center;
+    align-items: stretch;         /* cada caja llena su celda */
+    align-content: stretch;
     width: 100%;
     margin: 0 auto;
 }
