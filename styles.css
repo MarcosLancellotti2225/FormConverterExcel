@@ -11,9 +11,21 @@
     --accent-amber: #d29922;
     --accent-red: #f85149;
     --accent-teal: #39c5cf;
+    /* Tope de tamaño de fuente para cajas de texto (inputs/textarea/select).
+       Cambiá este valor para ajustar el máximo en toda la app. */
+    --field-font-max: 0.9rem;
 }
 
 * { box-sizing: border-box; }
+
+/* Tope de fuente para controles de formulario: base pareja en --field-font-max.
+   Los estilos específicos (clases) con su propio tamaño se respetan; esto evita
+   que los inputs "pelados" hereden un tamaño grande y queden disparejos. */
+input, textarea, select {
+    font-size: var(--field-font-max);
+    font-family: inherit;
+    max-width: 100%;
+}
 
 body {
     margin: 0;
