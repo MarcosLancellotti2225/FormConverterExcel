@@ -100012,7 +100012,7 @@ ${pagesHtml}</body>
         };
       }
       async function capPdfFieldFontSize(input, maxSize) {
-        const { PDFDocument, StandardFonts } = require_cjs();
+        const { PDFDocument, StandardFonts, PDFTextField } = require_cjs();
         const max = Number(maxSize) || 10;
         const bytes = input instanceof Uint8Array ? input : await fileToUint8Array(input);
         const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
@@ -100021,7 +100021,7 @@ ${pagesHtml}</body>
         const fields = form.getFields();
         let total = 0, changed = 0;
         for (const f of fields) {
-          if (f.constructor.name !== "PDFTextField") continue;
+          if (!(f instanceof PDFTextField)) continue;
           total++;
           let da = "";
           try {

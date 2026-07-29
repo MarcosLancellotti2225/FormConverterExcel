@@ -881,7 +881,7 @@ async function readPdfMetadata(input) {
 // hasta llenar la caja (por eso un nombre corto se ve gigante). Esto pone un
 // tope: a los campos en auto (0) o con tamaño > max se les fija `max` pt.
 async function capPdfFieldFontSize(input, maxSize) {
-    const { PDFDocument, StandardFonts } = require('pdf-lib');
+    const { PDFDocument, StandardFonts, PDFTextField } = require('pdf-lib');
     const max = Number(maxSize) || 10;
     const bytes = input instanceof Uint8Array ? input : await fileToUint8Array(input);
     const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
@@ -890,7 +890,9 @@ async function capPdfFieldFontSize(input, maxSize) {
     const fields = form.getFields();
     let total = 0, changed = 0;
     for (const f of fields) {
-        if (f.constructor.name !== 'PDFTextField') continue;
+        // instanceof (no constructor.name): al bundlear, esbuild renombra la
+        // clase a "PDFTextField2" y el chequeo por nombre fallaba en el navegador.
+        if (!(f instanceof PDFTextField)) continue;
         total++;
         let da = '';
         try { da = f.acroField.getDefaultAppearance() || ''; } catch (e) { /* sin DA */ }
