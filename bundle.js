@@ -100012,17 +100012,27 @@ ${pagesHtml}</body>
         };
       }
       async function capPdfFieldFontSize(input, maxSize) {
-        const { PDFDocument, StandardFonts, PDFTextField } = require_cjs();
+        const { PDFDocument, StandardFonts, PDFTextField, PDFName, PDFNumber } = require_cjs();
         const max = Number(maxSize) || 10;
+        const COMB = 1 << 23;
         const bytes = input instanceof Uint8Array ? input : await fileToUint8Array(input);
         const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
         const form = doc.getForm();
         const font = await doc.embedFont(StandardFonts.Helvetica);
         const fields = form.getFields();
-        let total = 0, changed = 0;
+        let total = 0, changed = 0, combCleared = 0;
         for (const f of fields) {
           if (!(f instanceof PDFTextField)) continue;
           total++;
+          let touched = false;
+          const dict = f.acroField.dict;
+          const ffObj = dict.get(PDFName.of("Ff"));
+          let ff = ffObj ? ffObj.asNumber() : 0;
+          if (ff & COMB) {
+            dict.set(PDFName.of("Ff"), PDFNumber.of(ff & ~COMB));
+            combCleared++;
+            touched = true;
+          }
           let da = "";
           try {
             da = f.acroField.getDefaultAppearance() || "";
@@ -100033,22 +100043,29 @@ ${pagesHtml}</body>
           if (cur === 0 || cur > max) {
             try {
               f.setFontSize(max);
-              f.defaultUpdateAppearances(font);
-              changed++;
+              touched = true;
             } catch (e) {
             }
           }
+          if (touched) {
+            try {
+              f.defaultUpdateAppearances(font);
+            } catch (e) {
+            }
+            changed++;
+          }
         }
         const saved = await doc.save({ updateFieldAppearances: false });
-        return { pdfBytes: new Uint8Array(saved), changed, totalTextFields: total };
+        return { pdfBytes: new Uint8Array(saved), changed, totalTextFields: total, combCleared };
       }
       async function readPdfFieldFontSizes(input) {
-        const { PDFDocument, PDFTextField } = require_cjs();
+        const { PDFDocument, PDFTextField, PDFName } = require_cjs();
+        const COMB = 1 << 23;
         const bytes = input instanceof Uint8Array ? input : await fileToUint8Array(input);
         const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
         const form = doc.getForm();
         const bySourceName = {};
-        let autoCount = 0, total = 0;
+        let autoCount = 0, combCount = 0, total = 0;
         for (const f of form.getFields()) {
           if (!(f instanceof PDFTextField)) continue;
           total++;
@@ -100059,10 +100076,13 @@ ${pagesHtml}</body>
           }
           const m = da.match(/(-?\d+(\.\d+)?)\s+Tf/);
           const size = m ? parseFloat(m[1]) : null;
+          const ffObj = f.acroField.dict.get(PDFName.of("Ff"));
+          const comb = !!((ffObj ? ffObj.asNumber() : 0) & COMB);
           if (size === 0) autoCount++;
-          bySourceName[f.getName()] = size;
+          if (comb) combCount++;
+          bySourceName[f.getName()] = { size, comb };
         }
-        return { bySourceName, autoCount, totalTextFields: total };
+        return { bySourceName, autoCount, combCount, totalTextFields: total };
       }
       async function writePdfMetadata(input, meta) {
         const { PDFDocument } = require_cjs();

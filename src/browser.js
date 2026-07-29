@@ -881,44 +881,62 @@ async function readPdfMetadata(input) {
 // hasta llenar la caja (por eso un nombre corto se ve gigante). Esto pone un
 // tope: a los campos en auto (0) o con tamaño > max se les fija `max` pt.
 async function capPdfFieldFontSize(input, maxSize) {
-    const { PDFDocument, StandardFonts, PDFTextField } = require('pdf-lib');
+    const { PDFDocument, StandardFonts, PDFTextField, PDFName, PDFNumber } = require('pdf-lib');
     const max = Number(maxSize) || 10;
+    const COMB = 1 << 23; // bit 24 (/Ff): "comb" — reparte el texto en celdas y
+                          // lo auto-agranda a la altura de la caja, ignorando el DA.
     const bytes = input instanceof Uint8Array ? input : await fileToUint8Array(input);
     const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
     const form = doc.getForm();
     const font = await doc.embedFont(StandardFonts.Helvetica);
     const fields = form.getFields();
-    let total = 0, changed = 0;
+    let total = 0, changed = 0, combCleared = 0;
     for (const f of fields) {
         // instanceof (no constructor.name): al bundlear, esbuild renombra la
         // clase a "PDFTextField2" y el chequeo por nombre fallaba en el navegador.
         if (!(f instanceof PDFTextField)) continue;
         total++;
+        let touched = false;
+
+        // 1) Limpiar el bit Comb — la causa principal de que el texto "crezca"
+        //    aunque el DA diga 9pt.
+        const dict = f.acroField.dict;
+        const ffObj = dict.get(PDFName.of('Ff'));
+        let ff = ffObj ? ffObj.asNumber() : 0;
+        if (ff & COMB) {
+            dict.set(PDFName.of('Ff'), PDFNumber.of(ff & ~COMB));
+            combCleared++;
+            touched = true;
+        }
+
+        // 2) Capar el tamaño: auto (0) o mayor al tope → se fija al tope.
         let da = '';
         try { da = f.acroField.getDefaultAppearance() || ''; } catch (e) { /* sin DA */ }
         const m = da.match(/(-?\d+(\.\d+)?)\s+Tf/);
         const cur = m ? parseFloat(m[1]) : 0;
-        if (cur === 0 || cur > max) {
-            try {
-                f.setFontSize(max);
-                f.defaultUpdateAppearances(font);
-                changed++;
-            } catch (e) { /* campo problemático: se deja como está */ }
+        if (cur === 0 || cur > max) { try { f.setFontSize(max); touched = true; } catch (e) { /* skip */ } }
+
+        // 3) Regenerar la apariencia con fuente estándar (Helvetica, presente en
+        //    los recursos) para que el visor respete el tamaño fijo.
+        if (touched) {
+            try { f.defaultUpdateAppearances(font); } catch (e) { /* campo problemático */ }
+            changed++;
         }
     }
     const saved = await doc.save({ updateFieldAppearances: false });
-    return { pdfBytes: new Uint8Array(saved), changed, totalTextFields: total };
+    return { pdfBytes: new Uint8Array(saved), changed, totalTextFields: total, combCleared };
 }
 
 // Lee el tamaño de fuente (del /DA) de cada campo de texto. 0 = auto (el que
 // agranda el texto hasta llenar la caja). Devuelve un mapa por nombre de campo.
 async function readPdfFieldFontSizes(input) {
-    const { PDFDocument, PDFTextField } = require('pdf-lib');
+    const { PDFDocument, PDFTextField, PDFName } = require('pdf-lib');
+    const COMB = 1 << 23;
     const bytes = input instanceof Uint8Array ? input : await fileToUint8Array(input);
     const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
     const form = doc.getForm();
     const bySourceName = {};
-    let autoCount = 0, total = 0;
+    let autoCount = 0, combCount = 0, total = 0;
     for (const f of form.getFields()) {
         if (!(f instanceof PDFTextField)) continue;
         total++;
@@ -926,10 +944,13 @@ async function readPdfFieldFontSizes(input) {
         try { da = f.acroField.getDefaultAppearance() || ''; } catch (e) { /* sin DA */ }
         const m = da.match(/(-?\d+(\.\d+)?)\s+Tf/);
         const size = m ? parseFloat(m[1]) : null;
+        const ffObj = f.acroField.dict.get(PDFName.of('Ff'));
+        const comb = !!((ffObj ? ffObj.asNumber() : 0) & COMB);
         if (size === 0) autoCount++;
-        bySourceName[f.getName()] = size;
+        if (comb) combCount++;
+        bySourceName[f.getName()] = { size: size, comb: comb };
     }
-    return { bySourceName, autoCount, totalTextFields: total };
+    return { bySourceName, autoCount, combCount, totalTextFields: total };
 }
 
 async function writePdfMetadata(input, meta) {

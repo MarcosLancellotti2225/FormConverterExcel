@@ -750,7 +750,7 @@
                 bytes = res.pdfBytes;
                 suffix = '_renamed_fuente' + max + 'pt';
                 statusEl.className = 'status active success';
-                statusEl.textContent = '✓ ' + res.changed + '/' + res.totalTextFields + ' campos capados a ' + max + 'pt.';
+                statusEl.textContent = '✓ ' + res.changed + '/' + res.totalTextFields + ' campos normalizados a ' + max + 'pt (' + (res.combCleared || 0) + ' comb limpiados).';
             } catch (err) {
                 console.error(err);
                 statusEl.className = 'status active error';
@@ -3160,7 +3160,7 @@
             InsPipelineBundle.downloadBlob(blob, name);
             statusEl.className = 'status active success';
             statusEl.textContent = '✓ ' + res.changed + '/' + res.totalTextFields +
-                ' campos de texto capados a ' + max + 'pt — descargado ' + name;
+                ' campos normalizados a ' + max + 'pt (' + (res.combCleared || 0) + ' comb limpiados) — descargado ' + name;
         } catch (err) {
             console.error(err);
             statusEl.className = 'status active error';
@@ -3202,7 +3202,8 @@
     function currentMetaObject() {
         var fontMap = (metaState.fontInfo && metaState.fontInfo.bySourceName) || {};
         var fields = (metaState.fields || []).map(function(f, i) {
-            var fontSize = Object.prototype.hasOwnProperty.call(fontMap, f.name) ? fontMap[f.name] : null;
+            var fi = Object.prototype.hasOwnProperty.call(fontMap, f.name) ? fontMap[f.name] : null;
+            var fontSize = fi ? fi.size : null;
             return {
                 index: i + 1,
                 sourceName: f.name,
@@ -3211,6 +3212,7 @@
                 rect: { x: round2(f.x), y: round2(f.y), width: round2(f.width), height: round2(f.height) },
                 fontSize: fontSize,               // pt del /DA; 0 = auto (se agranda)
                 fontAuto: fontSize === 0,
+                comb: fi ? fi.comb : false,       // flag Comb: agranda el texto ignorando el DA
                 isWidget: !!f._isWidget,
                 widgetIndex: f._widgetIndex,
                 widgetCount: f._widgetCount,
@@ -3224,6 +3226,7 @@
             fieldCount: fields.length,
             fieldsByType: byType,
             textFieldsAutoFont: metaState.fontInfo ? metaState.fontInfo.autoCount : undefined,
+            textFieldsComb: metaState.fontInfo ? metaState.fontInfo.combCount : undefined,
             document: {
                 title: $('#metaTitle').value,
                 author: $('#metaAuthor').value,
@@ -3266,9 +3269,10 @@
             metaState.fields = det.fields || [];
             // ...y el tamaño de fuente (del /DA) de cada campo de texto (0 = auto)
             metaState.fontInfo = await InsPipelineBundle.readPdfFieldFontSizes(metaState.pdf);
-            var autoTxt = metaState.fontInfo.autoCount
-                ? ' · ⚠ ' + metaState.fontInfo.autoCount + ' campo(s) con fuente auto (se agrandan)'
-                : ' · fuente de campos con tope';
+            var grow = (metaState.fontInfo.autoCount || 0) + (metaState.fontInfo.combCount || 0);
+            var autoTxt = grow
+                ? ' · ⚠ ' + metaState.fontInfo.autoCount + ' auto + ' + metaState.fontInfo.combCount + ' comb → texto que se agranda'
+                : ' · fuente de campos OK';
             $('#metaPageCount').textContent = '(' + m.pageCount + ' páginas · ' + metaState.fields.length + ' campos AcroForm' + autoTxt + ')';
             $('#metaFormPanel').hidden = false;
             $('#metaFontPanel').hidden = false;
@@ -3455,7 +3459,7 @@
                 bytes = res.pdfBytes;
                 suffix = '_fuente' + max + 'pt';
                 statusEl.className = 'status active success';
-                statusEl.textContent = '✓ ' + res.changed + '/' + res.totalTextFields + ' campos capados a ' + max + 'pt.';
+                statusEl.textContent = '✓ ' + res.changed + '/' + res.totalTextFields + ' campos normalizados a ' + max + 'pt (' + (res.combCleared || 0) + ' comb limpiados).';
             } catch (err) {
                 console.error(err);
                 statusEl.className = 'status active error';
