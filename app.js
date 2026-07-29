@@ -3338,6 +3338,7 @@
                 mergeState.files.splice(idx, 1);
                 mergeState.resultBytes = null;
                 $('#btnDownloadMerged').hidden = true;
+                $('#mergeFontRow').hidden = true;
                 renderMergeTable();
                 updateMergeStatus();
             });
@@ -3374,6 +3375,7 @@
                 mergeState.files.splice(toIdx, 0, item);
                 mergeState.resultBytes = null;
                 $('#btnDownloadMerged').hidden = true;
+                $('#mergeFontRow').hidden = true;
                 renderMergeTable();
                 updateMergeStatus();
             });
@@ -3399,6 +3401,7 @@
                 (dups ? ' · ' + dups + ' campo(s) con nombre duplicado desambiguados' : '');
 
             $('#btnDownloadMerged').hidden = false;
+            $('#mergeFontRow').hidden = false;
         } catch (err) {
             console.error(err);
             statusEl.className = 'status active error';
@@ -3407,10 +3410,30 @@
         $('#btnMerge').disabled = mergeState.files.length < 2;
     }
 
-    function downloadMerged() {
+    async function downloadMerged() {
         if (!mergeState.resultBytes) return;
-        var blob = new Blob([mergeState.resultBytes], { type: 'application/pdf' });
-        var name = 'merged_' + mergeState.files.length + '_files.pdf';
+        var bytes = mergeState.resultBytes;
+        var suffix = '';
+        if ($('#mergeFontCap').checked) {
+            var max = parseInt($('#mergeFontMax').value, 10) || 10;
+            var statusEl = $('#mergeStatus');
+            statusEl.className = 'status active';
+            statusEl.textContent = '⟳ Aplicando tope de fuente ' + max + 'pt a los campos...';
+            try {
+                var res = await InsPipelineBundle.capPdfFieldFontSize(mergeState.resultBytes, max);
+                bytes = res.pdfBytes;
+                suffix = '_fuente' + max + 'pt';
+                statusEl.className = 'status active success';
+                statusEl.textContent = '✓ ' + res.changed + '/' + res.totalTextFields + ' campos capados a ' + max + 'pt.';
+            } catch (err) {
+                console.error(err);
+                statusEl.className = 'status active error';
+                statusEl.textContent = '✗ ' + err.message;
+                return;
+            }
+        }
+        var blob = new Blob([bytes], { type: 'application/pdf' });
+        var name = 'merged_' + mergeState.files.length + '_files' + suffix + '.pdf';
         InsPipelineBundle.downloadBlob(blob, name);
     }
 
