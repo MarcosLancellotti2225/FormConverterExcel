@@ -694,6 +694,7 @@
             renderConvWarnings(result.warnings);
             $('#convResultPanel').hidden = false;
             $('#btnDownloadConverted').hidden = false;
+            $('#convFontRow').hidden = false;
             $('#btnExportLabeledPdf').hidden = false;
             $('#btnExportImage').hidden = false;
             $('#btnExportMapExcel').hidden = false;
@@ -715,6 +716,7 @@
         renderConvWarnings(result.warnings);
         $('#convResultPanel').hidden = false;
         $('#btnDownloadConverted').hidden = false;
+            $('#convFontRow').hidden = false;
         $('#btnExportLabeledPdf').hidden = false;
         $('#btnExportImage').hidden = false;
         $('#btnExportMapExcel').hidden = false;
@@ -729,7 +731,7 @@
             result.renamedCount + ' campos renombrados. Listo.';
     }
 
-    function downloadConverted() {
+    async function downloadConverted() {
         if (!convState.resultPdfBytes) {
             $('#convStatus').textContent = '✗ No hay PDF para descargar. Convertí primero.';
             return;
@@ -737,8 +739,27 @@
         var bytes = convState.resultPdfBytes instanceof Uint8Array
             ? convState.resultPdfBytes
             : new Uint8Array(convState.resultPdfBytes);
+        var suffix = '_renamed';
+        if ($('#convFontCap') && $('#convFontCap').checked) {
+            var max = parseInt($('#convFontMax').value, 10) || 10;
+            var statusEl = $('#convStatus');
+            statusEl.className = 'status active';
+            statusEl.textContent = '⟳ Aplicando tope de fuente ' + max + 'pt a los campos...';
+            try {
+                var res = await InsPipelineBundle.capPdfFieldFontSize(bytes, max);
+                bytes = res.pdfBytes;
+                suffix = '_renamed_fuente' + max + 'pt';
+                statusEl.className = 'status active success';
+                statusEl.textContent = '✓ ' + res.changed + '/' + res.totalTextFields + ' campos capados a ' + max + 'pt.';
+            } catch (err) {
+                console.error(err);
+                statusEl.className = 'status active error';
+                statusEl.textContent = '✗ ' + err.message;
+                return;
+            }
+        }
         var blob = new Blob([bytes], { type: 'application/pdf' });
-        var fileName = (convState.pdf ? convState.pdf.name.replace(/\.pdf$/i, '') : 'converted') + '_renamed.pdf';
+        var fileName = (convState.pdf ? convState.pdf.name.replace(/\.pdf$/i, '') : 'converted') + suffix + '.pdf';
         InsPipelineBundle.downloadBlob(blob, fileName);
     }
 
