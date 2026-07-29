@@ -3122,6 +3122,30 @@
         $('#btnMetaSave').addEventListener('click', saveMetadata);
         $('#btnMetaJson').addEventListener('click', downloadMetadataJson);
         $('#metaJsonInput').addEventListener('change', importMetadataJson);
+        $('#btnMetaFont').addEventListener('click', applyFontCap);
+    }
+
+    async function applyFontCap() {
+        if (!metaState.pdf) return;
+        var statusEl = $('#metaStatus');
+        var max = parseInt($('#metaFontMax').value, 10) || 10;
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Aplicando tope de fuente ' + max + 'pt a los campos...';
+        $('#btnMetaFont').disabled = true;
+        try {
+            var res = await InsPipelineBundle.capPdfFieldFontSize(metaState.pdf, max);
+            var blob = new Blob([res.pdfBytes], { type: 'application/pdf' });
+            var name = metaState.pdf.name.replace(/\.pdf$/i, '') + '_fuente' + max + 'pt.pdf';
+            InsPipelineBundle.downloadBlob(blob, name);
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ ' + res.changed + '/' + res.totalTextFields +
+                ' campos de texto capados a ' + max + 'pt — descargado ' + name;
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
+        $('#btnMetaFont').disabled = false;
     }
 
     function importMetadataJson(e) {
@@ -3216,6 +3240,7 @@
             metaState.fields = det.fields || [];
             $('#metaPageCount').textContent = '(' + m.pageCount + ' páginas · ' + metaState.fields.length + ' campos AcroForm)';
             $('#metaFormPanel').hidden = false;
+            $('#metaFontPanel').hidden = false;
             statusEl.className = 'status active success';
             statusEl.textContent = '✓ Metadata + ' + metaState.fields.length + ' campos leídos.';
         } catch (err) {

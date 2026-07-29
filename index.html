@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Form Tools</title>
-    <link rel="stylesheet" href="styles.css?v=49">
+    <link rel="stylesheet" href="styles.css?v=50">
     <link rel="stylesheet" href="src/pdf-converter-v2/ui/styles.css">
 </head>
 <body>
@@ -494,6 +494,18 @@
                     <label id="btnMetaImportLabel" class="secondary btn-sm" style="cursor:pointer;">Importar JSON<input type="file" id="metaJsonInput" accept=".json" hidden></label>
                 </div>
             </section>
+
+            <section class="panel" id="metaFontPanel" hidden>
+                <h2>3. Tamaño de fuente de los campos</h2>
+                <p class="hint">Los campos de texto con fuente <b>auto</b> agrandan el texto hasta llenar la caja (por eso un nombre corto se ve gigante). Poné un tope en puntos: a los campos en auto o con fuente mayor se les fija ese tamaño.</p>
+                <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+                    <label class="meta-row" style="max-width:180px;">
+                        <span>Tope de fuente (pt)</span>
+                        <input type="number" id="metaFontMax" value="10" min="4" max="48" step="1">
+                    </label>
+                    <button id="btnMetaFont" class="primary" style="margin-top:0.5rem;">Aplicar tope y descargar PDF</button>
+                </div>
+            </section>
         </div>
 
         <!-- ============ DETECT FIELDS FLOW ============ -->
@@ -558,7 +570,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=49"></script>
-    <script src="app.js?v=49"></script>
+    <script src="bundle.js?v=50"></script>
+    <script src="app.js?v=50"></script>
 </body>
 </html>
