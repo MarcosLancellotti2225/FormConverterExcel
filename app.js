@@ -3200,13 +3200,17 @@
     function round2(n) { return typeof n === 'number' ? Math.round(n * 100) / 100 : n; }
 
     function currentMetaObject() {
+        var fontMap = (metaState.fontInfo && metaState.fontInfo.bySourceName) || {};
         var fields = (metaState.fields || []).map(function(f, i) {
+            var fontSize = Object.prototype.hasOwnProperty.call(fontMap, f.name) ? fontMap[f.name] : null;
             return {
                 index: i + 1,
                 sourceName: f.name,
                 type: f.type,
                 page: f.page,
                 rect: { x: round2(f.x), y: round2(f.y), width: round2(f.width), height: round2(f.height) },
+                fontSize: fontSize,               // pt del /DA; 0 = auto (se agranda)
+                fontAuto: fontSize === 0,
                 isWidget: !!f._isWidget,
                 widgetIndex: f._widgetIndex,
                 widgetCount: f._widgetCount,
@@ -3219,6 +3223,7 @@
             pageCount: Number(($('#metaPageCount').textContent.match(/(\d+)\s*páginas/) || [0, 0])[1]) || undefined,
             fieldCount: fields.length,
             fieldsByType: byType,
+            textFieldsAutoFont: metaState.fontInfo ? metaState.fontInfo.autoCount : undefined,
             document: {
                 title: $('#metaTitle').value,
                 author: $('#metaAuthor').value,
@@ -3259,7 +3264,12 @@
             // También detectamos los campos AcroForm (nombre, tipo, página, rect)
             var det = await InsPipelineBundle.runDetectFields({ pdfFile: metaState.pdf });
             metaState.fields = det.fields || [];
-            $('#metaPageCount').textContent = '(' + m.pageCount + ' páginas · ' + metaState.fields.length + ' campos AcroForm)';
+            // ...y el tamaño de fuente (del /DA) de cada campo de texto (0 = auto)
+            metaState.fontInfo = await InsPipelineBundle.readPdfFieldFontSizes(metaState.pdf);
+            var autoTxt = metaState.fontInfo.autoCount
+                ? ' · ⚠ ' + metaState.fontInfo.autoCount + ' campo(s) con fuente auto (se agrandan)'
+                : ' · fuente de campos con tope';
+            $('#metaPageCount').textContent = '(' + m.pageCount + ' páginas · ' + metaState.fields.length + ' campos AcroForm' + autoTxt + ')';
             $('#metaFormPanel').hidden = false;
             $('#metaFontPanel').hidden = false;
             statusEl.className = 'status active success';

@@ -100042,6 +100042,28 @@ ${pagesHtml}</body>
         const saved = await doc.save({ updateFieldAppearances: false });
         return { pdfBytes: new Uint8Array(saved), changed, totalTextFields: total };
       }
+      async function readPdfFieldFontSizes(input) {
+        const { PDFDocument, PDFTextField } = require_cjs();
+        const bytes = input instanceof Uint8Array ? input : await fileToUint8Array(input);
+        const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+        const form = doc.getForm();
+        const bySourceName = {};
+        let autoCount = 0, total = 0;
+        for (const f of form.getFields()) {
+          if (!(f instanceof PDFTextField)) continue;
+          total++;
+          let da = "";
+          try {
+            da = f.acroField.getDefaultAppearance() || "";
+          } catch (e) {
+          }
+          const m = da.match(/(-?\d+(\.\d+)?)\s+Tf/);
+          const size = m ? parseFloat(m[1]) : null;
+          if (size === 0) autoCount++;
+          bySourceName[f.getName()] = size;
+        }
+        return { bySourceName, autoCount, totalTextFields: total };
+      }
       async function writePdfMetadata(input, meta) {
         const { PDFDocument } = require_cjs();
         const bytes = input instanceof Uint8Array ? input : await fileToUint8Array(input);
@@ -100123,9 +100145,9 @@ ${pagesHtml}</body>
         return new Uint8Array(savedBytes);
       }
       if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
       }
-      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
+      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
     }
   });
   return require_browser();
