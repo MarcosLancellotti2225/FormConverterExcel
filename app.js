@@ -18,6 +18,7 @@
         initSignframeFlow();
         initCanonicalFlow();
         initMetadataFlow();
+        initQuoterFlow();
 
         selectMode(null);
     }
@@ -45,6 +46,7 @@
         $('#signframeFlow').hidden = mode !== 'signframe';
         $('#canonicalFlow').hidden = mode !== 'canonical-matrix';
         $('#metadataFlow').hidden = mode !== 'metadata-pdf';
+        $('#quoterFlow').hidden = mode !== 'quoter';
         $('#btnBackToHome').hidden = !mode;
         var main = document.querySelector('main');
         if (mode === 'convert-pdf' || mode === 'detect-fields' || mode === 'signframe' || mode === 'canonical-matrix') {
@@ -3128,6 +3130,165 @@
         var blob = new Blob([canonState.result.xlsxBytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         var base = canonState.mapping ? canonState.mapping.name.replace(/\.(xlsx|xls)$/i, '') : 'matriz';
         InsPipelineBundle.downloadBlob(blob, base + '_canonica.xlsx');
+    }
+
+    // ==================== COTIZADOR FLOW ====================
+
+    var quoterState = { zip: null, result: null };
+
+    function initQuoterFlow() {
+        $('#quoterZipInput').addEventListener('change', function(e) {
+            quoterState.zip = e.target.files[0] || null;
+            updateSfFileStatus('quoterZipStatus', quoterState.zip);
+            $('#btnQuote').disabled = !quoterState.zip;
+        });
+        $('#btnQuote').addEventListener('click', runQuote);
+        $('#btnQuoteJson').addEventListener('click', downloadQuoteJson);
+        $('#btnRequote').addEventListener('click', requoteWithThresholds);
+    }
+
+    async function runQuote() {
+        var statusEl = $('#quoterStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Abriendo el ZIP y analizando su contenido...';
+        $('#btnQuote').disabled = true;
+        try {
+            var t0 = performance.now();
+            var res = await InsPipelineBundle.runQuoteZip({ zipFile: quoterState.zip });
+            var t1 = performance.now();
+            quoterState.result = res;
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ ' + res.totals.files + ' archivos analizados en ' + Math.round(t1 - t0) + 'ms' +
+                (res.errors.length ? ' · ⚠ ' + res.errors.length + ' con error' : '');
+            $('#btnQuoteJson').hidden = false;
+            renderQuote(res);
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
+        $('#btnQuote').disabled = !quoterState.zip;
+    }
+
+    function renderQuote(res) {
+        $('#quoterResultPanel').hidden = false;
+        $('#quoterDetailPanel').hidden = false;
+        renderQuoteScore(res.score);
+
+        var t = res.totals;
+        var stats = [
+            ['Campos del PDF', t.pdfFields],
+            ['Reglas de negocio', t.businessRules],
+            ['Condicionales', t.conditionalRules],
+            ['Bloques repetidos', t.repeaters],
+            ['Catálogos', t.catalogs],
+            ['Páginas', t.pages],
+            ['Archivos', t.files],
+            ['Pestañas Excel', t.excelSheets],
+        ];
+        $('#quoterStats').innerHTML = stats.map(function(s) {
+            return '<div class="sf-stat"><span class="sf-stat-label">' + escapeHtml(s[0]) +
+                '</span><span class="sf-stat-value">' + s[1] + '</span></div>';
+        }).join('');
+
+        // Inventario
+        $('#quoteInventoryBody').innerHTML = res.inventory.map(function(f) {
+            return '<tr><td>' + escapeHtml(f.path) + '</td>' +
+                '<td><span class="q-tag ' + escapeHtml(f.kind) + '">' + escapeHtml(f.kind) + '</span></td>' +
+                '<td style="text-align:right;color:var(--text-dim);">' + escapeHtml(f.sizeLabel || '') + '</td>' +
+                '<td>' + escapeHtml(f.detail || f.error || '') + '</td></tr>';
+        }).join('');
+
+        // Pestañas de Excel
+        var sheetRows = '';
+        res.excels.forEach(function(x) {
+            x.sheets.forEach(function(s) {
+                sheetRows += '<tr><td style="color:var(--text-dim);">' + escapeHtml(x.file) + '</td>' +
+                    '<td>' + escapeHtml(s.name) + '</td>' +
+                    '<td style="text-align:right;">' + (s.rows || 0) + '</td>' +
+                    '<td style="text-align:right;">' + (s.fieldRows || 0) + '</td>' +
+                    '<td style="text-align:right;font-weight:600;">' + (s.businessRules || 0) + '</td>' +
+                    '<td style="text-align:right;">' + (s.conditionalRules || 0) + '</td>' +
+                    '<td>' + (s.isCatalog ? '<span class="q-tag catalogo">catálogo ' + s.catalogItems + '</span>'
+                        : (s.empty ? '<span style="color:var(--text-dim);">vacía</span>' : 'reglas')) + '</td></tr>';
+            });
+        });
+        $('#quoteSheetsBody').innerHTML = sheetRows ||
+            '<tr><td colspan="7" style="color:var(--text-dim);">Sin Excels en el ZIP</td></tr>';
+
+        // PDFs y JSONs
+        var docRows = '';
+        res.pdfs.forEach(function(p) {
+            var types = Object.keys(p.byType).map(function(k) { return k + ': ' + p.byType[k]; }).join(', ');
+            docRows += '<tr><td>' + escapeHtml(p.file) + '</td><td><span class="q-tag pdf">PDF</span></td>' +
+                '<td>' + p.fieldCount + ' campos · ' + p.pages + ' pág · ' + escapeHtml(types) +
+                (p.repeaterGroups ? ' · ' + p.repeaterGroups + ' grupos [n]' : '') + '</td></tr>';
+        });
+        res.jsons.forEach(function(j) {
+            var det = j.kind === 'form-def'
+                ? (j.fields + ' campos · ' + j.sections + ' secciones · ' + j.repeaters + ' repeaters · ' +
+                   j.lookups + ' lookups · ' + j.conditionals + ' condicionales')
+                : ('JSON de datos · ' + (j.topLevelKeys || 0) + ' claves');
+            docRows += '<tr><td>' + escapeHtml(j.file) + '</td><td><span class="q-tag json">JSON</span></td>' +
+                '<td>' + escapeHtml(det) + '</td></tr>';
+        });
+        $('#quoteDocsBody').innerHTML = docRows ||
+            '<tr><td colspan="3" style="color:var(--text-dim);">Sin PDFs ni JSONs</td></tr>';
+    }
+
+    function renderQuoteScore(score) {
+        var el = $('#quoteLevel');
+        el.textContent = score.level;
+        el.className = 'quote-level ' + score.levelKey;
+        $('#quotePoints').textContent = score.points;
+        $('#quoteHours').textContent = 'Estimación: ' + score.estimatedHours.min + '–' +
+            score.estimatedHours.max + ' horas · Fácil ≤ ' + score.thresholds.facil +
+            ' · Medio ≤ ' + score.thresholds.medio;
+        $('#quoteBreakdownBody').innerHTML = score.breakdown.map(function(b) {
+            var dim = b.count ? '' : ' style="color:var(--text-dim);"';
+            return '<tr' + dim + '><td>' + escapeHtml(b.label) + '</td>' +
+                '<td style="text-align:right;">' + b.count + '</td>' +
+                '<td style="text-align:right;color:var(--text-dim);">×' + b.weight + '</td>' +
+                '<td style="text-align:right;font-weight:600;">' + b.points + '</td></tr>';
+        }).join('');
+    }
+
+    function requoteWithThresholds() {
+        if (!quoterState.result) return;
+        var cfg = {
+            thresholds: {
+                facil: parseFloat($('#quoteThFacil').value) || 400,
+                medio: parseFloat($('#quoteThMedio').value) || 1200,
+            },
+            hoursPerPoint: parseFloat($('#quoteHpp').value) || 0.035,
+        };
+        var score = InsPipelineBundle.requote(quoterState.result.totals, cfg);
+        quoterState.result.score = score;
+        renderQuoteScore(score);
+    }
+
+    function downloadQuoteJson() {
+        if (!quoterState.result) return;
+        var r = quoterState.result;
+        var report = {
+            archivo: quoterState.zip ? quoterState.zip.name : null,
+            veredicto: {
+                nivel: r.score.level,
+                puntos: r.score.points,
+                horasEstimadas: r.score.estimatedHours,
+                umbrales: r.score.thresholds,
+            },
+            totales: r.totals,
+            desglosePuntos: r.score.breakdown,
+            inventario: r.inventory,
+            pdfs: r.pdfs,
+            excels: r.excels,
+            jsons: r.jsons,
+            errores: r.errors,
+        };
+        var blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json;charset=utf-8' });
+        var name = (quoterState.zip ? quoterState.zip.name.replace(/\.zip$/i, '') : 'cotizacion') + '_cotizacion.json';
+        InsPipelineBundle.downloadBlob(blob, name);
     }
 
     // ==================== METADATA PDF FLOW ====================

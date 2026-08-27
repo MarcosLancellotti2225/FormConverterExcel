@@ -1810,3 +1810,28 @@ footer {
     padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);
     background: var(--bg); color: var(--text); font-size: 0.85rem;
 }
+
+/* ============ COTIZADOR ============ */
+.quote-verdict {
+    display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;
+    padding: 1rem 1.25rem; border-radius: 12px;
+    background: var(--bg-elevated); border: 1px solid var(--border);
+}
+.quote-level {
+    font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em;
+    padding: 0.35rem 1.1rem; border-radius: 10px;
+    background: var(--bg-panel); border: 2px solid var(--border);
+}
+.quote-level.facil    { color: var(--accent-green); border-color: var(--accent-green); }
+.quote-level.medio    { color: var(--accent-amber); border-color: var(--accent-amber); }
+.quote-level.complejo { color: var(--accent-red);   border-color: var(--accent-red); }
+.quote-meta { font-size: 0.95rem; }
+.quote-meta #quotePoints { font-weight: 700; color: var(--text); }
+.q-tag {
+    display: inline-block; padding: 1px 7px; border-radius: 4px;
+    font-size: 0.72rem; background: var(--bg-elevated); border: 1px solid var(--border);
+}
+.q-tag.pdf   { color: var(--accent-red); }
+.q-tag.excel { color: var(--accent-green); }
+.q-tag.json  { color: var(--accent-teal); }
+.q-tag.catalogo { color: var(--accent-amber); }
