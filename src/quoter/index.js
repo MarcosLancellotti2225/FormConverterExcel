@@ -81,6 +81,21 @@ var FIELD_COL_RX = /nombre.*campo|campo.*formulario|etiqueta|nombre\s+en\s+pdf|s
 
 var CATALOG_SHEET_RX = /cat[aá]logo|catalogo|lista|tabla|valores|dominio/i;
 
+// Hojas que NO son insumo de trabajo: output ya generado, índices, portadas.
+// (En las Fichas reales hay una hoja "JSON Generado" con cientos de filas que
+// es el resultado, no reglas a implementar.)
+var IGNORED_SHEET_RX = /json\s*generado|generado|output|resultado|instructivo|portada|[ií]ndice|estructura\s+base|readme|ejemplo/i;
+
+// Un texto es una condición real si expresa dependencia, no un simple modo de
+// campo ("editable", "input del usuario", "Disabled / Visible / Dato Prellenado").
+var CONDITION_RX = /\bsi\s|\bsi:|\bcuando\b|depende|seg[uú]n|solo\s+(si|cuando|para)|en\s+caso\s+de|aplica\s+si|visible\s+si|mostrar\s+si|oculta?r?\s+si|>=|<=|=\s*['"]?s[ií]/i;
+
+// Valores de "Obligatorio" que realmente significan obligatorio.
+var YES_RX = /^(s[ií]|si\b|yes|true|x|obligatorio)$/i;
+
+// Referencia a un catálogo externo desde la celda de Valor.
+var CATALOG_REF_RX = /ver\s+cat[aá]logo|cat[aá]logo\s+adjunto|ver\s+lista/i;
+
 function analyzeSheet(ws, sheetName) {
     var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
     var out = {
@@ -90,12 +105,24 @@ function analyzeSheet(ws, sheetName) {
         fieldRows: 0,
         businessRules: 0,
         conditionalRules: 0,
+        catalogRefs: 0,
         ruleColumns: [],
         isCatalog: false,
         catalogItems: 0,
+        ignored: false,
         empty: true,
     };
     if (!raw.length) return out;
+
+    // Hoja de output/índice: se lista pero no aporta números (no es trabajo).
+    if (IGNORED_SHEET_RX.test(sheetName)) {
+        out.ignored = true;
+        out.rows = raw.filter(function (r) {
+            return (r || []).some(function (c) { return String(c == null ? '' : c).trim(); });
+        }).length;
+        out.empty = out.rows === 0;
+        return out;
+    }
 
     // Buscar la fila de headers: la de más celdas no vacías entre las primeras 8.
     var headerIdx = 0, bestCount = -1;
@@ -136,13 +163,41 @@ function analyzeSheet(ws, sheetName) {
         if (isField) out.fieldRows++;
 
         for (var r2 = 0; r2 < ruleCols.length; r2++) {
-            var val = String(row[ruleCols[r2].index] == null ? '' : row[ruleCols[r2].index]).trim();
+            var col = ruleCols[r2];
+            var val = String(row[col.index] == null ? '' : row[col.index]).trim();
             if (!val) continue;
-            // "no"/"n/a" sueltos no son lógica a implementar
             var nv = norm(val);
-            if (nv === 'no' || nv === 'n/a' || nv === '-' || nv === 'na') continue;
-            if (ruleCols[r2].weightKey === 'conditionalRule') out.conditionalRules++;
-            else out.businessRules++;
+            // Ruido: negativos, no aplica, guiones.
+            if (nv === 'no' || nv === 'n/a' || nv === '-' || nv === 'na' || nv === 'no aplica' || nv === 'ninguna') continue;
+
+            if (col.key === 'obligatorio') {
+                // En las Fichas reales esta columna a veces trae "Both"/"JSON"
+                // (a qué aplica), no sí/no. Solo cuenta si es realmente "Sí".
+                if (YES_RX.test(val)) out.businessRules++;
+                continue;
+            }
+            if (col.key === 'visualizacion') {
+                // "editable / input del usuario" o "Disabled / Visible" es el modo
+                // del campo, no una condición. Solo cuenta si expresa dependencia.
+                if (CONDITION_RX.test(val)) out.conditionalRules++;
+                else out.businessRules++;   // igual es config a implementar
+                continue;
+            }
+            if (col.key === 'observaciones') {
+                // Observación con condición → condicional; si no, regla.
+                if (CONDITION_RX.test(val)) out.conditionalRules++;
+                else out.businessRules++;
+                continue;
+            }
+            if (col.key === 'valor' && CATALOG_REF_RX.test(val)) {
+                out.catalogRefs++;
+                out.businessRules++;
+                continue;
+            }
+            // Una "Regla" que expresa dependencia ("Solo en el caso de que...")
+            // es lógica condicional, más cara que una validación plana.
+            if (col.key === 'regla' && CONDITION_RX.test(val)) { out.conditionalRules++; continue; }
+            out.businessRules++;
         }
     }
     out.rows = dataRows;
@@ -166,27 +221,36 @@ function analyzeExcel(bytes, fileName) {
     var wb = XLSX.read(bytes, { type: 'array' });
     var sheets = [];
     var businessRules = 0, conditionalRules = 0, catalogs = 0, catalogItems = 0, fieldRows = 0;
+    var catalogRefNames = {}, ignoredSheets = 0;
     for (var s = 0; s < wb.SheetNames.length; s++) {
         var nm = wb.SheetNames[s];
         var info;
         try { info = analyzeSheet(wb.Sheets[nm], nm); }
         catch (e) { info = { name: nm, error: e.message, rows: 0, businessRules: 0, conditionalRules: 0 }; }
         sheets.push(info);
+        if (info.ignored) { ignoredSheets++; continue; }
         businessRules += info.businessRules || 0;
         conditionalRules += info.conditionalRules || 0;
         fieldRows += info.fieldRows || 0;
         if (info.isCatalog) { catalogs++; catalogItems += info.catalogItems || 0; }
+        if (info.catalogRefs) catalogRefNames[nm] = info.catalogRefs;
     }
+    // Catálogos referenciados desde "Valor" ("Ver catálogo") que no son hoja.
+    var refTotal = 0;
+    for (var k in catalogRefNames) if (catalogRefNames.hasOwnProperty(k)) refTotal += catalogRefNames[k];
+
     return {
         file: fileName,
         type: 'excel',
         sheetCount: wb.SheetNames.length,
+        ignoredSheets: ignoredSheets,
         sheets: sheets,
         businessRules: businessRules,
         conditionalRules: conditionalRules,
         fieldRows: fieldRows,
         catalogs: catalogs,
         catalogItems: catalogItems,
+        catalogRefs: refTotal,
     };
 }
 
@@ -392,7 +456,9 @@ async function analyzeZip(zipBytes, configOverride) {
     for (var b = 0; b < excels.length; b++) {
         totals.businessRules += excels[b].businessRules;
         totals.conditionalRules += excels[b].conditionalRules;
-        totals.catalogs += excels[b].catalogs;
+        // Catálogos = hojas de catálogo + combos que referencian uno ("Ver catálogo"):
+        // cada uno hay que conseguirlo e integrarlo.
+        totals.catalogs += excels[b].catalogs + (excels[b].catalogRefs || 0);
         totals.catalogItems += excels[b].catalogItems;
         totals.excelSheets += excels[b].sheetCount;
     }

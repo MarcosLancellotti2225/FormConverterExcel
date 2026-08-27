@@ -99313,6 +99313,10 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       ];
       var FIELD_COL_RX = /nombre.*campo|campo.*formulario|etiqueta|nombre\s+en\s+pdf|sourcename|acroform/i;
       var CATALOG_SHEET_RX = /cat[aá]logo|catalogo|lista|tabla|valores|dominio/i;
+      var IGNORED_SHEET_RX = /json\s*generado|generado|output|resultado|instructivo|portada|[ií]ndice|estructura\s+base|readme|ejemplo/i;
+      var CONDITION_RX = /\bsi\s|\bsi:|\bcuando\b|depende|seg[uú]n|solo\s+(si|cuando|para)|en\s+caso\s+de|aplica\s+si|visible\s+si|mostrar\s+si|oculta?r?\s+si|>=|<=|=\s*['"]?s[ií]/i;
+      var YES_RX = /^(s[ií]|si\b|yes|true|x|obligatorio)$/i;
+      var CATALOG_REF_RX = /ver\s+cat[aá]logo|cat[aá]logo\s+adjunto|ver\s+lista/i;
       function analyzeSheet(ws, sheetName) {
         var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
         var out = {
@@ -99322,12 +99326,24 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           fieldRows: 0,
           businessRules: 0,
           conditionalRules: 0,
+          catalogRefs: 0,
           ruleColumns: [],
           isCatalog: false,
           catalogItems: 0,
+          ignored: false,
           empty: true
         };
         if (!raw.length) return out;
+        if (IGNORED_SHEET_RX.test(sheetName)) {
+          out.ignored = true;
+          out.rows = raw.filter(function(r) {
+            return (r || []).some(function(c2) {
+              return String(c2 == null ? "" : c2).trim();
+            });
+          }).length;
+          out.empty = out.rows === 0;
+          return out;
+        }
         var headerIdx = 0, bestCount = -1;
         for (var h = 0; h < Math.min(8, raw.length); h++) {
           var cnt = (raw[h] || []).filter(function(c2) {
@@ -99371,12 +99387,35 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           }) : false;
           if (isField) out.fieldRows++;
           for (var r2 = 0; r2 < ruleCols.length; r2++) {
-            var val = String(row[ruleCols[r2].index] == null ? "" : row[ruleCols[r2].index]).trim();
+            var col = ruleCols[r2];
+            var val = String(row[col.index] == null ? "" : row[col.index]).trim();
             if (!val) continue;
             var nv = norm(val);
-            if (nv === "no" || nv === "n/a" || nv === "-" || nv === "na") continue;
-            if (ruleCols[r2].weightKey === "conditionalRule") out.conditionalRules++;
-            else out.businessRules++;
+            if (nv === "no" || nv === "n/a" || nv === "-" || nv === "na" || nv === "no aplica" || nv === "ninguna") continue;
+            if (col.key === "obligatorio") {
+              if (YES_RX.test(val)) out.businessRules++;
+              continue;
+            }
+            if (col.key === "visualizacion") {
+              if (CONDITION_RX.test(val)) out.conditionalRules++;
+              else out.businessRules++;
+              continue;
+            }
+            if (col.key === "observaciones") {
+              if (CONDITION_RX.test(val)) out.conditionalRules++;
+              else out.businessRules++;
+              continue;
+            }
+            if (col.key === "valor" && CATALOG_REF_RX.test(val)) {
+              out.catalogRefs++;
+              out.businessRules++;
+              continue;
+            }
+            if (col.key === "regla" && CONDITION_RX.test(val)) {
+              out.conditionalRules++;
+              continue;
+            }
+            out.businessRules++;
           }
         }
         out.rows = dataRows;
@@ -99394,6 +99433,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         var wb = XLSX.read(bytes, { type: "array" });
         var sheets = [];
         var businessRules = 0, conditionalRules = 0, catalogs = 0, catalogItems = 0, fieldRows = 0;
+        var catalogRefNames = {}, ignoredSheets = 0;
         for (var s = 0; s < wb.SheetNames.length; s++) {
           var nm = wb.SheetNames[s];
           var info2;
@@ -99403,6 +99443,10 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             info2 = { name: nm, error: e.message, rows: 0, businessRules: 0, conditionalRules: 0 };
           }
           sheets.push(info2);
+          if (info2.ignored) {
+            ignoredSheets++;
+            continue;
+          }
           businessRules += info2.businessRules || 0;
           conditionalRules += info2.conditionalRules || 0;
           fieldRows += info2.fieldRows || 0;
@@ -99410,17 +99454,22 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             catalogs++;
             catalogItems += info2.catalogItems || 0;
           }
+          if (info2.catalogRefs) catalogRefNames[nm] = info2.catalogRefs;
         }
+        var refTotal = 0;
+        for (var k in catalogRefNames) if (catalogRefNames.hasOwnProperty(k)) refTotal += catalogRefNames[k];
         return {
           file: fileName,
           type: "excel",
           sheetCount: wb.SheetNames.length,
+          ignoredSheets,
           sheets,
           businessRules,
           conditionalRules,
           fieldRows,
           catalogs,
-          catalogItems
+          catalogItems,
+          catalogRefs: refTotal
         };
       }
       async function analyzePdf(bytes, fileName) {
@@ -99598,7 +99647,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         for (var b = 0; b < excels.length; b++) {
           totals.businessRules += excels[b].businessRules;
           totals.conditionalRules += excels[b].conditionalRules;
-          totals.catalogs += excels[b].catalogs;
+          totals.catalogs += excels[b].catalogs + (excels[b].catalogRefs || 0);
           totals.catalogItems += excels[b].catalogItems;
           totals.excelSheets += excels[b].sheetCount;
         }
