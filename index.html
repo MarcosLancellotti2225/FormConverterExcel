@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Form Tools</title>
-    <link rel="stylesheet" href="styles.css?v=57">
+    <link rel="stylesheet" href="styles.css?v=58">
     <link rel="stylesheet" href="src/pdf-converter-v2/ui/styles.css">
 </head>
 <body>
@@ -528,7 +528,20 @@
                     <label class="hint">Fácil ≤ <input type="number" id="quoteThFacil" value="400" min="1" step="50" style="width:80px;"></label>
                     <label class="hint">Medio ≤ <input type="number" id="quoteThMedio" value="1200" min="1" step="50" style="width:80px;"></label>
                     <label class="hint">Horas por punto <input type="number" id="quoteHpp" value="0.035" min="0.001" step="0.005" style="width:80px;"></label>
+                    <label class="hint">Costo de lo repetido <input type="number" id="quoteReuse" value="0.15" min="0" max="1" step="0.05" style="width:70px;"></label>
                     <button id="btnRequote" class="secondary btn-sm">Recalcular</button>
+                </div>
+            </section>
+
+            <section class="panel" id="quoterReusePanel" hidden>
+                <h2>Reutilización — lo que no se paga dos veces</h2>
+                <p class="hint">Campos y reglas que ya están resueltos: repetidos dentro del formulario (bloques <code>[n]</code>) o compartidos con otra variante del ZIP (p. ej. el abreviado contra el completo).</p>
+                <div id="quoteReuseStats" class="sf-stats"></div>
+                <div class="match-table-wrap" style="max-height:280px;margin-top:0.75rem;">
+                    <table class="match-table">
+                        <thead><tr><th>Archivo</th><th>Comparado con</th><th>Compartido</th><th>Propio</th><th>% ya resuelto</th></tr></thead>
+                        <tbody id="quoteReuseBody"></tbody>
+                    </table>
                 </div>
             </section>
 
@@ -670,7 +683,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=57"></script>
-    <script src="app.js?v=57"></script>
+    <script src="bundle.js?v=58"></script>
+    <script src="app.js?v=58"></script>
 </body>
 </html>

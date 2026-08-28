@@ -33,6 +33,9 @@ var DEFAULT_CONFIG = {
     },
     thresholds: { facil: 400, medio: 1200 },   // <=facil, <=medio, resto complejo
     hoursPerPoint: 0.035,                       // estimación de esfuerzo
+    // Cuánto cuesta lo ya resuelto (repetido dentro del form o compartido con
+    // otra variante): 0.15 = 15% del esfuerzo normal.
+    reuseFactor: 0.15,
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -106,6 +109,7 @@ function analyzeSheet(ws, sheetName) {
         businessRules: 0,
         conditionalRules: 0,
         catalogRefs: 0,
+        fieldKeys: [],
         ruleColumns: [],
         isCatalog: false,
         catalogItems: 0,
@@ -160,7 +164,13 @@ function analyzeSheet(ws, sheetName) {
         var isField = fieldCols.length
             ? fieldCols.some(function (fc) { return String(row[fc] == null ? '' : row[fc]).trim(); })
             : false;
-        if (isField) out.fieldRows++;
+        if (isField) {
+            out.fieldRows++;
+            // Clave normalizada del campo, para cruzar reutilización entre
+            // formularios (el abreviado repite casi todo el completo).
+            var keyParts = fieldCols.map(function (fc) { return norm(row[fc]); }).filter(Boolean);
+            if (keyParts.length) out.fieldKeys.push(keyParts.join('|'));
+        }
 
         for (var r2 = 0; r2 < ruleCols.length; r2++) {
             var col = ruleCols[r2];
@@ -221,7 +231,7 @@ function analyzeExcel(bytes, fileName) {
     var wb = XLSX.read(bytes, { type: 'array' });
     var sheets = [];
     var businessRules = 0, conditionalRules = 0, catalogs = 0, catalogItems = 0, fieldRows = 0;
-    var catalogRefNames = {}, ignoredSheets = 0;
+    var catalogRefNames = {}, ignoredSheets = 0, allFieldKeys = [];
     for (var s = 0; s < wb.SheetNames.length; s++) {
         var nm = wb.SheetNames[s];
         var info;
@@ -234,6 +244,7 @@ function analyzeExcel(bytes, fileName) {
         fieldRows += info.fieldRows || 0;
         if (info.isCatalog) { catalogs++; catalogItems += info.catalogItems || 0; }
         if (info.catalogRefs) catalogRefNames[nm] = info.catalogRefs;
+        if (info.fieldKeys) allFieldKeys = allFieldKeys.concat(info.fieldKeys);
     }
     // Catálogos referenciados desde "Valor" ("Ver catálogo") que no son hoja.
     var refTotal = 0;
@@ -251,6 +262,7 @@ function analyzeExcel(bytes, fileName) {
         catalogs: catalogs,
         catalogItems: catalogItems,
         catalogRefs: refTotal,
+        fieldKeys: allFieldKeys,
     };
 }
 
@@ -269,6 +281,16 @@ async function analyzePdf(bytes, fileName) {
         var m = String(det.fields[j].name || '').match(/^(.*?)\[\d+\]$/);
         if (m) repeaterRoots[m[1]] = true;
     }
+    // Configuraciones únicas: los campos indexados de un mismo grupo
+    // (dep[0..4]) se configuran UNA vez, no cinco.
+    var configKeys = {};
+    var names = [];
+    for (var k = 0; k < det.fields.length; k++) {
+        var nm = String(det.fields[k].name || '');
+        names.push(nm);
+        configKeys[nm.replace(/\[\d+\]$/, '')] = true;
+    }
+
     return {
         file: fileName,
         type: 'pdf',
@@ -276,6 +298,8 @@ async function analyzePdf(bytes, fileName) {
         fieldCount: det.fields.length,
         byType: byType,
         repeaterGroups: Object.keys(repeaterRoots).length,
+        uniqueConfigs: Object.keys(configKeys).length,
+        fieldNames: names,
     };
 }
 
@@ -331,14 +355,134 @@ function analyzeJson(text, fileName) {
     return out;
 }
 
+// ─── Reutilización ───────────────────────────────────────────────────────────
+// Dos ejes de ahorro:
+//  A) Interno: campos indexados de un mismo grupo (dep[0..4]) se configuran una
+//     sola vez.
+//  B) Entre formularios: cuando el ZIP trae varias variantes (p.ej. Gastos
+//     Médicos completo y abreviado), lo que ya está resuelto en el más grande
+//     se reaprovecha en los demás.
+
+function intersectCount(setA, list) {
+    var n = 0;
+    var seen = {};
+    for (var i = 0; i < list.length; i++) {
+        var k = list[i];
+        if (seen[k]) continue;   // no contar dos veces el mismo nombre
+        seen[k] = true;
+        if (setA[k]) n++;
+    }
+    return n;
+}
+
+function computeReuse(pdfs, excels) {
+    var out = {
+        pdf: { total: 0, shared: 0, unique: 0, pairs: [], internalSaved: 0 },
+        excel: { total: 0, shared: 0, unique: 0, pairs: [] },
+        sharedFields: 0,
+        uniqueFields: 0,
+        sharedRules: 0,
+        uniqueRules: 0,
+        percent: 0,
+    };
+
+    // ── A) Ahorro interno por grupos repetidos ────────────────────────────────
+    for (var i = 0; i < pdfs.length; i++) {
+        out.pdf.internalSaved += (pdfs[i].fieldCount - pdfs[i].uniqueConfigs);
+    }
+
+    // ── B) Solapamiento entre PDFs ────────────────────────────────────────────
+    // El más grande es la base; cada siguiente sólo "cuesta" lo que aporta nuevo.
+    var bySize = pdfs.slice().sort(function (a, b) { return b.uniqueConfigs - a.uniqueConfigs; });
+    var known = {};
+    for (var p = 0; p < bySize.length; p++) {
+        var pdf = bySize[p];
+        var uniqNames = {};
+        for (var f = 0; f < pdf.fieldNames.length; f++) {
+            uniqNames[String(pdf.fieldNames[f]).replace(/\[\d+\]$/, '')] = true;
+        }
+        var list = Object.keys(uniqNames);
+        var shared = p === 0 ? 0 : intersectCount(known, list);
+        var own = list.length - shared;
+        out.pdf.total += list.length;
+        out.pdf.shared += shared;
+        out.pdf.unique += own;
+        if (p > 0) {
+            out.pdf.pairs.push({
+                file: pdf.file,
+                against: bySize[0].file,
+                shared: shared,
+                own: own,
+                percentShared: list.length ? Math.round(shared / list.length * 100) : 0,
+            });
+        }
+        for (var l = 0; l < list.length; l++) known[list[l]] = true;
+    }
+
+    // ── B2) Solapamiento entre Excels (reglas de negocio) ─────────────────────
+    var byRules = excels.slice().sort(function (a, b) {
+        return (b.fieldKeys || []).length - (a.fieldKeys || []).length;
+    });
+    var knownRules = {};
+    for (var e = 0; e < byRules.length; e++) {
+        var keys = byRules[e].fieldKeys || [];
+        var uniqKeys = {};
+        for (var kk = 0; kk < keys.length; kk++) uniqKeys[keys[kk]] = true;
+        var klist = Object.keys(uniqKeys);
+        var sharedR = e === 0 ? 0 : intersectCount(knownRules, klist);
+        var ownR = klist.length - sharedR;
+        out.excel.total += klist.length;
+        out.excel.shared += sharedR;
+        out.excel.unique += ownR;
+        if (e > 0) {
+            out.excel.pairs.push({
+                file: byRules[e].file,
+                against: byRules[0].file,
+                shared: sharedR,
+                own: ownR,
+                percentShared: klist.length ? Math.round(sharedR / klist.length * 100) : 0,
+            });
+        }
+        for (var m = 0; m < klist.length; m++) knownRules[klist[m]] = true;
+    }
+
+    out.sharedFields = out.pdf.shared;
+    out.uniqueFields = out.pdf.unique;
+    out.sharedRules = out.excel.shared;
+    out.uniqueRules = out.excel.unique;
+
+    var totalItems = out.pdf.total + out.excel.total;
+    var sharedItems = out.pdf.shared + out.excel.shared;
+    out.percent = totalItems ? Math.round(sharedItems / totalItems * 100) : 0;
+    return out;
+}
+
 // ─── Scoring ─────────────────────────────────────────────────────────────────
 
 function scoreProject(totals, config) {
     var w = config.weights;
+    var rf = config.reuseFactor != null ? config.reuseFactor : DEFAULT_CONFIG.reuseFactor;
+
+    // Lo repetido (dentro del form o entre variantes del mismo) ya está resuelto:
+    // cuesta sólo una fracción. Se descuenta de campos y de reglas.
+    var reuse = totals.reuse || null;
+    var repeatedFields = reuse ? (reuse.pdf.internalSaved + reuse.sharedFields) : 0;
+    var repeatedRules = reuse ? reuse.sharedRules : 0;
+    // Nunca descontar más de lo que hay.
+    repeatedFields = Math.min(repeatedFields, totals.pdfFields);
+    repeatedRules = Math.min(repeatedRules, totals.businessRules);
+
+    var newFields = totals.pdfFields - repeatedFields;
+    var newRules = totals.businessRules - repeatedRules;
+    var savedPoints = Math.round((repeatedFields * w.pdfField * (1 - rf) +
+        repeatedRules * w.businessRule * (1 - rf)) * 10) / 10;
+
     var breakdown = [
-        { label: 'Campos del PDF', count: totals.pdfFields, weight: w.pdfField, points: totals.pdfFields * w.pdfField },
+        { label: 'Campos del PDF (nuevos)', count: newFields, weight: w.pdfField, points: newFields * w.pdfField },
+        { label: 'Campos repetidos', count: repeatedFields, weight: Math.round(w.pdfField * rf * 100) / 100, points: repeatedFields * w.pdfField * rf },
         { label: 'Páginas', count: totals.pages, weight: w.pdfPage, points: totals.pages * w.pdfPage },
-        { label: 'Reglas de negocio', count: totals.businessRules, weight: w.businessRule, points: totals.businessRules * w.businessRule },
+        { label: 'Reglas de negocio (nuevas)', count: newRules, weight: w.businessRule, points: newRules * w.businessRule },
+        { label: 'Reglas repetidas', count: repeatedRules, weight: Math.round(w.businessRule * rf * 100) / 100, points: repeatedRules * w.businessRule * rf },
         { label: 'Visibilidad condicional', count: totals.conditionalRules, weight: w.conditionalRule, points: totals.conditionalRules * w.conditionalRule },
         { label: 'Bloques repetidos', count: totals.repeaters, weight: w.repeater, points: totals.repeaters * w.repeater },
         { label: 'Catálogos', count: totals.catalogs, weight: w.catalog, points: totals.catalogs * w.catalog },
@@ -365,6 +509,10 @@ function scoreProject(totals, config) {
         breakdown: breakdown,
         estimatedHours: { min: Math.round(hours * 0.8), max: Math.round(hours * 1.3) },
         thresholds: config.thresholds,
+        reuseFactor: rf,
+        savedPoints: savedPoints,
+        repeatedFields: repeatedFields,
+        repeatedRules: repeatedRules,
     };
 }
 
@@ -379,6 +527,8 @@ async function analyzeZip(zipBytes, configOverride) {
         weights: Object.assign({}, DEFAULT_CONFIG.weights, (configOverride && configOverride.weights) || {}),
         thresholds: Object.assign({}, DEFAULT_CONFIG.thresholds, (configOverride && configOverride.thresholds) || {}),
         hoursPerPoint: (configOverride && configOverride.hoursPerPoint) || DEFAULT_CONFIG.hoursPerPoint,
+        reuseFactor: (configOverride && configOverride.reuseFactor != null)
+            ? configOverride.reuseFactor : DEFAULT_CONFIG.reuseFactor,
     };
 
     var zip = await JSZip.loadAsync(zipBytes);
@@ -474,10 +624,16 @@ async function analyzeZip(zipBytes, configOverride) {
         totals.pdfFields = Math.max(totals.pdfFields, jsons[c].fields);
     }
 
+    // Reutilización: lo que se repite (y por lo tanto se hace una sola vez).
+    totals.reuse = computeReuse(pdfs, excels);
+    totals.uniqueConfigs = 0;
+    for (var u = 0; u < pdfs.length; u++) totals.uniqueConfigs += pdfs[u].uniqueConfigs;
+
     var score = scoreProject(totals, config);
 
     return {
         inventory: inventory,
+        reuse: totals.reuse,
         pdfs: pdfs,
         excels: excels,
         jsons: jsons,

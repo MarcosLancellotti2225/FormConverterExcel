@@ -3183,13 +3183,15 @@
             ['Bloques repetidos', t.repeaters],
             ['Catálogos', t.catalogs],
             ['Páginas', t.pages],
-            ['Archivos', t.files],
+            ['Reutilización', (t.reuse ? t.reuse.percent : 0) + '%'],
             ['Pestañas Excel', t.excelSheets],
         ];
         $('#quoterStats').innerHTML = stats.map(function(s) {
             return '<div class="sf-stat"><span class="sf-stat-label">' + escapeHtml(s[0]) +
                 '</span><span class="sf-stat-value">' + s[1] + '</span></div>';
         }).join('');
+
+        renderQuoteReuse(res);
 
         // Inventario
         $('#quoteInventoryBody').innerHTML = res.inventory.map(function(f) {
@@ -3236,6 +3238,35 @@
             '<tr><td colspan="3" style="color:var(--text-dim);">Sin PDFs ni JSONs</td></tr>';
     }
 
+    function renderQuoteReuse(res) {
+        var ru = res.reuse;
+        var pairs = (ru.pdf.pairs || []).concat(ru.excel.pairs || []);
+        var hasReuse = pairs.length || ru.pdf.internalSaved;
+        $('#quoterReusePanel').hidden = !hasReuse;
+        if (!hasReuse) return;
+
+        var stats = [
+            ['% ya resuelto', ru.percent + '%'],
+            ['Campos repetidos', res.score.repeatedFields],
+            ['Reglas repetidas', res.score.repeatedRules],
+            ['Puntos ahorrados', res.score.savedPoints],
+            ['Grupos [n] (interno)', ru.pdf.internalSaved],
+            ['Campos nuevos', ru.pdf.unique],
+        ];
+        $('#quoteReuseStats').innerHTML = stats.map(function(s) {
+            return '<div class="sf-stat"><span class="sf-stat-label">' + escapeHtml(s[0]) +
+                '</span><span class="sf-stat-value">' + s[1] + '</span></div>';
+        }).join('');
+
+        $('#quoteReuseBody').innerHTML = pairs.length ? pairs.map(function(p) {
+            return '<tr><td>' + escapeHtml(p.file) + '</td>' +
+                '<td style="color:var(--text-dim);">' + escapeHtml(p.against) + '</td>' +
+                '<td style="text-align:right;font-weight:600;color:var(--accent-green);">' + p.shared + '</td>' +
+                '<td style="text-align:right;">' + p.own + '</td>' +
+                '<td style="text-align:right;">' + p.percentShared + '%</td></tr>';
+        }).join('') : '<tr><td colspan="5" style="color:var(--text-dim);">Un solo formulario: el ahorro viene de los bloques repetidos internos</td></tr>';
+    }
+
     function renderQuoteScore(score) {
         var el = $('#quoteLevel');
         el.textContent = score.level;
@@ -3261,10 +3292,13 @@
                 medio: parseFloat($('#quoteThMedio').value) || 1200,
             },
             hoursPerPoint: parseFloat($('#quoteHpp').value) || 0.035,
+            reuseFactor: parseFloat($('#quoteReuse').value),
         };
+        if (isNaN(cfg.reuseFactor)) cfg.reuseFactor = 0.15;
         var score = InsPipelineBundle.requote(quoterState.result.totals, cfg);
         quoterState.result.score = score;
         renderQuoteScore(score);
+        renderQuoteReuse(quoterState.result);
     }
 
     function downloadQuoteJson() {
@@ -3277,6 +3311,15 @@
                 puntos: r.score.points,
                 horasEstimadas: r.score.estimatedHours,
                 umbrales: r.score.thresholds,
+            },
+            reutilizacion: {
+                porcentajeYaResuelto: r.reuse.percent,
+                camposRepetidos: r.score.repeatedFields,
+                reglasRepetidas: r.score.repeatedRules,
+                puntosAhorrados: r.score.savedPoints,
+                costoDeLoRepetido: r.score.reuseFactor,
+                gruposRepetidosInternos: r.reuse.pdf.internalSaved,
+                comparaciones: (r.reuse.pdf.pairs || []).concat(r.reuse.excel.pairs || []),
             },
             totales: r.totals,
             desglosePuntos: r.score.breakdown,

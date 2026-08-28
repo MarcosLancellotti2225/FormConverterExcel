@@ -895,6 +895,8 @@ function requote(totals, config) {
         weights: Object.assign({}, DEFAULT_CONFIG.weights, (config && config.weights) || {}),
         thresholds: Object.assign({}, DEFAULT_CONFIG.thresholds, (config && config.thresholds) || {}),
         hoursPerPoint: (config && config.hoursPerPoint) || DEFAULT_CONFIG.hoursPerPoint,
+        // != null: 0 es un valor válido (lo repetido no cuesta nada).
+        reuseFactor: (config && config.reuseFactor != null) ? config.reuseFactor : DEFAULT_CONFIG.reuseFactor,
     };
     return scoreProject(totals, merged);
 }
