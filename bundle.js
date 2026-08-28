@@ -99277,9 +99277,11 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           extraForm: 40
           // cada PDF extra (más de uno = más integración)
         },
-        // Calibrado con un caso real: Fidelidad (202 campos, 344 reglas, 25
-        // catálogos, 4 págs) = complejidad Media. Ajustable desde la UI.
-        thresholds: { baja: 500, media: 1800 },
+        // Calibrado con casos reales:
+        //   D0873 DSE (129 campos, 2 págs)                        = Baja
+        //   Fidelidad (202 campos, 344 reglas, 25 catálogos, 4 p.) = Media
+        // Ajustable desde la UI con el selector de complejidad real.
+        thresholds: { baja: 900, media: 1800 },
         // <=baja, <=media, resto alta
         hoursPerPoint: 0.035,
         // estimación de esfuerzo

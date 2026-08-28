@@ -3155,7 +3155,7 @@
         var rf = parseFloat($('#quoteReuse').value);
         return {
             thresholds: {
-                baja: parseFloat($('#quoteThFacil').value) || 500,
+                baja: parseFloat($('#quoteThFacil').value) || 900,
                 media: parseFloat($('#quoteThMedio').value) || 1800,
             },
             hoursPerPoint: parseFloat($('#quoteHpp').value) || 0.035,
