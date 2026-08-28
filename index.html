@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Form Tools</title>
-    <link rel="stylesheet" href="styles.css?v=58">
+    <link rel="stylesheet" href="styles.css?v=59">
     <link rel="stylesheet" href="src/pdf-converter-v2/ui/styles.css">
 </head>
 <body>
@@ -525,11 +525,21 @@
 
                 <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-top:0.75rem;">
                     <span class="hint">Umbrales:</span>
-                    <label class="hint">Fácil ≤ <input type="number" id="quoteThFacil" value="400" min="1" step="50" style="width:80px;"></label>
-                    <label class="hint">Medio ≤ <input type="number" id="quoteThMedio" value="1200" min="1" step="50" style="width:80px;"></label>
+                    <label class="hint">Fácil ≤ <input type="number" id="quoteThFacil" value="500" min="1" step="50" style="width:80px;"></label>
+                    <label class="hint">Medio ≤ <input type="number" id="quoteThMedio" value="1800" min="1" step="50" style="width:80px;"></label>
                     <label class="hint">Horas por punto <input type="number" id="quoteHpp" value="0.035" min="0.001" step="0.005" style="width:80px;"></label>
                     <label class="hint">Costo de lo repetido <input type="number" id="quoteReuse" value="0.15" min="0" max="1" step="0.05" style="width:70px;"></label>
                     <button id="btnRequote" class="secondary btn-sm">Recalcular</button>
+                </div>
+                <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;margin-top:0.6rem;padding-top:0.6rem;border-top:1px solid var(--border);">
+                    <span class="hint" style="margin:0;">¿No coincide con tu criterio? Este proyecto en realidad es:</span>
+                    <select id="quoteTargetLevel" style="width:110px;">
+                        <option value="Fácil">Fácil</option>
+                        <option value="Medio" selected>Medio</option>
+                        <option value="Complejo">Complejo</option>
+                    </select>
+                    <button id="btnCalibrate" class="secondary btn-sm">Calibrar umbrales</button>
+                    <span class="hint" id="calibrateMsg" style="margin:0;color:var(--accent-green);"></span>
                 </div>
             </section>
 
@@ -683,7 +693,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=58"></script>
-    <script src="app.js?v=58"></script>
+    <script src="bundle.js?v=59"></script>
+    <script src="app.js?v=59"></script>
 </body>
 </html>

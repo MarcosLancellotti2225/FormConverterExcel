@@ -99264,7 +99264,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           // cada campo AcroForm del PDF
           pdfPage: 2,
           // cada página de formulario
-          businessRule: 4,
+          businessRule: 2.5,
           // cada regla de negocio del Excel
           conditionalRule: 6,
           // visibilidad condicional (más cara)
@@ -99277,7 +99277,9 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           extraForm: 40
           // cada PDF extra (más de uno = más integración)
         },
-        thresholds: { facil: 400, medio: 1200 },
+        // Calibrado con un caso real: Fidelidad (202 campos, 344 reglas, 25
+        // catálogos, 4 págs) = Medio. Ajustable desde la UI con "Calibrar".
+        thresholds: { facil: 500, medio: 1800 },
         // <=facil, <=medio, resto complejo
         hoursPerPoint: 0.035,
         // estimación de esfuerzo
@@ -99285,6 +99287,27 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         // otra variante): 0.15 = 15% del esfuerzo normal.
         reuseFactor: 0.15
       };
+      function calibrateThresholds(points, targetLevel, current) {
+        var th = {
+          facil: current && current.facil || DEFAULT_CONFIG.thresholds.facil,
+          medio: current && current.medio || DEFAULT_CONFIG.thresholds.medio
+        };
+        var lvl = String(targetLevel || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+        var round = function(n) {
+          return Math.max(10, Math.round(n / 10) * 10);
+        };
+        if (lvl.indexOf("facil") === 0) {
+          th.facil = round(points * 1.3);
+          if (th.medio <= th.facil) th.medio = round(th.facil * 3);
+        } else if (lvl.indexOf("complej") === 0) {
+          th.medio = round(points * 0.8);
+          if (th.facil >= th.medio) th.facil = round(th.medio * 0.35);
+        } else {
+          th.facil = round(points * 0.55);
+          th.medio = round(points * 1.45);
+        }
+        return th;
+      }
       function norm(s) {
         return String(s == null ? "" : s).trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
       }
@@ -99800,7 +99823,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           config
         };
       }
-      module.exports = { analyzeZip, DEFAULT_CONFIG, analyzeExcel, analyzeJson, scoreProject };
+      module.exports = { analyzeZip, DEFAULT_CONFIG, analyzeExcel, analyzeJson, scoreProject, calibrateThresholds };
     }
   });
 
@@ -100571,6 +100594,19 @@ ${pagesHtml}</body>
         const bytes = await fileToUint8Array(zipFile);
         return analyzeZip(bytes, config || null);
       }
+      function calibrateQuote(totals, targetLevel, config) {
+        const { scoreProject, calibrateThresholds, DEFAULT_CONFIG } = require_quoter();
+        const base = {
+          weights: Object.assign({}, DEFAULT_CONFIG.weights, config && config.weights || {}),
+          thresholds: Object.assign({}, DEFAULT_CONFIG.thresholds, config && config.thresholds || {}),
+          hoursPerPoint: config && config.hoursPerPoint || DEFAULT_CONFIG.hoursPerPoint,
+          reuseFactor: config && config.reuseFactor != null ? config.reuseFactor : DEFAULT_CONFIG.reuseFactor
+        };
+        const current = scoreProject(totals, base);
+        const thresholds = calibrateThresholds(current.points, targetLevel, base.thresholds);
+        base.thresholds = thresholds;
+        return { thresholds, score: scoreProject(totals, base) };
+      }
       function requote(totals, config) {
         const { scoreProject, DEFAULT_CONFIG } = require_quoter();
         const merged = {
@@ -100736,9 +100772,9 @@ ${pagesHtml}</body>
         return new Uint8Array(savedBytes);
       }
       if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, calibrateQuote, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
       }
-      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
+      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, calibrateQuote, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
     }
   });
   return require_browser();

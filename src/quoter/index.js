@@ -24,19 +24,48 @@ var DEFAULT_CONFIG = {
     weights: {
         pdfField: 1,          // cada campo AcroForm del PDF
         pdfPage: 2,           // cada página de formulario
-        businessRule: 4,      // cada regla de negocio del Excel
+        businessRule: 2.5,    // cada regla de negocio del Excel
         conditionalRule: 6,   // visibilidad condicional (más cara)
         repeater: 10,         // bloques repetidos (dependientes/beneficiarios)
         catalogItem: 0.2,     // ítems de catálogo (listas)
         catalog: 5,           // cada catálogo distinto
         extraForm: 40,        // cada PDF extra (más de uno = más integración)
     },
-    thresholds: { facil: 400, medio: 1200 },   // <=facil, <=medio, resto complejo
+    // Calibrado con un caso real: Fidelidad (202 campos, 344 reglas, 25
+    // catálogos, 4 págs) = Medio. Ajustable desde la UI con "Calibrar".
+    thresholds: { facil: 500, medio: 1800 },   // <=facil, <=medio, resto complejo
     hoursPerPoint: 0.035,                       // estimación de esfuerzo
     // Cuánto cuesta lo ya resuelto (repetido dentro del form o compartido con
     // otra variante): 0.15 = 15% del esfuerzo normal.
     reuseFactor: 0.15,
 };
+
+/**
+ * Ajusta los umbrales para que un proyecto de `points` caiga en `targetLevel`.
+ * Sirve para calibrar con casos reales ("este me salió Medio") sin adivinar.
+ * Deja el caso centrado en su banda, no pegado al borde.
+ */
+function calibrateThresholds(points, targetLevel, current) {
+    var th = {
+        facil: (current && current.facil) || DEFAULT_CONFIG.thresholds.facil,
+        medio: (current && current.medio) || DEFAULT_CONFIG.thresholds.medio,
+    };
+    var lvl = String(targetLevel || '').toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '');
+    var round = function (n) { return Math.max(10, Math.round(n / 10) * 10); };
+
+    if (lvl.indexOf('facil') === 0) {
+        th.facil = round(points * 1.3);              // el caso queda holgado en Fácil
+        if (th.medio <= th.facil) th.medio = round(th.facil * 3);
+    } else if (lvl.indexOf('complej') === 0) {
+        th.medio = round(points * 0.8);              // el caso supera el corte de Medio
+        if (th.facil >= th.medio) th.facil = round(th.medio * 0.35);
+    } else {
+        th.facil = round(points * 0.55);             // Medio: centrado entre cortes
+        th.medio = round(points * 1.45);
+    }
+    return th;
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -645,4 +674,4 @@ async function analyzeZip(zipBytes, configOverride) {
     };
 }
 
-module.exports = { analyzeZip, DEFAULT_CONFIG, analyzeExcel, analyzeJson, scoreProject };
+module.exports = { analyzeZip, DEFAULT_CONFIG, analyzeExcel, analyzeJson, scoreProject, calibrateThresholds };
