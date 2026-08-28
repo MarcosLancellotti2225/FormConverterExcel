@@ -99278,33 +99278,41 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           // cada PDF extra (más de uno = más integración)
         },
         // Calibrado con un caso real: Fidelidad (202 campos, 344 reglas, 25
-        // catálogos, 4 págs) = Medio. Ajustable desde la UI con "Calibrar".
-        thresholds: { facil: 500, medio: 1800 },
-        // <=facil, <=medio, resto complejo
+        // catálogos, 4 págs) = complejidad Media. Ajustable desde la UI.
+        thresholds: { baja: 500, media: 1800 },
+        // <=baja, <=media, resto alta
         hoursPerPoint: 0.035,
         // estimación de esfuerzo
         // Cuánto cuesta lo ya resuelto (repetido dentro del form o compartido con
         // otra variante): 0.15 = 15% del esfuerzo normal.
         reuseFactor: 0.15
       };
-      function calibrateThresholds(points, targetLevel, current) {
-        var th = {
-          facil: current && current.facil || DEFAULT_CONFIG.thresholds.facil,
-          medio: current && current.medio || DEFAULT_CONFIG.thresholds.medio
+      function normalizeThresholds(t) {
+        if (!t) return null;
+        var baja = t.baja != null ? t.baja : t.facil;
+        var media = t.media != null ? t.media : t.medio;
+        if (baja == null && media == null) return null;
+        return {
+          baja: baja != null ? baja : DEFAULT_CONFIG.thresholds.baja,
+          media: media != null ? media : DEFAULT_CONFIG.thresholds.media
         };
+      }
+      function calibrateThresholds(points, targetLevel, current) {
+        var cur = normalizeThresholds(current) || DEFAULT_CONFIG.thresholds;
+        var th = { baja: cur.baja, media: cur.media };
         var lvl = String(targetLevel || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
         var round = function(n) {
           return Math.max(10, Math.round(n / 10) * 10);
         };
-        if (lvl.indexOf("facil") === 0) {
-          th.facil = round(points * 1.3);
-          if (th.medio <= th.facil) th.medio = round(th.facil * 3);
-        } else if (lvl.indexOf("complej") === 0) {
-          th.medio = round(points * 0.8);
-          if (th.facil >= th.medio) th.facil = round(th.medio * 0.35);
+        if (lvl.indexOf("baja") === 0 || lvl.indexOf("facil") === 0) {
+          th.baja = round(points * 1.3);
+          if (th.media <= th.baja) th.media = round(th.baja * 3);
+        } else if (lvl.indexOf("alta") === 0 || lvl.indexOf("complej") === 0) {
+          th.media = round(points * 0.8);
+          if (th.baja >= th.media) th.baja = round(th.media * 0.35);
         } else {
-          th.facil = round(points * 0.55);
-          th.medio = round(points * 1.45);
+          th.baja = round(points * 0.55);
+          th.media = round(points * 1.45);
         }
         return th;
       }
@@ -99694,15 +99702,16 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         }
         points = Math.round(points * 10) / 10;
         var level, levelKey;
-        if (points <= config.thresholds.facil) {
-          level = "F\xE1cil";
-          levelKey = "facil";
-        } else if (points <= config.thresholds.medio) {
-          level = "Medio";
-          levelKey = "medio";
+        var th = normalizeThresholds(config.thresholds) || DEFAULT_CONFIG.thresholds;
+        if (points <= th.baja) {
+          level = "Baja";
+          levelKey = "baja";
+        } else if (points <= th.media) {
+          level = "Media";
+          levelKey = "media";
         } else {
-          level = "Complejo";
-          levelKey = "complejo";
+          level = "Alta";
+          levelKey = "alta";
         }
         var hours = points * config.hoursPerPoint;
         return {
@@ -99711,7 +99720,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           levelKey,
           breakdown,
           estimatedHours: { min: Math.round(hours * 0.8), max: Math.round(hours * 1.3) },
-          thresholds: config.thresholds,
+          thresholds: th,
           reuseFactor: rf,
           savedPoints,
           repeatedFields,

@@ -7,7 +7,7 @@
  * negocio con múltiples pestañas, JSONs de definición) y devuelve:
  *   - el inventario completo del ZIP (qué hay adentro),
  *   - los números que importan: campos del PDF y reglas de negocio del Excel,
- *   - un score ponderado y una clasificación: Fácil / Medio / Complejo.
+ *   - un score ponderado y la complejidad: Baja / Media / Alta.
  *
  * Todo client-side. Cada archivo se analiza con try/catch: uno roto no tumba
  * el análisis completo (queda listado con su error).
@@ -32,8 +32,8 @@ var DEFAULT_CONFIG = {
         extraForm: 40,        // cada PDF extra (más de uno = más integración)
     },
     // Calibrado con un caso real: Fidelidad (202 campos, 344 reglas, 25
-    // catálogos, 4 págs) = Medio. Ajustable desde la UI con "Calibrar".
-    thresholds: { facil: 500, medio: 1800 },   // <=facil, <=medio, resto complejo
+    // catálogos, 4 págs) = complejidad Media. Ajustable desde la UI.
+    thresholds: { baja: 500, media: 1800 },   // <=baja, <=media, resto alta
     hoursPerPoint: 0.035,                       // estimación de esfuerzo
     // Cuánto cuesta lo ya resuelto (repetido dentro del form o compartido con
     // otra variante): 0.15 = 15% del esfuerzo normal.
@@ -41,28 +41,42 @@ var DEFAULT_CONFIG = {
 };
 
 /**
- * Ajusta los umbrales para que un proyecto de `points` caiga en `targetLevel`.
- * Sirve para calibrar con casos reales ("este me salió Medio") sin adivinar.
- * Deja el caso centrado en su banda, no pegado al borde.
+ * Normaliza los umbrales aceptando el nombrado viejo (facil/medio) además del
+ * actual (baja/media), para no romper configuraciones ya guardadas.
+ */
+function normalizeThresholds(t) {
+    if (!t) return null;
+    var baja = t.baja != null ? t.baja : t.facil;
+    var media = t.media != null ? t.media : t.medio;
+    if (baja == null && media == null) return null;
+    return {
+        baja: baja != null ? baja : DEFAULT_CONFIG.thresholds.baja,
+        media: media != null ? media : DEFAULT_CONFIG.thresholds.media,
+    };
+}
+
+/**
+ * Ajusta los umbrales para que un proyecto de `points` caiga en `targetLevel`
+ * (baja / media / alta). Sirve para calibrar con casos reales ("este me salió
+ * media") sin adivinar. Deja el caso centrado en su banda, no pegado al borde.
  */
 function calibrateThresholds(points, targetLevel, current) {
-    var th = {
-        facil: (current && current.facil) || DEFAULT_CONFIG.thresholds.facil,
-        medio: (current && current.medio) || DEFAULT_CONFIG.thresholds.medio,
-    };
+    var cur = normalizeThresholds(current) || DEFAULT_CONFIG.thresholds;
+    var th = { baja: cur.baja, media: cur.media };
     var lvl = String(targetLevel || '').toLowerCase()
         .normalize('NFD').replace(/[̀-ͯ]/g, '');
     var round = function (n) { return Math.max(10, Math.round(n / 10) * 10); };
 
-    if (lvl.indexOf('facil') === 0) {
-        th.facil = round(points * 1.3);              // el caso queda holgado en Fácil
-        if (th.medio <= th.facil) th.medio = round(th.facil * 3);
-    } else if (lvl.indexOf('complej') === 0) {
-        th.medio = round(points * 0.8);              // el caso supera el corte de Medio
-        if (th.facil >= th.medio) th.facil = round(th.medio * 0.35);
+    // Se aceptan también los nombres viejos (fácil / complejo).
+    if (lvl.indexOf('baja') === 0 || lvl.indexOf('facil') === 0) {
+        th.baja = round(points * 1.3);               // el caso queda holgado en Baja
+        if (th.media <= th.baja) th.media = round(th.baja * 3);
+    } else if (lvl.indexOf('alta') === 0 || lvl.indexOf('complej') === 0) {
+        th.media = round(points * 0.8);              // el caso supera el corte de Media
+        if (th.baja >= th.media) th.baja = round(th.media * 0.35);
     } else {
-        th.facil = round(points * 0.55);             // Medio: centrado entre cortes
-        th.medio = round(points * 1.45);
+        th.baja = round(points * 0.55);              // Media: centrado entre cortes
+        th.media = round(points * 1.45);
     }
     return th;
 }
@@ -526,9 +540,10 @@ function scoreProject(totals, config) {
     points = Math.round(points * 10) / 10;
 
     var level, levelKey;
-    if (points <= config.thresholds.facil) { level = 'Fácil'; levelKey = 'facil'; }
-    else if (points <= config.thresholds.medio) { level = 'Medio'; levelKey = 'medio'; }
-    else { level = 'Complejo'; levelKey = 'complejo'; }
+    var th = normalizeThresholds(config.thresholds) || DEFAULT_CONFIG.thresholds;
+    if (points <= th.baja) { level = 'Baja'; levelKey = 'baja'; }
+    else if (points <= th.media) { level = 'Media'; levelKey = 'media'; }
+    else { level = 'Alta'; levelKey = 'alta'; }
 
     var hours = points * config.hoursPerPoint;
     return {
@@ -537,7 +552,7 @@ function scoreProject(totals, config) {
         levelKey: levelKey,
         breakdown: breakdown,
         estimatedHours: { min: Math.round(hours * 0.8), max: Math.round(hours * 1.3) },
-        thresholds: config.thresholds,
+        thresholds: th,
         reuseFactor: rf,
         savedPoints: savedPoints,
         repeatedFields: repeatedFields,

@@ -3155,8 +3155,8 @@
         var rf = parseFloat($('#quoteReuse').value);
         return {
             thresholds: {
-                facil: parseFloat($('#quoteThFacil').value) || 500,
-                medio: parseFloat($('#quoteThMedio').value) || 1800,
+                baja: parseFloat($('#quoteThFacil').value) || 500,
+                media: parseFloat($('#quoteThMedio').value) || 1800,
             },
             hoursPerPoint: parseFloat($('#quoteHpp').value) || 0.035,
             reuseFactor: isNaN(rf) ? 0.15 : rf,
@@ -3173,8 +3173,11 @@
             if (!raw) return;
             var cfg = JSON.parse(raw);
             if (cfg.thresholds) {
-                $('#quoteThFacil').value = cfg.thresholds.facil;
-                $('#quoteThMedio').value = cfg.thresholds.medio;
+                // Se acepta el nombrado viejo (facil/medio) de configs guardadas.
+                var tb = cfg.thresholds.baja != null ? cfg.thresholds.baja : cfg.thresholds.facil;
+                var tm = cfg.thresholds.media != null ? cfg.thresholds.media : cfg.thresholds.medio;
+                if (tb != null) $('#quoteThFacil').value = tb;
+                if (tm != null) $('#quoteThMedio').value = tm;
             }
             if (cfg.hoursPerPoint) $('#quoteHpp').value = cfg.hoursPerPoint;
             if (cfg.reuseFactor != null) $('#quoteReuse').value = cfg.reuseFactor;
@@ -3188,15 +3191,15 @@
         var target = $('#quoteTargetLevel').value;
         var cfg = currentQuoteConfig();
         var res = InsPipelineBundle.calibrateQuote(quoterState.result.totals, target, cfg);
-        $('#quoteThFacil').value = res.thresholds.facil;
-        $('#quoteThMedio').value = res.thresholds.medio;
+        $('#quoteThFacil').value = res.thresholds.baja;
+        $('#quoteThMedio').value = res.thresholds.media;
         cfg.thresholds = res.thresholds;
         saveQuoteConfig(cfg);
         quoterState.result.score = res.score;
         renderQuoteScore(res.score);
         renderQuoteReuse(quoterState.result);
-        $('#calibrateMsg').textContent = '✓ Calibrado con este caso: Fácil ≤ ' +
-            res.thresholds.facil + ', Medio ≤ ' + res.thresholds.medio + ' (guardado)';
+        $('#calibrateMsg').textContent = '✓ Calibrado con este caso: Baja ≤ ' +
+            res.thresholds.baja + ', Media ≤ ' + res.thresholds.media + ' (guardado)';
     }
 
     async function runQuote() {
@@ -3328,8 +3331,8 @@
         el.className = 'quote-level ' + score.levelKey;
         $('#quotePoints').textContent = score.points;
         $('#quoteHours').textContent = 'Estimación: ' + score.estimatedHours.min + '–' +
-            score.estimatedHours.max + ' horas · Fácil ≤ ' + score.thresholds.facil +
-            ' · Medio ≤ ' + score.thresholds.medio;
+            score.estimatedHours.max + ' horas · Baja ≤ ' + score.thresholds.baja +
+            ' · Media ≤ ' + score.thresholds.media;
         $('#quoteBreakdownBody').innerHTML = score.breakdown.map(function(b) {
             var dim = b.count ? '' : ' style="color:var(--text-dim);"';
             return '<tr' + dim + '><td>' + escapeHtml(b.label) + '</td>' +
@@ -3356,7 +3359,7 @@
         var report = {
             archivo: quoterState.zip ? quoterState.zip.name : null,
             veredicto: {
-                nivel: r.score.level,
+                complejidad: r.score.level,
                 puntos: r.score.points,
                 horasEstimadas: r.score.estimatedHours,
                 umbrales: r.score.thresholds,

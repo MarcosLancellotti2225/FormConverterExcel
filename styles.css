@@ -1822,9 +1822,9 @@ footer {
     padding: 0.35rem 1.1rem; border-radius: 10px;
     background: var(--bg-panel); border: 2px solid var(--border);
 }
-.quote-level.facil    { color: var(--accent-green); border-color: var(--accent-green); }
-.quote-level.medio    { color: var(--accent-amber); border-color: var(--accent-amber); }
-.quote-level.complejo { color: var(--accent-red);   border-color: var(--accent-red); }
+.quote-level.baja  { color: var(--accent-green); border-color: var(--accent-green); }
+.quote-level.media { color: var(--accent-amber); border-color: var(--accent-amber); }
+.quote-level.alta  { color: var(--accent-red);   border-color: var(--accent-red); }
 .quote-meta { font-size: 0.95rem; }
 .quote-meta #quotePoints { font-weight: 700; color: var(--text); }
 .q-tag {
