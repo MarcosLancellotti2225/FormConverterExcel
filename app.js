@@ -19,6 +19,7 @@
         initCanonicalFlow();
         initMetadataFlow();
         initQuoterFlow();
+        initJsonMapFlow();
 
         selectMode(null);
     }
@@ -47,6 +48,7 @@
         $('#canonicalFlow').hidden = mode !== 'canonical-matrix';
         $('#metadataFlow').hidden = mode !== 'metadata-pdf';
         $('#quoterFlow').hidden = mode !== 'quoter';
+        $('#jsonMapFlow').hidden = mode !== 'json-map';
         $('#btnBackToHome').hidden = !mode;
         var main = document.querySelector('main');
         if (mode === 'convert-pdf' || mode === 'detect-fields' || mode === 'signframe' || mode === 'canonical-matrix') {
@@ -3130,6 +3132,163 @@
         var blob = new Blob([canonState.result.xlsxBytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         var base = canonState.mapping ? canonState.mapping.name.replace(/\.(xlsx|xls)$/i, '') : 'matriz';
         InsPipelineBundle.downloadBlob(blob, base + '_canonica.xlsx');
+    }
+
+    // ==================== MAPA JSON FLOW ====================
+
+    var jmState = { file: null, result: null, tab: 'output' };
+
+    function initJsonMapFlow() {
+        $('#jmJsonInput').addEventListener('change', function(e) {
+            jmState.file = e.target.files[0] || null;
+            updateSfFileStatus('jmJsonStatus', jmState.file);
+            if (jmState.file) runJsonMap();
+        });
+        $$('.jm-tab').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                $$('.jm-tab').forEach(function(b) { b.classList.remove('active'); });
+                btn.classList.add('active');
+                jmState.tab = btn.dataset.tab;
+                renderJmTree();
+            });
+        });
+        $('#btnJmDownload').addEventListener('click', downloadJmTree);
+        $('#btnJmDownloadAll').addEventListener('click', downloadJmReport);
+        $('#jmFilter').addEventListener('input', renderJmPaths);
+    }
+
+    async function runJsonMap() {
+        var statusEl = $('#jmStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Recorriendo las rutas del form-definition...';
+        try {
+            var res = await InsPipelineBundle.runJsonMap({ jsonFile: jmState.file });
+            jmState.result = res;
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ ' + res.meta.fields + ' campos · ' + res.stats.outputPaths +
+                ' rutas de salida · ' + res.stats.inputPaths + ' de entrada' +
+                (res.stats.critical ? ' · ⚠ ' + res.stats.critical + ' problema(s) crítico(s)' : '');
+            renderJsonMap(res);
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
+    }
+
+    function renderJsonMap(res) {
+        $('#jmResultPanel').hidden = false;
+        $('#jmTreePanel').hidden = false;
+        $('#jmPathsPanel').hidden = false;
+        $('#jmIssuesPanel').hidden = !res.issues.length;
+
+        var stats = [
+            ['Campos', res.meta.fields],
+            ['Secciones', res.meta.sections],
+            ['Rutas de salida', res.stats.outputPaths],
+            ['Rutas de entrada', res.stats.inputPaths],
+            ['Repeaters', res.stats.repeaters],
+            ['Excluidos del JSON', res.stats.excluded],
+            ['Sin ruta', res.stats.withoutOutput],
+            ['Críticos', res.stats.critical],
+        ];
+        $('#jmStats').innerHTML = stats.map(function(s) {
+            return '<div class="sf-stat"><span class="sf-stat-label">' + escapeHtml(s[0]) +
+                '</span><span class="sf-stat-value">' + s[1] + '</span></div>';
+        }).join('');
+
+        renderJmTree();
+        renderJmPaths();
+
+        $('#jmIssuesBody').innerHTML = res.issues.map(function(i) {
+            return '<tr>' +
+                '<td><span class="sev ' + i.severity + '">' + i.severity + '</span></td>' +
+                '<td style="font-family:monospace;font-size:0.72rem;">' + escapeHtml(i.path || '—') + '</td>' +
+                '<td>' + escapeHtml(i.detail) + '</td>' +
+                '<td style="font-family:monospace;font-size:0.7rem;color:var(--text-dim);">' +
+                    escapeHtml((i.fields || []).slice(0, 4).join(', ')) +
+                    ((i.fields || []).length > 4 ? ' +' + (i.fields.length - 4) : '') + '</td>' +
+                '</tr>';
+        }).join('');
+    }
+
+    // Colorea el JSON dibujado: claves, placeholders <tipo> y valores concretos.
+    function highlightJson(text) {
+        return escapeHtml(text)
+            .replace(/&quot;(&lt;[^&]*?&gt;)&quot;/g, '"<span class="jm-ph">$1</span>"')
+            .replace(/^(\s*)&quot;([^&]+?)&quot;:/gm, '$1"<span class="jm-key">$2</span>":');
+    }
+
+    function renderJmTree() {
+        if (!jmState.result) return;
+        var isOut = jmState.tab === 'output';
+        var tree = isOut ? jmState.result.output.tree : jmState.result.input.tree;
+        var count = isOut ? jmState.result.stats.outputPaths : jmState.result.stats.inputPaths;
+        $('#jmTreeHint').textContent = isOut
+            ? 'Lo que el formulario ENVÍA al completarse — ' + count + ' rutas. Cada hoja muestra el tipo del campo o los valores posibles.'
+            : 'Lo que el formulario CONSUME para prellenarse — ' + count + ' rutas (prefillKey + prefillMappings).';
+        $('#jmTree').innerHTML = highlightJson(JSON.stringify(tree, null, 2));
+    }
+
+    function renderJmPaths() {
+        if (!jmState.result) return;
+        var q = ($('#jmFilter').value || '').toLowerCase().trim();
+        var rows = [];
+        jmState.result.output.paths.forEach(function(p) { rows.push({ dir: 'out', p: p }); });
+        jmState.result.input.paths.forEach(function(p) { rows.push({ dir: 'in', p: p }); });
+        if (q) {
+            rows = rows.filter(function(r) {
+                if (r.p.path.toLowerCase().indexOf(q) !== -1) return true;
+                return r.p.fields.some(function(f) {
+                    return String(f.id || '').toLowerCase().indexOf(q) !== -1 ||
+                           String(f.label || '').toLowerCase().indexOf(q) !== -1;
+                });
+            });
+        }
+        var shown = rows.slice(0, 400);
+        $('#jmPathsBody').innerHTML = shown.map(function(r) {
+            var ids = r.p.fields.map(function(f) { return f.id; });
+            return '<tr>' +
+                '<td><span class="jm-dir ' + r.dir + '">' + (r.dir === 'out' ? 'salida' : 'entrada') + '</span></td>' +
+                '<td style="font-family:monospace;font-size:0.72rem;">' + escapeHtml(r.p.path) + '</td>' +
+                '<td style="font-family:monospace;font-size:0.7rem;color:var(--text-muted);">' +
+                    escapeHtml(ids.slice(0, 3).join(', ')) + (ids.length > 3 ? ' +' + (ids.length - 3) : '') + '</td>' +
+                '</tr>';
+        }).join('') + (rows.length > shown.length
+            ? '<tr><td colspan="3" style="color:var(--text-dim);">… ' + (rows.length - shown.length) + ' rutas más (filtrá para verlas)</td></tr>'
+            : '');
+    }
+
+    function downloadJmTree() {
+        if (!jmState.result) return;
+        var isOut = jmState.tab === 'output';
+        var tree = isOut ? jmState.result.output.tree : jmState.result.input.tree;
+        var base = jmState.file ? jmState.file.name.replace(/\.json$/i, '') : 'formdef';
+        var blob = new Blob([JSON.stringify(tree, null, 2)], { type: 'application/json;charset=utf-8' });
+        InsPipelineBundle.downloadBlob(blob, base + (isOut ? '_salida' : '_entrada') + '.json');
+    }
+
+    function downloadJmReport() {
+        if (!jmState.result) return;
+        var r = jmState.result;
+        var report = {
+            archivo: jmState.file ? jmState.file.name : null,
+            meta: r.meta,
+            estadisticas: r.stats,
+            jsonDeSalida: r.output.tree,
+            jsonDeEntrada: r.input.tree,
+            rutasDeSalida: r.output.paths.map(function(p) {
+                return { ruta: p.path, campos: p.fields.map(function(f) { return f.id; }), valores: p.values };
+            }),
+            rutasDeEntrada: r.input.paths.map(function(p) {
+                return { ruta: p.path, campos: p.fields.map(function(f) { return f.id; }), condiciones: p.conditions };
+            }),
+            repeaters: r.repeaters,
+            problemas: r.issues,
+        };
+        var base = jmState.file ? jmState.file.name.replace(/\.json$/i, '') : 'formdef';
+        var blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json;charset=utf-8' });
+        InsPipelineBundle.downloadBlob(blob, base + '_mapa.json');
     }
 
     // ==================== COTIZADOR FLOW ====================

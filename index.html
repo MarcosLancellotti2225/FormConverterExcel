@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Form Tools</title>
-    <link rel="stylesheet" href="styles.css?v=61">
+    <link rel="stylesheet" href="styles.css?v=62">
     <link rel="stylesheet" href="src/pdf-converter-v2/ui/styles.css">
 </head>
 <body>
@@ -94,6 +94,18 @@
                     <li>Cuenta campos del PDF y reglas de negocio</li>
                     <li>Complejidad Baja/Media/Alta + horas</li>
                     <li>Informe descargable en JSON</li>
+                </ul>
+                <button class="primary">Empezar</button>
+            </div>
+            <div class="mode-card" data-mode="json-map">
+                <div class="mode-icon">⇄</div>
+                <h2>Mapa JSON</h2>
+                <p>Cargá un form-definition y te dibuja el JSON de salida que genera y el de entrada que consume, recorriendo todas las rutas.</p>
+                <ul class="mode-features">
+                    <li>Estructura de salida y de entrada</li>
+                    <li>Qué campo escribe en cada ruta</li>
+                    <li>Detecta rutas que borran el subárbol</li>
+                    <li>Descargás ambos esqueletos</li>
                 </ul>
                 <button class="primary">Empezar</button>
             </div>
@@ -485,6 +497,66 @@
             </section>
         </div>
 
+        <!-- ============ MAPA JSON FLOW ============ -->
+        <div id="jsonMapFlow" hidden>
+            <section class="panel">
+                <h2>1. Cargar form-definition</h2>
+                <p class="hint">El JSON de definición del formulario. Se recorren todas las secciones, subsecciones y repeaters para reconstruir las rutas de entrada y salida.</p>
+                <div class="inputs-grid">
+                    <label class="file-slot required" data-slot="jm-json">
+                        <span class="label">form-definition JSON</span>
+                        <span class="desc">salidaJSON · prefillKey · repeaterConfig</span>
+                        <input type="file" accept=".json" id="jmJsonInput">
+                        <span class="file-status" id="jmJsonStatus"></span>
+                    </label>
+                </div>
+                <div id="jmStatus" class="status"></div>
+            </section>
+
+            <section class="panel" id="jmResultPanel" hidden>
+                <div id="jmStats" class="sf-stats"></div>
+            </section>
+
+            <section class="panel" id="jmTreePanel" hidden>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+                    <div class="jm-tabs">
+                        <button class="jm-tab active" data-tab="output">JSON de salida</button>
+                        <button class="jm-tab" data-tab="input">JSON de entrada (prefill)</button>
+                    </div>
+                    <div class="actions" style="margin:0;">
+                        <button id="btnJmDownload" class="secondary btn-sm">Descargar el que estoy viendo</button>
+                        <button id="btnJmDownloadAll" class="secondary btn-sm">Descargar informe completo</button>
+                    </div>
+                </div>
+                <p class="hint" id="jmTreeHint" style="margin-top:0.6rem;"></p>
+                <pre class="jm-code" id="jmTree"></pre>
+            </section>
+
+            <section class="panel" id="jmIssuesPanel" hidden>
+                <h2>Problemas del contrato</h2>
+                <p class="hint">Rutas que se pisan entre sí o campos que no llegan al JSON.</p>
+                <div class="match-table-wrap" style="max-height:320px;">
+                    <table class="match-table">
+                        <thead><tr><th>Severidad</th><th>Ruta</th><th>Detalle</th><th>Campos</th></tr></thead>
+                        <tbody id="jmIssuesBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="panel" id="jmPathsPanel" hidden>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.6rem;">
+                    <h2 style="margin:0;">Todas las rutas</h2>
+                    <input type="text" id="jmFilter" placeholder="Filtrar por ruta o campo…" style="width:280px;">
+                </div>
+                <div class="match-table-wrap" style="max-height:420px;">
+                    <table class="match-table">
+                        <thead><tr><th>Dirección</th><th>Ruta</th><th>Campos que la escriben</th></tr></thead>
+                        <tbody id="jmPathsBody"></tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
         <!-- ============ COTIZADOR FLOW ============ -->
         <div id="quoterFlow" hidden>
             <section class="panel">
@@ -693,7 +765,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=61"></script>
-    <script src="app.js?v=61"></script>
+    <script src="bundle.js?v=62"></script>
+    <script src="app.js?v=62"></script>
 </body>
 </html>
