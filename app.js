@@ -3136,7 +3136,7 @@
 
     // ==================== MAPA JSON FLOW ====================
 
-    var jmState = { file: null, result: null, tab: 'output' };
+    var jmState = { file: null, result: null, tab: 'output', sample: null, comparison: null };
 
     function initJsonMapFlow() {
         $('#jmJsonInput').addEventListener('change', function(e) {
@@ -3144,6 +3144,15 @@
             updateSfFileStatus('jmJsonStatus', jmState.file);
             if (jmState.file) runJsonMap();
         });
+        $('#jmSampleInput').addEventListener('change', function(e) {
+            jmState.sample = e.target.files[0] || null;
+            updateSfFileStatus('jmSampleStatus', jmState.sample);
+            $('#jmCompareOpts').hidden = !jmState.sample;
+            if (jmState.sample) runJsonCompare();
+        });
+        $('#jmCompareDir').addEventListener('change', runJsonCompare);
+        $('#jmCompareFilter').addEventListener('change', renderJmCompare);
+        $('#btnJmCompareDownload').addEventListener('click', downloadJmCompare);
         $$('.jm-tab').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 $$('.jm-tab').forEach(function(b) { b.classList.remove('active'); });
@@ -3169,6 +3178,8 @@
                 ' rutas de salida · ' + res.stats.inputPaths + ' de entrada' +
                 (res.stats.critical ? ' · ⚠ ' + res.stats.critical + ' problema(s) crítico(s)' : '');
             renderJsonMap(res);
+            // Si ya había un ejemplo cargado, se recompara con el form-def nuevo.
+            if (jmState.sample) runJsonCompare();
         } catch (err) {
             console.error(err);
             statusEl.className = 'status active error';
@@ -3266,6 +3277,86 @@
         var base = jmState.file ? jmState.file.name.replace(/\.json$/i, '') : 'formdef';
         var blob = new Blob([JSON.stringify(tree, null, 2)], { type: 'application/json;charset=utf-8' });
         InsPipelineBundle.downloadBlob(blob, base + (isOut ? '_salida' : '_entrada') + '.json');
+    }
+
+    async function runJsonCompare() {
+        if (!jmState.result || !jmState.sample) return;
+        var statusEl = $('#jmStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Comparando con el ejemplo del cliente...';
+        try {
+            var cmp = await InsPipelineBundle.runJsonCompare({
+                analysis: jmState.result,
+                sampleFile: jmState.sample,
+                direction: $('#jmCompareDir').value,
+            });
+            jmState.comparison = cmp;
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ Cobertura del contrato: ' + cmp.coverage + '% · ' +
+                cmp.counts.falta + ' faltan · ' + cmp.counts.forma + ' con forma distinta · ' +
+                cmp.counts.sobra + ' sobran';
+            renderJmCompare();
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
+    }
+
+    function renderJmCompare() {
+        var cmp = jmState.comparison;
+        if (!cmp) return;
+        $('#jmComparePanel').hidden = false;
+
+        var stats = [
+            ['Cobertura', cmp.coverage + '%'],
+            ['Coinciden', cmp.counts.ok],
+            ['Faltan', cmp.counts.falta],
+            ['Forma distinta', cmp.counts.forma],
+            ['Sobran', cmp.counts.sobra],
+            ['Rutas del cliente', cmp.clientPaths],
+        ];
+        $('#jmCompareStats').innerHTML = stats.map(function(s) {
+            return '<div class="sf-stat"><span class="sf-stat-label">' + escapeHtml(s[0]) +
+                '</span><span class="sf-stat-value">' + s[1] + '</span></div>';
+        }).join('');
+
+        var mode = $('#jmCompareFilter').value;
+        var rows = cmp.rows.filter(function(r) {
+            if (mode === 'all') return true;
+            if (mode === 'problem') return r.status !== 'ok';
+            return r.status === mode;
+        });
+
+        var label = { ok: 'coincide', falta: 'falta', forma: 'forma', sobra: 'sobra' };
+        var sev = { ok: 'info', falta: 'critical', forma: 'critical', sobra: 'warning' };
+        $('#jmCompareBody').innerHTML = rows.slice(0, 500).map(function(r) {
+            var extra = r.suggestion
+                ? '<div style="color:var(--accent-teal);font-family:monospace;font-size:0.7rem;margin-top:2px;">→ el form la escribe en: ' + escapeHtml(r.suggestion) + '</div>'
+                : '';
+            var ej = (r.sample !== null && r.sample !== undefined)
+                ? '<div style="color:var(--text-dim);font-size:0.7rem;margin-top:2px;">ej: ' + escapeHtml(JSON.stringify(r.sample).slice(0, 60)) + '</div>'
+                : '';
+            return '<tr>' +
+                '<td><span class="sev ' + sev[r.status] + '">' + label[r.status] + '</span></td>' +
+                '<td style="font-family:monospace;font-size:0.72rem;">' + escapeHtml(r.path) + ej + '</td>' +
+                '<td>' + escapeHtml(r.detail) + extra + '</td>' +
+                '</tr>';
+        }).join('') || '<tr><td colspan="3" style="color:var(--text-dim);">Nada en esta categoría</td></tr>';
+    }
+
+    function downloadJmCompare() {
+        if (!jmState.comparison) return;
+        var base = jmState.file ? jmState.file.name.replace(/\.json$/i, '') : 'formdef';
+        var blob = new Blob([JSON.stringify({
+            formDefinition: jmState.file ? jmState.file.name : null,
+            ejemploCliente: jmState.sample ? jmState.sample.name : null,
+            comparadoContra: jmState.comparison.direction,
+            cobertura: jmState.comparison.coverage,
+            resumen: jmState.comparison.counts,
+            filas: jmState.comparison.rows,
+        }, null, 2)], { type: 'application/json;charset=utf-8' });
+        InsPipelineBundle.downloadBlob(blob, base + '_comparacion.json');
     }
 
     function downloadJmReport() {

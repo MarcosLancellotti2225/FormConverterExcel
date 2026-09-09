@@ -372,4 +372,150 @@ function analyzeFormDef(json) {
     };
 }
 
-module.exports = { analyzeFormDef, parsePath, splitPrefillKey };
+// ─── Comparación contra un JSON de ejemplo del cliente ───────────────────────
+
+// Los índices concretos se normalizan (`personas[0]` y `personas[3]` → `personas[]`)
+// porque lo que se compara es la FORMA del contrato, no cuántos items trajo el
+// ejemplo.
+function normalizePath(p) {
+    return String(p).replace(/\[\d*\]/g, '[]');
+}
+
+/**
+ * Aplana un JSON real a un mapa normalizedPath → { kind, samples[] }.
+ * kind: 'array' | 'object' | 'leaf'
+ */
+function flattenJson(node, prefix, acc) {
+    acc = acc || {};
+    if (Array.isArray(node)) {
+        if (prefix) touch(acc, prefix, 'array', undefined);
+        for (var i = 0; i < node.length; i++) {
+            flattenJson(node[i], prefix + '[]', acc);
+        }
+    } else if (node && typeof node === 'object') {
+        if (prefix) touch(acc, prefix, 'object', undefined);
+        for (var k in node) {
+            if (!Object.prototype.hasOwnProperty.call(node, k)) continue;
+            flattenJson(node[k], prefix ? prefix + '.' + k : k, acc);
+        }
+    } else {
+        touch(acc, prefix, 'leaf', node);
+    }
+    return acc;
+}
+
+function touch(acc, path, kind, value) {
+    if (!path) return;
+    var p = normalizePath(path);
+    if (!acc[p]) acc[p] = { path: p, kind: kind, samples: [] };
+    // Un nodo visto como hoja y como contenedor: gana el contenedor.
+    if (acc[p].kind === 'leaf' && kind !== 'leaf') acc[p].kind = kind;
+    if (value !== undefined && acc[p].samples.length < 3) acc[p].samples.push(value);
+}
+
+/**
+ * Compara la estructura que genera el form-def contra un JSON de ejemplo real.
+ * @param {Object} analysis - salida de analyzeFormDef
+ * @param {Object} sample   - JSON de ejemplo del cliente
+ * @param {'output'|'input'} direction
+ */
+function compareWithSample(analysis, sample, direction) {
+    var dir = direction === 'input' ? 'input' : 'output';
+    var generatedTree = analysis[dir].tree;
+
+    var gen = flattenJson(generatedTree, '', {});
+    var cli = flattenJson(sample, '', {});
+
+    var rows = [];
+    var counts = { ok: 0, falta: 0, sobra: 0, forma: 0 };
+
+    // Todo lo que el cliente espera
+    for (var cp in cli) {
+        if (!Object.prototype.hasOwnProperty.call(cli, cp)) continue;
+        var c = cli[cp];
+        var g = gen[cp];
+        if (!g) {
+            // ¿existe el padre? si no, es una rama entera que falta
+            rows.push({
+                status: 'falta', path: cp, kind: c.kind,
+                detail: c.kind === 'leaf'
+                    ? 'El cliente espera este dato y el formulario no lo escribe.'
+                    : 'El formulario no genera esta rama.',
+                sample: c.samples.length ? c.samples[0] : null,
+            });
+            counts.falta++;
+        } else if (g.kind !== c.kind) {
+            rows.push({
+                status: 'forma', path: cp, kind: c.kind,
+                detail: 'El cliente lo tiene como ' + c.kind + ' y el formulario lo genera como ' + g.kind + '.',
+                sample: c.samples.length ? c.samples[0] : null,
+            });
+            counts.forma++;
+        } else {
+            rows.push({
+                status: 'ok', path: cp, kind: c.kind,
+                detail: 'Coincide.',
+                sample: c.samples.length ? c.samples[0] : null,
+            });
+            counts.ok++;
+        }
+    }
+
+    // Lo que el formulario genera y el cliente no pidió
+    for (var gp in gen) {
+        if (!Object.prototype.hasOwnProperty.call(gen, gp)) continue;
+        if (cli[gp]) continue;
+        rows.push({
+            status: 'sobra', path: gp, kind: gen[gp].kind,
+            detail: 'El formulario escribe esta ruta y no está en el ejemplo del cliente.',
+            sample: null,
+        });
+        counts.sobra++;
+    }
+
+    // Para cada ruta faltante, buscar una generada que termine igual: casi
+    // siempre es la misma rama colgada de otro padre (un nivel de más o de
+    // menos), no un dato que realmente no exista.
+    var genPaths = Object.keys(gen);
+    function suffixMatch(path) {
+        var segs = path.split('.');
+        var best = null, bestScore = 0;
+        for (var i = 0; i < genPaths.length; i++) {
+            var gsegs = genPaths[i].split('.');
+            var n = 0;
+            while (n < segs.length && n < gsegs.length &&
+                   segs[segs.length - 1 - n] === gsegs[gsegs.length - 1 - n]) n++;
+            // Al menos la hoja + un nivel, y que no sea la misma ruta.
+            if (n >= 2 && n > bestScore && genPaths[i] !== path) {
+                bestScore = n; best = genPaths[i];
+            }
+        }
+        return best ? { path: best, segments: bestScore } : null;
+    }
+    for (var r = 0; r < rows.length; r++) {
+        if (rows[r].status !== 'falta') continue;
+        var sug = suffixMatch(rows[r].path);
+        if (sug) {
+            rows[r].suggestion = sug.path;
+            rows[r].detail += ' El formulario la escribe en "' + sug.path + '" — revisar cuál es la correcta.';
+        }
+    }
+
+    // Orden: primero lo que rompe.
+    var rank = { forma: 0, falta: 1, sobra: 2, ok: 3 };
+    rows.sort(function (a, b) {
+        return (rank[a.status] - rank[b.status]) || a.path.localeCompare(b.path);
+    });
+
+    var expected = counts.ok + counts.falta + counts.forma;
+    return {
+        direction: dir,
+        rows: rows,
+        counts: counts,
+        coverage: expected ? Math.round(counts.ok / expected * 100) : 0,
+        clientPaths: Object.keys(cli).length,
+        generatedPaths: Object.keys(gen).length,
+    };
+}
+
+module.exports = { analyzeFormDef, parsePath, splitPrefillKey, compareWithSample, flattenJson, normalizePath };

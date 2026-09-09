@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Form Tools</title>
-    <link rel="stylesheet" href="styles.css?v=62">
+    <link rel="stylesheet" href="styles.css?v=63">
     <link rel="stylesheet" href="src/pdf-converter-v2/ui/styles.css">
 </head>
 <body>
@@ -509,8 +509,45 @@
                         <input type="file" accept=".json" id="jmJsonInput">
                         <span class="file-status" id="jmJsonStatus"></span>
                     </label>
+                    <label class="file-slot" data-slot="jm-sample">
+                        <span class="label">Ejemplo del cliente (opcional)</span>
+                        <span class="desc">El JSON real, para comparar y ver los errores</span>
+                        <input type="file" accept=".json" id="jmSampleInput">
+                        <span class="file-status" id="jmSampleStatus"></span>
+                    </label>
+                </div>
+                <div id="jmCompareOpts" hidden style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;margin-top:0.75rem;">
+                    <span class="hint" style="margin:0;">Comparar el ejemplo contra:</span>
+                    <select id="jmCompareDir" style="width:190px;">
+                        <option value="output">JSON de salida</option>
+                        <option value="input">JSON de entrada (prefill)</option>
+                    </select>
                 </div>
                 <div id="jmStatus" class="status"></div>
+            </section>
+
+            <section class="panel" id="jmComparePanel" hidden>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+                    <h2 style="margin:0;">Comparación con el ejemplo del cliente</h2>
+                    <div class="actions" style="margin:0;">
+                        <select id="jmCompareFilter" style="width:210px;">
+                            <option value="problem">Solo los problemas</option>
+                            <option value="falta">Faltan (el cliente los espera)</option>
+                            <option value="forma">Forma distinta</option>
+                            <option value="sobra">Sobran (no están en el ejemplo)</option>
+                            <option value="ok">Coinciden</option>
+                            <option value="all">Todo</option>
+                        </select>
+                        <button id="btnJmCompareDownload" class="secondary btn-sm">Descargar comparación</button>
+                    </div>
+                </div>
+                <div id="jmCompareStats" class="sf-stats" style="margin-top:0.75rem;"></div>
+                <div class="match-table-wrap" style="max-height:460px;margin-top:0.75rem;">
+                    <table class="match-table">
+                        <thead><tr><th>Estado</th><th>Ruta del cliente</th><th>Qué pasa</th></tr></thead>
+                        <tbody id="jmCompareBody"></tbody>
+                    </table>
+                </div>
             </section>
 
             <section class="panel" id="jmResultPanel" hidden>
@@ -765,7 +802,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=62"></script>
-    <script src="app.js?v=62"></script>
+    <script src="bundle.js?v=63"></script>
+    <script src="app.js?v=63"></script>
 </body>
 </html>

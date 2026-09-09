@@ -99591,7 +99591,124 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           }
         };
       }
-      module.exports = { analyzeFormDef, parsePath, splitPrefillKey };
+      function normalizePath(p) {
+        return String(p).replace(/\[\d*\]/g, "[]");
+      }
+      function flattenJson(node, prefix, acc) {
+        acc = acc || {};
+        if (Array.isArray(node)) {
+          if (prefix) touch(acc, prefix, "array", void 0);
+          for (var i = 0; i < node.length; i++) {
+            flattenJson(node[i], prefix + "[]", acc);
+          }
+        } else if (node && typeof node === "object") {
+          if (prefix) touch(acc, prefix, "object", void 0);
+          for (var k in node) {
+            if (!Object.prototype.hasOwnProperty.call(node, k)) continue;
+            flattenJson(node[k], prefix ? prefix + "." + k : k, acc);
+          }
+        } else {
+          touch(acc, prefix, "leaf", node);
+        }
+        return acc;
+      }
+      function touch(acc, path, kind, value) {
+        if (!path) return;
+        var p = normalizePath(path);
+        if (!acc[p]) acc[p] = { path: p, kind, samples: [] };
+        if (acc[p].kind === "leaf" && kind !== "leaf") acc[p].kind = kind;
+        if (value !== void 0 && acc[p].samples.length < 3) acc[p].samples.push(value);
+      }
+      function compareWithSample(analysis, sample, direction) {
+        var dir = direction === "input" ? "input" : "output";
+        var generatedTree = analysis[dir].tree;
+        var gen = flattenJson(generatedTree, "", {});
+        var cli = flattenJson(sample, "", {});
+        var rows = [];
+        var counts = { ok: 0, falta: 0, sobra: 0, forma: 0 };
+        for (var cp in cli) {
+          if (!Object.prototype.hasOwnProperty.call(cli, cp)) continue;
+          var c = cli[cp];
+          var g = gen[cp];
+          if (!g) {
+            rows.push({
+              status: "falta",
+              path: cp,
+              kind: c.kind,
+              detail: c.kind === "leaf" ? "El cliente espera este dato y el formulario no lo escribe." : "El formulario no genera esta rama.",
+              sample: c.samples.length ? c.samples[0] : null
+            });
+            counts.falta++;
+          } else if (g.kind !== c.kind) {
+            rows.push({
+              status: "forma",
+              path: cp,
+              kind: c.kind,
+              detail: "El cliente lo tiene como " + c.kind + " y el formulario lo genera como " + g.kind + ".",
+              sample: c.samples.length ? c.samples[0] : null
+            });
+            counts.forma++;
+          } else {
+            rows.push({
+              status: "ok",
+              path: cp,
+              kind: c.kind,
+              detail: "Coincide.",
+              sample: c.samples.length ? c.samples[0] : null
+            });
+            counts.ok++;
+          }
+        }
+        for (var gp in gen) {
+          if (!Object.prototype.hasOwnProperty.call(gen, gp)) continue;
+          if (cli[gp]) continue;
+          rows.push({
+            status: "sobra",
+            path: gp,
+            kind: gen[gp].kind,
+            detail: "El formulario escribe esta ruta y no est\xE1 en el ejemplo del cliente.",
+            sample: null
+          });
+          counts.sobra++;
+        }
+        var genPaths = Object.keys(gen);
+        function suffixMatch(path) {
+          var segs = path.split(".");
+          var best = null, bestScore = 0;
+          for (var i = 0; i < genPaths.length; i++) {
+            var gsegs = genPaths[i].split(".");
+            var n = 0;
+            while (n < segs.length && n < gsegs.length && segs[segs.length - 1 - n] === gsegs[gsegs.length - 1 - n]) n++;
+            if (n >= 2 && n > bestScore && genPaths[i] !== path) {
+              bestScore = n;
+              best = genPaths[i];
+            }
+          }
+          return best ? { path: best, segments: bestScore } : null;
+        }
+        for (var r = 0; r < rows.length; r++) {
+          if (rows[r].status !== "falta") continue;
+          var sug = suffixMatch(rows[r].path);
+          if (sug) {
+            rows[r].suggestion = sug.path;
+            rows[r].detail += ' El formulario la escribe en "' + sug.path + '" \u2014 revisar cu\xE1l es la correcta.';
+          }
+        }
+        var rank = { forma: 0, falta: 1, sobra: 2, ok: 3 };
+        rows.sort(function(a, b) {
+          return rank[a.status] - rank[b.status] || a.path.localeCompare(b.path);
+        });
+        var expected = counts.ok + counts.falta + counts.forma;
+        return {
+          direction: dir,
+          rows,
+          counts,
+          coverage: expected ? Math.round(counts.ok / expected * 100) : 0,
+          clientPaths: Object.keys(cli).length,
+          generatedPaths: Object.keys(gen).length
+        };
+      }
+      module.exports = { analyzeFormDef, parsePath, splitPrefillKey, compareWithSample, flattenJson, normalizePath };
     }
   });
 
@@ -100955,6 +101072,20 @@ ${pagesHtml}</body>
         }
         return analyzeFormDef(parsed);
       }
+      async function runJsonCompare(inputs) {
+        const { analyzeFormDef, compareWithSample } = require_json_mapper();
+        const { analysis, sampleFile, direction } = inputs;
+        if (!analysis) throw new Error("Primero carg\xE1 el form-definition");
+        if (!sampleFile) throw new Error("Carg\xE1 el JSON de ejemplo del cliente");
+        const text = await fileToText(sampleFile);
+        let sample;
+        try {
+          sample = JSON.parse(text);
+        } catch (e) {
+          throw new Error("El ejemplo no es un JSON v\xE1lido: " + e.message);
+        }
+        return compareWithSample(analysis, sample, direction || "output");
+      }
       async function runQuoteZip(inputs) {
         const { analyzeZip } = require_quoter();
         const { zipFile, config } = inputs;
@@ -101140,9 +101271,9 @@ ${pagesHtml}</body>
         return new Uint8Array(savedBytes);
       }
       if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, calibrateQuote, runJsonMap, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, calibrateQuote, runJsonMap, runJsonCompare, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
       }
-      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, calibrateQuote, runJsonMap, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
+      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, calibrateQuote, runJsonMap, runJsonCompare, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
     }
   });
   return require_browser();
