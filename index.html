@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Form Tools</title>
-    <link rel="stylesheet" href="styles.css?v=67">
+    <link rel="stylesheet" href="styles.css?v=69">
     <link rel="stylesheet" href="src/pdf-converter-v2/ui/styles.css">
 </head>
 <body>
@@ -92,8 +92,8 @@
                 <ul class="mode-features">
                     <li>Lee PDFs, Excels multi-pestaña y JSONs</li>
                     <li>Cuenta campos del PDF y reglas de negocio</li>
-                    <li>Complejidad Baja/Media/Alta + horas</li>
-                    <li>Informe descargable en JSON</li>
+                    <li>Complejidad Baja/Media/Alta por formulario</li>
+                    <li>Reporte comercial en PDF y Word</li>
                 </ul>
                 <button class="primary">Empezar</button>
             </div>
@@ -609,8 +609,10 @@
                 </div>
                 <div class="actions" style="margin-top:1rem;">
                     <button id="btnQuote" class="primary" disabled>Analizar y cotizar</button>
-                    <button id="btnQuoteReport" class="primary" hidden>Reporte para comercial</button>
-                    <button id="btnQuoteReportView" class="secondary btn-sm" hidden>Ver reporte</button>
+                    <button id="btnQuoteReportView" class="primary" hidden>Ver reporte</button>
+                    <button id="btnQuoteReportPdf" class="primary" hidden>Exportar PDF</button>
+                    <button id="btnQuoteReportDocx" class="primary" hidden>Exportar Word</button>
+                    <button id="btnQuoteReport" class="secondary btn-sm" hidden>Descargar HTML</button>
                     <button id="btnQuoteJson" class="secondary btn-sm" hidden>Informe técnico (JSON)</button>
                 </div>
                 <div id="quoterStatus" class="status"></div>
@@ -854,7 +856,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=67"></script>
-    <script src="app.js?v=67"></script>
+    <script src="bundle.js?v=69"></script>
+    <script src="app.js?v=69"></script>
 </body>
 </html>

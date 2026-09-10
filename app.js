@@ -3396,6 +3396,8 @@
         $('#btnQuoteJson').addEventListener('click', downloadQuoteJson);
         $('#btnQuoteReport').addEventListener('click', function() { commercialReport('download'); });
         $('#btnQuoteReportView').addEventListener('click', function() { commercialReport('view'); });
+        $('#btnQuoteReportPdf').addEventListener('click', function() { commercialReport('pdf'); });
+        $('#btnQuoteReportDocx').addEventListener('click', exportQuoteDocx);
         $('#btnRequote').addEventListener('click', requoteWithThresholds);
         $('#btnCalibrate').addEventListener('click', calibrateFromCase);
         restoreQuoteConfig();
@@ -3473,6 +3475,8 @@
             $('#btnQuoteJson').hidden = false;
             $('#btnQuoteReport').hidden = false;
             $('#btnQuoteReportView').hidden = false;
+            $('#btnQuoteReportPdf').hidden = false;
+            $('#btnQuoteReportDocx').hidden = false;
             renderQuote(res);
         } catch (err) {
             console.error(err);
@@ -3707,7 +3711,7 @@
             archivo: quoterState.zip ? quoterState.zip.name : null,
             fecha: new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' }),
         });
-        if (mode === 'view') {
+        if (mode === 'view' || mode === 'pdf') {
             var w = window.open('', '_blank');
             if (!w) {
                 $('#quoterStatus').className = 'status active error';
@@ -3716,10 +3720,40 @@
             }
             w.document.write(html);
             w.document.close();
+            if (mode === 'pdf') {
+                // El diálogo de impresión del navegador: "Guardar como PDF".
+                // Se espera al render para que no salga la hoja en blanco.
+                w.onload = function() { w.focus(); w.print(); };
+                setTimeout(function() { try { w.focus(); w.print(); } catch (e) { /* ya impreso */ } }, 400);
+            }
             return;
         }
         var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
         InsPipelineBundle.downloadBlob(blob, nombre + '_estimacion.html');
+    }
+
+    async function exportQuoteDocx() {
+        if (!quoterState.result) return;
+        var statusEl = $('#quoterStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Generando el documento de Word...';
+        try {
+            var nombre = (quoterState.zip ? quoterState.zip.name : 'formulario').replace(/\.zip$/i, '');
+            var bytes = await InsPipelineBundle.buildQuoteDocx(quoterState.result, {
+                archivo: quoterState.zip ? quoterState.zip.name : null,
+                fecha: new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' }),
+            });
+            var blob = new Blob([bytes], {
+                type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            });
+            InsPipelineBundle.downloadBlob(blob, nombre + '_estimacion.docx');
+            statusEl.className = 'status active success';
+            statusEl.textContent = '✓ Word descargado.';
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ ' + err.message;
+        }
     }
 
     function downloadQuoteJson() {
