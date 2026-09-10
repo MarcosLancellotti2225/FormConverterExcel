@@ -99742,6 +99742,13 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           bg: "#fee2e2"
         }
       };
+      function semanas(n) {
+        return n === 1 ? "1 semana" : n + " semanas";
+      }
+      function pill(levelKey, texto) {
+        var c = LEVEL_COPY[levelKey] || LEVEL_COPY.media;
+        return '<span class="pill" style="color:' + c.color + ";background:" + c.bg + '">' + esc(texto) + "</span>";
+      }
       function statCard(valor, etiqueta, nota) {
         return '<div class="card"><div class="num">' + esc(valor) + '</div><div class="lbl">' + esc(etiqueta) + "</div>" + (nota ? '<div class="sub">' + esc(nota) + "</div>" : "") + "</div>";
       }
@@ -99758,17 +99765,27 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         var barras = byFile.slice(0, 5).map(function(f) {
           return '<tr><td class="fname">' + esc(f.file) + '<span class="role">' + esc(f.role) + '</span></td><td class="bar-cell"><div class="bar"><span style="width:' + Math.max(3, Math.min(100, f.share)) + '%"></span></div></td><td class="pct">' + f.share + "%</td></tr>";
         }).join("");
-        var docs = (result.pdfs || []).map(function(p) {
-          return "<li><b>" + esc(p.file) + "</b> \u2014 " + plural(p.fieldCount, "espacio a completar", "espacios a completar") + " en " + plural(p.pages, "p\xE1gina", "p\xE1ginas") + "</li>";
+        var documents = result.documents || [];
+        var docRows = documents.map(function(d) {
+          return '<tr><td class="fname">' + esc(d.file) + '<span class="role">' + d.fields + " espacios \xB7 " + plural(d.pages, "p\xE1gina", "p\xE1ginas") + " \xB7 " + plural(d.businessRules, "regla", "reglas") + '</span></td><td class="lvl-cell">' + pill(d.levelKey, d.level) + '</td><td class="wk">' + esc(semanas(d.weeks)) + "</td></tr>";
         }).join("");
+        var conjunto = "";
+        if (documents.length > 1) {
+          var suma = documents.reduce(function(s, d) {
+            return s + d.weeks;
+          }, 0);
+          var distinto = documents.some(function(d) {
+            return d.levelKey !== score.levelKey;
+          });
+          conjunto = '<div class="note ' + (distinto ? "warn" : "ok") + '"><b>Entrega completa:</b> son ' + plural(documents.length, "formulario", "formularios") + ". Tomados por separado suman " + esc(semanas(suma)) + ", pero se entregan como un solo paquete: la integraci\xF3n, la consistencia entre versiones y las pruebas end-to-end hacen que el conjunto se cotice como <b>" + esc(copy.titulo.toLowerCase()) + "</b> \u2014 <b>" + esc(semanas(score.weeks)) + "</b>.</div>";
+        }
         var reuse = result.reuse || {};
         var ahorroBloque = "";
         if (reuse.percent > 0) {
           ahorroBloque = '<div class="note ok"><b>Aprovechamiento de trabajo previo:</b> alrededor del <b>' + reuse.percent + "%</b> de este formulario ya est\xE1 resuelto (campos y reglas que se repiten o que comparte con otra versi\xF3n). Eso ya est\xE1 descontado de la estimaci\xF3n.</div>";
         }
-        var horas = score.estimatedHours || {};
-        var rangoHoras = horas.min != null && horas.max != null ? horas.min + " a " + horas.max + " horas" : "\u2014";
-        return '<!doctype html>\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(nombre) + ' \u2014 Estimaci\xF3n</title><style>*{box-sizing:border-box}body{margin:0;background:#f1f5f9;color:#0f172a;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;line-height:1.6}.sheet{max-width:820px;margin:32px auto;background:#fff;border-radius:14px;padding:44px 48px;box-shadow:0 4px 24px rgba(15,23,42,.08)}h1{font-size:1.55rem;margin:0 0 4px;letter-spacing:-.02em}.meta{color:#64748b;font-size:.86rem;margin-bottom:28px}.verdict{display:flex;align-items:center;gap:22px;flex-wrap:wrap;padding:22px 24px;border-radius:12px;background:' + copy.bg + ";margin-bottom:28px}.verdict .lvl{font-size:1.5rem;font-weight:700;color:" + copy.color + ';white-space:nowrap}.verdict .txt{flex:1;min-width:240px;font-size:.95rem;color:#334155}.verdict .hrs{font-size:1.05rem;font-weight:700;color:#0f172a;white-space:nowrap}.verdict .hrs small{display:block;font-weight:400;font-size:.74rem;color:#64748b;text-align:right}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:32px}@media(max-width:640px){.cards{grid-template-columns:repeat(2,1fr)}}.card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center}.card .num{font-size:1.6rem;font-weight:700;letter-spacing:-.02em}.card .lbl{font-size:.78rem;color:#475569;margin-top:2px}.card .sub{font-size:.7rem;color:#94a3b8;margin-top:3px}h2{font-size:1rem;margin:28px 0 10px;padding-bottom:6px;border-bottom:2px solid #e2e8f0}ul{margin:0;padding-left:20px;font-size:.92rem}li{margin-bottom:5px}table{width:100%;border-collapse:collapse;font-size:.88rem}td{padding:7px 0;vertical-align:middle}.fname{font-weight:600;width:45%}.role{display:block;font-weight:400;font-size:.74rem;color:#94a3b8}.bar{background:#e2e8f0;border-radius:4px;height:8px;overflow:hidden}.bar span{display:block;height:100%;background:#6366f1;border-radius:4px}.bar-cell{padding-right:14px}.pct{text-align:right;width:52px;color:#475569;font-variant-numeric:tabular-nums}.note{padding:13px 16px;border-radius:9px;font-size:.88rem;margin-top:18px}.note.ok{background:#eff6ff;border-left:4px solid #3b82f6;color:#1e3a5f}.foot{margin-top:34px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:.76rem;color:#94a3b8}@media print{body{background:#fff}.sheet{box-shadow:none;margin:0;max-width:none;padding:0}}</style></head><body><div class="sheet"><h1>' + esc(nombre) + '</h1><div class="meta">Estimaci\xF3n de digitalizaci\xF3n' + (fecha ? " \xB7 " + esc(fecha) : "") + '</div><div class="verdict"><div class="lvl">' + esc(copy.titulo) + '</div><div class="txt">' + esc(copy.frase) + '</div><div class="hrs">' + esc(rangoHoras) + '<small>estimado</small></div></div><div class="cards">' + statCard(t.pdfFields || 0, "Espacios a completar", "en el formulario") + statCard(t.businessRules || 0, "Reglas de negocio", "validaciones y c\xE1lculos") + statCard(t.pdfs || 0, "Documentos", plural(t.pages || 0, "p\xE1gina", "p\xE1ginas")) + statCard(t.catalogs || 0, "Cat\xE1logos", "listas a integrar") + "</div>" + (docs ? "<h2>Documentos incluidos</h2><ul>" + docs + "</ul>" : "") + (barras ? "<h2>D\xF3nde est\xE1 el esfuerzo</h2><table>" + barras + "</table>" : "") + "<h2>Qu\xE9 incluye el trabajo</h2><ul><li>Preparaci\xF3n del PDF: identificaci\xF3n y normalizaci\xF3n de los " + (t.pdfFields || 0) + " espacios a completar.</li><li>Construcci\xF3n del formulario digital con sus secciones y validaciones.</li><li>Implementaci\xF3n de " + plural(t.businessRules || 0, "regla de negocio", "reglas de negocio") + (t.conditionalRules ? ", incluidas " + plural(t.conditionalRules, "condici\xF3n de visibilidad", "condiciones de visibilidad") : "") + ".</li>" + (t.catalogs ? "<li>Integraci\xF3n de " + plural(t.catalogs, "cat\xE1logo", "cat\xE1logos") + " de datos.</li>" : "") + (t.repeaters ? "<li>Bloques repetibles (dependientes, beneficiarios y similares).</li>" : "") + "<li>Pruebas del formulario, del documento generado y del env\xEDo de datos.</li></ul>" + ahorroBloque + '<div class="foot">Estimaci\xF3n preliminar basada en el an\xE1lisis autom\xE1tico de los archivos entregados. Puede ajustarse si cambian los requerimientos o si la documentaci\xF3n se completa.</div></div></body></html>';
+        var plazo = semanas(score.weeks != null ? score.weeks : 2);
+        return '<!doctype html>\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(nombre) + ' \u2014 Estimaci\xF3n</title><style>*{box-sizing:border-box}body{margin:0;background:#f1f5f9;color:#0f172a;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;line-height:1.6}.sheet{max-width:820px;margin:32px auto;background:#fff;border-radius:14px;padding:44px 48px;box-shadow:0 4px 24px rgba(15,23,42,.08)}h1{font-size:1.55rem;margin:0 0 4px;letter-spacing:-.02em}.meta{color:#64748b;font-size:.86rem;margin-bottom:28px}.verdict{display:flex;align-items:center;gap:22px;flex-wrap:wrap;padding:22px 24px;border-radius:12px;background:' + copy.bg + ";margin-bottom:28px}.verdict .lvl{font-size:1.5rem;font-weight:700;color:" + copy.color + ';white-space:nowrap}.verdict .txt{flex:1;min-width:240px;font-size:.95rem;color:#334155}.verdict .hrs{font-size:1.05rem;font-weight:700;color:#0f172a;white-space:nowrap}.verdict .hrs small{display:block;font-weight:400;font-size:.74rem;color:#64748b;text-align:right}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:32px}@media(max-width:640px){.cards{grid-template-columns:repeat(2,1fr)}}.card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center}.card .num{font-size:1.6rem;font-weight:700;letter-spacing:-.02em}.card .lbl{font-size:.78rem;color:#475569;margin-top:2px}.card .sub{font-size:.7rem;color:#94a3b8;margin-top:3px}h2{font-size:1rem;margin:28px 0 10px;padding-bottom:6px;border-bottom:2px solid #e2e8f0}ul{margin:0;padding-left:20px;font-size:.92rem}li{margin-bottom:5px}table{width:100%;border-collapse:collapse;font-size:.88rem}td{padding:7px 0;vertical-align:middle}.fname{font-weight:600;width:45%}.role{display:block;font-weight:400;font-size:.74rem;color:#94a3b8}.bar{background:#e2e8f0;border-radius:4px;height:8px;overflow:hidden}.bar span{display:block;height:100%;background:#6366f1;border-radius:4px}.bar-cell{padding-right:14px}.pct{text-align:right;width:52px;color:#475569;font-variant-numeric:tabular-nums}.note{padding:13px 16px;border-radius:9px;font-size:.88rem;margin-top:18px}.note.ok{background:#eff6ff;border-left:4px solid #3b82f6;color:#1e3a5f}.note.warn{background:#fffbeb;border-left:4px solid #f59e0b;color:#78350f}.pill{display:inline-block;padding:2px 11px;border-radius:99px;font-size:.8rem;font-weight:700}table.docs td{border-bottom:1px solid #f1f5f9;padding:10px 0}.lvl-cell{text-align:center;width:110px}.wk{text-align:right;width:110px;font-weight:600;color:#334155}.foot{margin-top:34px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:.76rem;color:#94a3b8}@media print{body{background:#fff}.sheet{box-shadow:none;margin:0;max-width:none;padding:0}}</style></head><body><div class="sheet"><h1>' + esc(nombre) + '</h1><div class="meta">Estimaci\xF3n de digitalizaci\xF3n' + (fecha ? " \xB7 " + esc(fecha) : "") + '</div><div class="verdict"><div class="lvl">' + esc(copy.titulo) + '</div><div class="txt">' + esc(copy.frase) + '</div><div class="hrs">' + esc(plazo) + '<small>estimado</small></div></div><div class="cards">' + statCard(t.pdfFields || 0, "Espacios a completar", "en el formulario") + statCard(t.businessRules || 0, "Reglas de negocio", "validaciones y c\xE1lculos") + statCard(t.pdfs || 0, "Documentos", plural(t.pages || 0, "p\xE1gina", "p\xE1ginas")) + statCard(t.catalogs || 0, "Cat\xE1logos", "listas a integrar") + "</div>" + (docRows ? '<h2>Complejidad por formulario</h2><table class="docs">' + docRows + "</table>" + conjunto : "") + (barras ? "<h2>D\xF3nde est\xE1 el esfuerzo</h2><table>" + barras + "</table>" : "") + "<h2>Qu\xE9 incluye el trabajo</h2><ul><li>Preparaci\xF3n del PDF: identificaci\xF3n y normalizaci\xF3n de los " + (t.pdfFields || 0) + " espacios a completar.</li><li>Construcci\xF3n del formulario digital con sus secciones y validaciones.</li><li>Implementaci\xF3n de " + plural(t.businessRules || 0, "regla de negocio", "reglas de negocio") + (t.conditionalRules ? ", incluidas " + plural(t.conditionalRules, "condici\xF3n de visibilidad", "condiciones de visibilidad") : "") + ".</li>" + (t.catalogs ? "<li>Integraci\xF3n de " + plural(t.catalogs, "cat\xE1logo", "cat\xE1logos") + " de datos.</li>" : "") + (t.repeaters ? "<li>Bloques repetibles (dependientes, beneficiarios y similares).</li>" : "") + "<li>Pruebas del formulario, del documento generado y del env\xEDo de datos.</li></ul>" + ahorroBloque + '<div class="foot">Estimaci\xF3n preliminar basada en el an\xE1lisis autom\xE1tico de los archivos entregados. Puede ajustarse si cambian los requerimientos o si la documentaci\xF3n se completa.</div></div></body></html>';
       }
       module.exports = { buildCommercialReport };
     }
@@ -99806,8 +99823,10 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         // Ajustable desde la UI con el selector de complejidad real.
         thresholds: { baja: 900, media: 1800 },
         // <=baja, <=media, resto alta
+        // Plazo por nivel de complejidad, en semanas.
+        weeksByLevel: { baja: 1, media: 2, alta: 3 },
         hoursPerPoint: 0.035,
-        // estimación de esfuerzo
+        // (histórico, ya no se muestra)
         // Cuánto cuesta lo ya resuelto (repetido dentro del form o compartido con
         // otra variante): 0.15 = 15% del esfuerzo normal.
         reuseFactor: 0.15
@@ -100238,11 +100257,13 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           level = "Alta";
           levelKey = "alta";
         }
+        var wbl = config.weeksByLevel || DEFAULT_CONFIG.weeksByLevel;
         var hours = points * config.hoursPerPoint;
         return {
           points,
           level,
           levelKey,
+          weeks: wbl[levelKey] != null ? wbl[levelKey] : DEFAULT_CONFIG.weeksByLevel[levelKey],
           breakdown,
           estimatedHours: { min: Math.round(hours * 0.8), max: Math.round(hours * 1.3) },
           thresholds: th,
@@ -100340,6 +100361,79 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         });
         return out;
       }
+      function nameAffinity(a, b) {
+        var clean = function(s) {
+          return norm(s).replace(/\.[a-z0-9]+$/, "").replace(/ficha|configuracion|matriz|reglas|formulario|solicitud|de|del|la|el/g, " ").split(/[^a-z0-9]+/).filter(function(w) {
+            return w.length > 2;
+          });
+        };
+        var wa = clean(a), wb = clean(b);
+        var n = 0;
+        for (var i = 0; i < wa.length; i++) if (wb.indexOf(wa[i]) !== -1) n++;
+        return n;
+      }
+      function buildDocuments(pdfs, excels, config) {
+        var w = config.weights;
+        var th = normalizeThresholds(config.thresholds) || DEFAULT_CONFIG.thresholds;
+        var wbl = config.weeksByLevel || DEFAULT_CONFIG.weeksByLevel;
+        if (!pdfs.length) return [];
+        var assigned = pdfs.map(function() {
+          return { businessRules: 0, conditionalRules: 0, catalogs: 0, sources: [] };
+        });
+        var totalFields = pdfs.reduce(function(s, p2) {
+          return s + p2.fieldCount;
+        }, 0) || 1;
+        for (var e = 0; e < excels.length; e++) {
+          var x = excels[e];
+          var cats = (x.catalogs || 0) + (x.catalogRefs || 0);
+          var best = -1, bestScore = 0;
+          for (var p = 0; p < pdfs.length; p++) {
+            var sc = nameAffinity(x.file, pdfs[p].file);
+            if (sc > bestScore) {
+              bestScore = sc;
+              best = p;
+            }
+          }
+          if (best >= 0 && bestScore > 0 && pdfs.length > 1) {
+            assigned[best].businessRules += x.businessRules;
+            assigned[best].conditionalRules += x.conditionalRules;
+            assigned[best].catalogs += cats;
+            assigned[best].sources.push(x.file);
+          } else {
+            for (var q = 0; q < pdfs.length; q++) {
+              var share = pdfs[q].fieldCount / totalFields;
+              assigned[q].businessRules += x.businessRules * share;
+              assigned[q].conditionalRules += x.conditionalRules * share;
+              assigned[q].catalogs += cats * share;
+              if (assigned[q].sources.indexOf(x.file) === -1) assigned[q].sources.push(x.file);
+            }
+          }
+        }
+        return pdfs.map(function(pdf, i) {
+          var a = assigned[i];
+          var rules = Math.round(a.businessRules);
+          var conds = Math.round(a.conditionalRules);
+          var cats2 = Math.round(a.catalogs);
+          var pts = pdf.fieldCount * w.pdfField + pdf.pages * w.pdfPage + (pdf.repeaterGroups || 0) * w.repeater + rules * w.businessRule + conds * w.conditionalRule + cats2 * w.catalog;
+          pts = Math.round(pts * 10) / 10;
+          var lv = levelFor(pts, th);
+          return {
+            file: pdf.file,
+            fields: pdf.fieldCount,
+            pages: pdf.pages,
+            businessRules: rules,
+            conditionalRules: conds,
+            catalogs: cats2,
+            rulesFrom: a.sources,
+            points: pts,
+            level: lv.level,
+            levelKey: lv.levelKey,
+            weeks: wbl[lv.levelKey] != null ? wbl[lv.levelKey] : DEFAULT_CONFIG.weeksByLevel[lv.levelKey]
+          };
+        }).sort(function(a, b) {
+          return b.points - a.points;
+        });
+      }
       async function analyzeZip(zipBytes, configOverride) {
         var config = {
           weights: Object.assign({}, DEFAULT_CONFIG.weights, configOverride && configOverride.weights || {}),
@@ -100433,9 +100527,11 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         for (var u = 0; u < pdfs.length; u++) totals.uniqueConfigs += pdfs[u].uniqueConfigs;
         var score = scoreProject(totals, config);
         var byFile = classifyFiles(pdfs, excels, jsons, config, score.points);
+        var documents = buildDocuments(pdfs, excels, config);
         return {
           inventory,
           byFile,
+          documents,
           reuse: totals.reuse,
           pdfs,
           excels,
@@ -100447,7 +100543,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           config
         };
       }
-      module.exports = { analyzeZip, DEFAULT_CONFIG, analyzeExcel, analyzeJson, scoreProject, calibrateThresholds, classifyFiles };
+      module.exports = { analyzeZip, DEFAULT_CONFIG, analyzeExcel, analyzeJson, scoreProject, calibrateThresholds, classifyFiles, buildDocuments };
     }
   });
 

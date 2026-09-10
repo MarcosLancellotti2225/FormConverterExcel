@@ -36,7 +36,9 @@ var DEFAULT_CONFIG = {
     //   Fidelidad (202 campos, 344 reglas, 25 catálogos, 4 p.) = Media
     // Ajustable desde la UI con el selector de complejidad real.
     thresholds: { baja: 900, media: 1800 },   // <=baja, <=media, resto alta
-    hoursPerPoint: 0.035,                       // estimación de esfuerzo
+    // Plazo por nivel de complejidad, en semanas.
+    weeksByLevel: { baja: 1, media: 2, alta: 3 },
+    hoursPerPoint: 0.035,                       // (histórico, ya no se muestra)
     // Cuánto cuesta lo ya resuelto (repetido dentro del form o compartido con
     // otra variante): 0.15 = 15% del esfuerzo normal.
     reuseFactor: 0.15,
@@ -547,11 +549,13 @@ function scoreProject(totals, config) {
     else if (points <= th.media) { level = 'Media'; levelKey = 'media'; }
     else { level = 'Alta'; levelKey = 'alta'; }
 
+    var wbl = config.weeksByLevel || DEFAULT_CONFIG.weeksByLevel;
     var hours = points * config.hoursPerPoint;
     return {
         points: points,
         level: level,
         levelKey: levelKey,
+        weeks: wbl[levelKey] != null ? wbl[levelKey] : DEFAULT_CONFIG.weeksByLevel[levelKey],
         breakdown: breakdown,
         estimatedHours: { min: Math.round(hours * 0.8), max: Math.round(hours * 1.3) },
         thresholds: th,
@@ -652,6 +656,93 @@ function classifyFiles(pdfs, excels, jsons, config, totalPoints) {
 
     out.sort(function (a, b) { return b.points - a.points; });
     return out;
+}
+
+// ─── Documentos: cada PDF con la porción de reglas que le toca ───────────────
+
+// Cuántas palabras comparten dos nombres de archivo (sin extensión ni ruido).
+function nameAffinity(a, b) {
+    var clean = function (s) {
+        return norm(s).replace(/\.[a-z0-9]+$/, '')
+            .replace(/ficha|configuracion|matriz|reglas|formulario|solicitud|de|del|la|el/g, ' ')
+            .split(/[^a-z0-9]+/).filter(function (w) { return w.length > 2; });
+    };
+    var wa = clean(a), wb = clean(b);
+    var n = 0;
+    for (var i = 0; i < wa.length; i++) if (wb.indexOf(wa[i]) !== -1) n++;
+    return n;
+}
+
+/**
+ * Un "documento" es lo que se entrega: un PDF más las reglas de negocio que le
+ * corresponden. Es la unidad que se cotiza — el PDF pelado no dice nada porque
+ * las reglas viven en el Excel.
+ *
+ * Si hay una ficha por formulario, se emparejan por nombre. Si hay una sola
+ * ficha para varios PDFs, se prorratea proporcional a la cantidad de campos.
+ */
+function buildDocuments(pdfs, excels, config) {
+    var w = config.weights;
+    var th = normalizeThresholds(config.thresholds) || DEFAULT_CONFIG.thresholds;
+    var wbl = config.weeksByLevel || DEFAULT_CONFIG.weeksByLevel;
+    if (!pdfs.length) return [];
+
+    // Reglas asignadas a cada PDF: primero por nombre, el resto prorrateado.
+    var assigned = pdfs.map(function () {
+        return { businessRules: 0, conditionalRules: 0, catalogs: 0, sources: [] };
+    });
+    var totalFields = pdfs.reduce(function (s, p) { return s + p.fieldCount; }, 0) || 1;
+
+    for (var e = 0; e < excels.length; e++) {
+        var x = excels[e];
+        var cats = (x.catalogs || 0) + (x.catalogRefs || 0);
+        // ¿Esta ficha es de un formulario en particular?
+        var best = -1, bestScore = 0;
+        for (var p = 0; p < pdfs.length; p++) {
+            var sc = nameAffinity(x.file, pdfs[p].file);
+            if (sc > bestScore) { bestScore = sc; best = p; }
+        }
+        if (best >= 0 && bestScore > 0 && pdfs.length > 1) {
+            assigned[best].businessRules += x.businessRules;
+            assigned[best].conditionalRules += x.conditionalRules;
+            assigned[best].catalogs += cats;
+            assigned[best].sources.push(x.file);
+        } else {
+            // Ficha común: se reparte según el tamaño de cada formulario.
+            for (var q = 0; q < pdfs.length; q++) {
+                var share = pdfs[q].fieldCount / totalFields;
+                assigned[q].businessRules += x.businessRules * share;
+                assigned[q].conditionalRules += x.conditionalRules * share;
+                assigned[q].catalogs += cats * share;
+                if (assigned[q].sources.indexOf(x.file) === -1) assigned[q].sources.push(x.file);
+            }
+        }
+    }
+
+    return pdfs.map(function (pdf, i) {
+        var a = assigned[i];
+        var rules = Math.round(a.businessRules);
+        var conds = Math.round(a.conditionalRules);
+        var cats = Math.round(a.catalogs);
+        var pts = pdf.fieldCount * w.pdfField + pdf.pages * w.pdfPage +
+            (pdf.repeaterGroups || 0) * w.repeater +
+            rules * w.businessRule + conds * w.conditionalRule + cats * w.catalog;
+        pts = Math.round(pts * 10) / 10;
+        var lv = levelFor(pts, th);
+        return {
+            file: pdf.file,
+            fields: pdf.fieldCount,
+            pages: pdf.pages,
+            businessRules: rules,
+            conditionalRules: conds,
+            catalogs: cats,
+            rulesFrom: a.sources,
+            points: pts,
+            level: lv.level,
+            levelKey: lv.levelKey,
+            weeks: wbl[lv.levelKey] != null ? wbl[lv.levelKey] : DEFAULT_CONFIG.weeksByLevel[lv.levelKey],
+        };
+    }).sort(function (a, b) { return b.points - a.points; });
 }
 
 // ─── Entrada principal ───────────────────────────────────────────────────────
@@ -769,10 +860,12 @@ async function analyzeZip(zipBytes, configOverride) {
 
     var score = scoreProject(totals, config);
     var byFile = classifyFiles(pdfs, excels, jsons, config, score.points);
+    var documents = buildDocuments(pdfs, excels, config);
 
     return {
         inventory: inventory,
         byFile: byFile,
+        documents: documents,
         reuse: totals.reuse,
         pdfs: pdfs,
         excels: excels,
@@ -785,4 +878,4 @@ async function analyzeZip(zipBytes, configOverride) {
     };
 }
 
-module.exports = { analyzeZip, DEFAULT_CONFIG, analyzeExcel, analyzeJson, scoreProject, calibrateThresholds, classifyFiles };
+module.exports = { analyzeZip, DEFAULT_CONFIG, analyzeExcel, analyzeJson, scoreProject, calibrateThresholds, classifyFiles, buildDocuments };

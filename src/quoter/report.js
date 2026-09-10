@@ -39,6 +39,14 @@ var LEVEL_COPY = {
     },
 };
 
+function semanas(n) { return n === 1 ? '1 semana' : n + ' semanas'; }
+
+// Pastilla de nivel con el color del nivel.
+function pill(levelKey, texto) {
+    var c = LEVEL_COPY[levelKey] || LEVEL_COPY.media;
+    return '<span class="pill" style="color:' + c.color + ';background:' + c.bg + '">' + esc(texto) + '</span>';
+}
+
 function statCard(valor, etiqueta, nota) {
     return '<div class="card">' +
         '<div class="num">' + esc(valor) + '</div>' +
@@ -73,11 +81,32 @@ function buildCommercialReport(result, opts) {
             '</tr>';
     }).join('');
 
-    // ── Documentos del proyecto ───────────────────────────────────────────────
-    var docs = (result.pdfs || []).map(function (p) {
-        return '<li><b>' + esc(p.file) + '</b> — ' + plural(p.fieldCount, 'espacio a completar', 'espacios a completar') +
-            ' en ' + plural(p.pages, 'página', 'páginas') + '</li>';
+    // ── Complejidad documento por documento ───────────────────────────────────
+    // Cada formulario se evalúa con las reglas de negocio que le corresponden,
+    // no con el PDF pelado: la entrega completa puede pesar más que sus partes.
+    var documents = result.documents || [];
+    var docRows = documents.map(function (d) {
+        return '<tr>' +
+            '<td class="fname">' + esc(d.file) +
+                '<span class="role">' + d.fields + ' espacios · ' + plural(d.pages, 'página', 'páginas') +
+                ' · ' + plural(d.businessRules, 'regla', 'reglas') + '</span></td>' +
+            '<td class="lvl-cell">' + pill(d.levelKey, d.level) + '</td>' +
+            '<td class="wk">' + esc(semanas(d.weeks)) + '</td>' +
+            '</tr>';
     }).join('');
+
+    // Frase que explica por qué el conjunto puede subir de nivel.
+    var conjunto = '';
+    if (documents.length > 1) {
+        var suma = documents.reduce(function (s, d) { return s + d.weeks; }, 0);
+        var distinto = documents.some(function (d) { return d.levelKey !== score.levelKey; });
+        conjunto = '<div class="note ' + (distinto ? 'warn' : 'ok') + '">' +
+            '<b>Entrega completa:</b> son ' + plural(documents.length, 'formulario', 'formularios') +
+            '. Tomados por separado suman ' + esc(semanas(suma)) + ', pero se entregan como un solo paquete: ' +
+            'la integración, la consistencia entre versiones y las pruebas end-to-end hacen que el conjunto se cotice como <b>' +
+            esc(copy.titulo.toLowerCase()) + '</b> — <b>' + esc(semanas(score.weeks)) + '</b>.' +
+            '</div>';
+    }
 
     // ── Reutilización, solo si hay algo que decir ─────────────────────────────
     var reuse = result.reuse || {};
@@ -91,8 +120,7 @@ function buildCommercialReport(result, opts) {
             '</div>';
     }
 
-    var horas = score.estimatedHours || {};
-    var rangoHoras = (horas.min != null && horas.max != null) ? (horas.min + ' a ' + horas.max + ' horas') : '—';
+    var plazo = semanas(score.weeks != null ? score.weeks : 2);
 
     return '<!doctype html>\n<html lang="es"><head><meta charset="utf-8">' +
 '<meta name="viewport" content="width=device-width,initial-scale=1">' +
@@ -125,6 +153,11 @@ function buildCommercialReport(result, opts) {
 '.pct{text-align:right;width:52px;color:#475569;font-variant-numeric:tabular-nums}' +
 '.note{padding:13px 16px;border-radius:9px;font-size:.88rem;margin-top:18px}' +
 '.note.ok{background:#eff6ff;border-left:4px solid #3b82f6;color:#1e3a5f}' +
+'.note.warn{background:#fffbeb;border-left:4px solid #f59e0b;color:#78350f}' +
+'.pill{display:inline-block;padding:2px 11px;border-radius:99px;font-size:.8rem;font-weight:700}' +
+'table.docs td{border-bottom:1px solid #f1f5f9;padding:10px 0}' +
+'.lvl-cell{text-align:center;width:110px}' +
+'.wk{text-align:right;width:110px;font-weight:600;color:#334155}' +
 '.foot{margin-top:34px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:.76rem;color:#94a3b8}' +
 '@media print{body{background:#fff}.sheet{box-shadow:none;margin:0;max-width:none;padding:0}}' +
 '</style></head><body><div class="sheet">' +
@@ -135,7 +168,7 @@ function buildCommercialReport(result, opts) {
 '<div class="verdict">' +
     '<div class="lvl">' + esc(copy.titulo) + '</div>' +
     '<div class="txt">' + esc(copy.frase) + '</div>' +
-    '<div class="hrs">' + esc(rangoHoras) + '<small>estimado</small></div>' +
+    '<div class="hrs">' + esc(plazo) + '<small>estimado</small></div>' +
 '</div>' +
 
 '<div class="cards">' +
@@ -145,7 +178,7 @@ function buildCommercialReport(result, opts) {
     statCard(t.catalogs || 0, 'Catálogos', 'listas a integrar') +
 '</div>' +
 
-(docs ? '<h2>Documentos incluidos</h2><ul>' + docs + '</ul>' : '') +
+(docRows ? '<h2>Complejidad por formulario</h2><table class="docs">' + docRows + '</table>' + conjunto : '') +
 
 (barras ? '<h2>Dónde está el esfuerzo</h2><table>' + barras + '</table>' : '') +
 

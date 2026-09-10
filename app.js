@@ -3513,6 +3513,28 @@
                 '<td>' + escapeHtml(f.detail || f.error || '') + '</td></tr>';
         }).join('');
 
+        // ── Complejidad por formulario (PDF + sus reglas) ─────────────────────
+        var docs = res.documents || [];
+        $('#quoterDocsPanel').hidden = !docs.length;
+        var sevOf = function(k) { return k === 'baja' ? 'info' : k === 'media' ? 'warning' : 'critical'; };
+        $('#quoteDocsLevelBody').innerHTML = docs.map(function(d) {
+            return '<tr>' +
+                '<td>' + escapeHtml(d.file) + '</td>' +
+                '<td style="text-align:right;">' + d.fields + '</td>' +
+                '<td style="text-align:right;">' + d.pages + '</td>' +
+                '<td style="text-align:right;">' + d.businessRules + '</td>' +
+                '<td style="text-align:right;color:var(--text-dim);">' + d.points + '</td>' +
+                '<td><span class="sev ' + sevOf(d.levelKey) + '">' + escapeHtml(d.level) + '</span></td>' +
+                '<td style="text-align:right;font-weight:600;">' + (d.weeks === 1 ? '1 semana' : d.weeks + ' semanas') + '</td>' +
+                '</tr>';
+        }).join('');
+        if (docs.length > 1) {
+            var suma = docs.reduce(function(a, d) { return a + d.weeks; }, 0);
+            $('#quoteDocsNote').textContent = 'Por separado suman ' + suma + ' semanas. Como entrega única el conjunto se cotiza ' +
+                res.score.level + ' (' + (res.score.weeks === 1 ? '1 semana' : res.score.weeks + ' semanas') + ').';
+            $('#quoteDocsNote').hidden = false;
+        } else { $('#quoteDocsNote').hidden = true; }
+
         // ── Clasificación por archivo ─────────────────────────────────────────
         var byFile = res.byFile || [];
         $('#quoterByFilePanel').hidden = !byFile.length;
@@ -3653,9 +3675,9 @@
         el.textContent = score.level;
         el.className = 'quote-level ' + score.levelKey;
         $('#quotePoints').textContent = score.points;
-        $('#quoteHours').textContent = 'Estimación: ' + score.estimatedHours.min + '–' +
-            score.estimatedHours.max + ' horas · Baja ≤ ' + score.thresholds.baja +
-            ' · Media ≤ ' + score.thresholds.media;
+        var sem = score.weeks === 1 ? '1 semana' : score.weeks + ' semanas';
+        $('#quoteHours').textContent = 'Plazo estimado: ' + sem +
+            ' · Baja ≤ ' + score.thresholds.baja + ' · Media ≤ ' + score.thresholds.media;
         $('#quoteBreakdownBody').innerHTML = score.breakdown.map(function(b) {
             var dim = b.count ? '' : ' style="color:var(--text-dim);"';
             return '<tr' + dim + '><td>' + escapeHtml(b.label) + '</td>' +
