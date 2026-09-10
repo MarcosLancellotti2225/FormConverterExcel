@@ -99712,6 +99712,68 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     }
   });
 
+  // src/quoter/report.js
+  var require_report = __commonJS({
+    "src/quoter/report.js"(exports, module) {
+      "use strict";
+      function esc(s) {
+        return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      }
+      function plural(n, one, many) {
+        return n + " " + (n === 1 ? one : many);
+      }
+      var LEVEL_COPY = {
+        baja: {
+          titulo: "Complejidad baja",
+          frase: "Formulario acotado. Se resuelve con el circuito est\xE1ndar, sin desarrollos a medida.",
+          color: "#15803d",
+          bg: "#dcfce7"
+        },
+        media: {
+          titulo: "Complejidad media",
+          frase: "Formulario con volumen de reglas de negocio que requiere configuraci\xF3n y validaci\xF3n cuidadosa.",
+          color: "#b45309",
+          bg: "#fef3c7"
+        },
+        alta: {
+          titulo: "Complejidad alta",
+          frase: "Formulario extenso, con muchas reglas y estructuras repetidas. Requiere planificaci\xF3n y pruebas dedicadas.",
+          color: "#b91c1c",
+          bg: "#fee2e2"
+        }
+      };
+      function statCard(valor, etiqueta, nota) {
+        return '<div class="card"><div class="num">' + esc(valor) + '</div><div class="lbl">' + esc(etiqueta) + "</div>" + (nota ? '<div class="sub">' + esc(nota) + "</div>" : "") + "</div>";
+      }
+      function buildCommercialReport(result, opts) {
+        opts = opts || {};
+        var t = result.totals || {};
+        var score = result.score || {};
+        var copy = LEVEL_COPY[score.levelKey] || LEVEL_COPY.media;
+        var nombre = opts.proyecto || (opts.archivo || "Formulario").replace(/\.zip$/i, "").replace(/[_-]+/g, " ");
+        var fecha = opts.fecha || "";
+        var byFile = (result.byFile || []).filter(function(f) {
+          return f.points > 0;
+        });
+        var barras = byFile.slice(0, 5).map(function(f) {
+          return '<tr><td class="fname">' + esc(f.file) + '<span class="role">' + esc(f.role) + '</span></td><td class="bar-cell"><div class="bar"><span style="width:' + Math.max(3, Math.min(100, f.share)) + '%"></span></div></td><td class="pct">' + f.share + "%</td></tr>";
+        }).join("");
+        var docs = (result.pdfs || []).map(function(p) {
+          return "<li><b>" + esc(p.file) + "</b> \u2014 " + plural(p.fieldCount, "espacio a completar", "espacios a completar") + " en " + plural(p.pages, "p\xE1gina", "p\xE1ginas") + "</li>";
+        }).join("");
+        var reuse = result.reuse || {};
+        var ahorroBloque = "";
+        if (reuse.percent > 0) {
+          ahorroBloque = '<div class="note ok"><b>Aprovechamiento de trabajo previo:</b> alrededor del <b>' + reuse.percent + "%</b> de este formulario ya est\xE1 resuelto (campos y reglas que se repiten o que comparte con otra versi\xF3n). Eso ya est\xE1 descontado de la estimaci\xF3n.</div>";
+        }
+        var horas = score.estimatedHours || {};
+        var rangoHoras = horas.min != null && horas.max != null ? horas.min + " a " + horas.max + " horas" : "\u2014";
+        return '<!doctype html>\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(nombre) + ' \u2014 Estimaci\xF3n</title><style>*{box-sizing:border-box}body{margin:0;background:#f1f5f9;color:#0f172a;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;line-height:1.6}.sheet{max-width:820px;margin:32px auto;background:#fff;border-radius:14px;padding:44px 48px;box-shadow:0 4px 24px rgba(15,23,42,.08)}h1{font-size:1.55rem;margin:0 0 4px;letter-spacing:-.02em}.meta{color:#64748b;font-size:.86rem;margin-bottom:28px}.verdict{display:flex;align-items:center;gap:22px;flex-wrap:wrap;padding:22px 24px;border-radius:12px;background:' + copy.bg + ";margin-bottom:28px}.verdict .lvl{font-size:1.5rem;font-weight:700;color:" + copy.color + ';white-space:nowrap}.verdict .txt{flex:1;min-width:240px;font-size:.95rem;color:#334155}.verdict .hrs{font-size:1.05rem;font-weight:700;color:#0f172a;white-space:nowrap}.verdict .hrs small{display:block;font-weight:400;font-size:.74rem;color:#64748b;text-align:right}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:32px}@media(max-width:640px){.cards{grid-template-columns:repeat(2,1fr)}}.card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center}.card .num{font-size:1.6rem;font-weight:700;letter-spacing:-.02em}.card .lbl{font-size:.78rem;color:#475569;margin-top:2px}.card .sub{font-size:.7rem;color:#94a3b8;margin-top:3px}h2{font-size:1rem;margin:28px 0 10px;padding-bottom:6px;border-bottom:2px solid #e2e8f0}ul{margin:0;padding-left:20px;font-size:.92rem}li{margin-bottom:5px}table{width:100%;border-collapse:collapse;font-size:.88rem}td{padding:7px 0;vertical-align:middle}.fname{font-weight:600;width:45%}.role{display:block;font-weight:400;font-size:.74rem;color:#94a3b8}.bar{background:#e2e8f0;border-radius:4px;height:8px;overflow:hidden}.bar span{display:block;height:100%;background:#6366f1;border-radius:4px}.bar-cell{padding-right:14px}.pct{text-align:right;width:52px;color:#475569;font-variant-numeric:tabular-nums}.note{padding:13px 16px;border-radius:9px;font-size:.88rem;margin-top:18px}.note.ok{background:#eff6ff;border-left:4px solid #3b82f6;color:#1e3a5f}.foot{margin-top:34px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:.76rem;color:#94a3b8}@media print{body{background:#fff}.sheet{box-shadow:none;margin:0;max-width:none;padding:0}}</style></head><body><div class="sheet"><h1>' + esc(nombre) + '</h1><div class="meta">Estimaci\xF3n de digitalizaci\xF3n' + (fecha ? " \xB7 " + esc(fecha) : "") + '</div><div class="verdict"><div class="lvl">' + esc(copy.titulo) + '</div><div class="txt">' + esc(copy.frase) + '</div><div class="hrs">' + esc(rangoHoras) + '<small>estimado</small></div></div><div class="cards">' + statCard(t.pdfFields || 0, "Espacios a completar", "en el formulario") + statCard(t.businessRules || 0, "Reglas de negocio", "validaciones y c\xE1lculos") + statCard(t.pdfs || 0, "Documentos", plural(t.pages || 0, "p\xE1gina", "p\xE1ginas")) + statCard(t.catalogs || 0, "Cat\xE1logos", "listas a integrar") + "</div>" + (docs ? "<h2>Documentos incluidos</h2><ul>" + docs + "</ul>" : "") + (barras ? "<h2>D\xF3nde est\xE1 el esfuerzo</h2><table>" + barras + "</table>" : "") + "<h2>Qu\xE9 incluye el trabajo</h2><ul><li>Preparaci\xF3n del PDF: identificaci\xF3n y normalizaci\xF3n de los " + (t.pdfFields || 0) + " espacios a completar.</li><li>Construcci\xF3n del formulario digital con sus secciones y validaciones.</li><li>Implementaci\xF3n de " + plural(t.businessRules || 0, "regla de negocio", "reglas de negocio") + (t.conditionalRules ? ", incluidas " + plural(t.conditionalRules, "condici\xF3n de visibilidad", "condiciones de visibilidad") : "") + ".</li>" + (t.catalogs ? "<li>Integraci\xF3n de " + plural(t.catalogs, "cat\xE1logo", "cat\xE1logos") + " de datos.</li>" : "") + (t.repeaters ? "<li>Bloques repetibles (dependientes, beneficiarios y similares).</li>" : "") + "<li>Pruebas del formulario, del documento generado y del env\xEDo de datos.</li></ul>" + ahorroBloque + '<div class="foot">Estimaci\xF3n preliminar basada en el an\xE1lisis autom\xE1tico de los archivos entregados. Puede ajustarse si cambian los requerimientos o si la documentaci\xF3n se completa.</div></div></body></html>';
+      }
+      module.exports = { buildCommercialReport };
+    }
+  });
+
   // src/quoter/index.js
   var require_quoter = __commonJS({
     "src/quoter/index.js"(exports, module) {
@@ -101176,6 +101238,10 @@ ${pagesHtml}</body>
         }
         return compareWithSample(analysis, sample, direction || "output");
       }
+      function buildQuoteReport(result, opts) {
+        const { buildCommercialReport } = require_report();
+        return buildCommercialReport(result, opts || {});
+      }
       async function runQuoteZip(inputs) {
         const { analyzeZip } = require_quoter();
         const { zipFile, config } = inputs;
@@ -101361,9 +101427,9 @@ ${pagesHtml}</body>
         return new Uint8Array(savedBytes);
       }
       if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, calibrateQuote, runJsonMap, runJsonCompare, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, calibrateQuote, buildQuoteReport, runJsonMap, runJsonCompare, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
       }
-      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, calibrateQuote, runJsonMap, runJsonCompare, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
+      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, calibrateQuote, buildQuoteReport, runJsonMap, runJsonCompare, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
     }
   });
   return require_browser();

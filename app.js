@@ -3394,6 +3394,8 @@
         });
         $('#btnQuote').addEventListener('click', runQuote);
         $('#btnQuoteJson').addEventListener('click', downloadQuoteJson);
+        $('#btnQuoteReport').addEventListener('click', function() { commercialReport('download'); });
+        $('#btnQuoteReportView').addEventListener('click', function() { commercialReport('view'); });
         $('#btnRequote').addEventListener('click', requoteWithThresholds);
         $('#btnCalibrate').addEventListener('click', calibrateFromCase);
         restoreQuoteConfig();
@@ -3469,6 +3471,8 @@
             statusEl.textContent = '✓ ' + res.totals.files + ' archivos analizados en ' + Math.round(t1 - t0) + 'ms' +
                 (res.errors.length ? ' · ⚠ ' + res.errors.length + ' con error' : '');
             $('#btnQuoteJson').hidden = false;
+            $('#btnQuoteReport').hidden = false;
+            $('#btnQuoteReportView').hidden = false;
             renderQuote(res);
         } catch (err) {
             console.error(err);
@@ -3670,6 +3674,30 @@
         quoterState.result.score = score;
         renderQuoteScore(score);
         renderQuoteReuse(quoterState.result);
+    }
+
+    // Reporte de una página para mandar a comercial: sin puntajes ni pesos.
+    function commercialReport(mode) {
+        if (!quoterState.result) return;
+        var nombre = (quoterState.zip ? quoterState.zip.name : 'formulario')
+            .replace(/\.zip$/i, '');
+        var html = InsPipelineBundle.buildQuoteReport(quoterState.result, {
+            archivo: quoterState.zip ? quoterState.zip.name : null,
+            fecha: new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' }),
+        });
+        if (mode === 'view') {
+            var w = window.open('', '_blank');
+            if (!w) {
+                $('#quoterStatus').className = 'status active error';
+                $('#quoterStatus').textContent = '✗ El navegador bloqueó la pestaña. Usá "Reporte para comercial" para descargarlo.';
+                return;
+            }
+            w.document.write(html);
+            w.document.close();
+            return;
+        }
+        var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        InsPipelineBundle.downloadBlob(blob, nombre + '_estimacion.html');
     }
 
     function downloadQuoteJson() {
