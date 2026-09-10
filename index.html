@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Form Tools</title>
-    <link rel="stylesheet" href="styles.css?v=64">
+    <link rel="stylesheet" href="styles.css?v=65">
     <link rel="stylesheet" href="src/pdf-converter-v2/ui/styles.css">
 </head>
 <body>
@@ -664,6 +664,20 @@
                 </div>
             </section>
 
+            <section class="panel" id="quoterByFilePanel" hidden>
+                <h2>Clasificación por archivo</h2>
+                <p class="hint">Cuánto aporta cada archivo al total y qué complejidad tiene por sí solo. Sirve para ver de dónde viene el peso del proyecto.</p>
+                <div class="match-table-wrap" style="max-height:360px;">
+                    <table class="match-table">
+                        <thead><tr>
+                            <th>Archivo</th><th>Rol</th><th>Contenido</th>
+                            <th>Aporte</th><th>% del total</th><th>Complejidad</th>
+                        </tr></thead>
+                        <tbody id="quoteByFileBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
             <section class="panel" id="quoterPdfPanel" hidden>
                 <h2>Espacios por PDF</h2>
                 <p class="hint">Cada PDF del ZIP con la cantidad de espacios a llenar (campos AcroForm), abiertos por tipo.</p>
@@ -823,7 +837,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=64"></script>
-    <script src="app.js?v=64"></script>
+    <script src="bundle.js?v=65"></script>
+    <script src="app.js?v=65"></script>
 </body>
 </html>

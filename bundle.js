@@ -100190,6 +100190,94 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           repeatedRules
         };
       }
+      function levelFor(points, th) {
+        if (points <= th.baja) return { level: "Baja", levelKey: "baja" };
+        if (points <= th.media) return { level: "Media", levelKey: "media" };
+        return { level: "Alta", levelKey: "alta" };
+      }
+      function classifyFiles(pdfs, excels, jsons, config, totalPoints) {
+        var w = config.weights;
+        var th = normalizeThresholds(config.thresholds) || DEFAULT_CONFIG.thresholds;
+        var out = [];
+        var biggest = null;
+        for (var i = 0; i < pdfs.length; i++) {
+          if (!biggest || pdfs[i].fieldCount > biggest.fieldCount) biggest = pdfs[i];
+        }
+        for (var p = 0; p < pdfs.length; p++) {
+          var pdf = pdfs[p];
+          var pts = pdf.fieldCount * w.pdfField + pdf.pages * w.pdfPage + (pdf.repeaterGroups || 0) * w.repeater;
+          pts = Math.round(pts * 10) / 10;
+          var lv = levelFor(pts, th);
+          out.push({
+            file: pdf.file,
+            kind: "pdf",
+            role: pdfs.length > 1 && pdf === biggest ? "Formulario principal" : pdfs.length > 1 ? "Variante / anexo" : "Formulario",
+            points: pts,
+            level: lv.level,
+            levelKey: lv.levelKey,
+            share: totalPoints ? Math.round(pts / totalPoints * 100) : 0,
+            detail: pdf.fieldCount + " espacios \xB7 " + pdf.pages + " p\xE1gs",
+            metrics: {
+              espacios: pdf.fieldCount,
+              paginas: pdf.pages,
+              gruposIndexados: pdf.repeaterGroups || 0,
+              configuracionesUnicas: pdf.uniqueConfigs
+            }
+          });
+        }
+        for (var e = 0; e < excels.length; e++) {
+          var x = excels[e];
+          var cats = (x.catalogs || 0) + (x.catalogRefs || 0);
+          var xpts = x.businessRules * w.businessRule + x.conditionalRules * w.conditionalRule + cats * w.catalog + (x.catalogItems || 0) * w.catalogItem;
+          xpts = Math.round(xpts * 10) / 10;
+          var xlv = levelFor(xpts, th);
+          var onlyCatalogs = x.businessRules === 0 && x.conditionalRules === 0 && cats > 0;
+          out.push({
+            file: x.file,
+            kind: "excel",
+            role: onlyCatalogs ? "Cat\xE1logos / datos" : "Ficha de reglas",
+            points: xpts,
+            level: xlv.level,
+            levelKey: xlv.levelKey,
+            share: totalPoints ? Math.round(xpts / totalPoints * 100) : 0,
+            detail: x.businessRules + " reglas \xB7 " + x.sheetCount + " pesta\xF1as",
+            metrics: {
+              reglas: x.businessRules,
+              condicionales: x.conditionalRules,
+              catalogos: cats,
+              pestanas: x.sheetCount,
+              pestanasIgnoradas: x.ignoredSheets || 0,
+              campos: x.fieldRows
+            }
+          });
+        }
+        for (var j = 0; j < jsons.length; j++) {
+          var js = jsons[j];
+          out.push({
+            file: js.file,
+            kind: "json",
+            role: js.kind === "form-def" ? "Definici\xF3n ya construida" : "Datos / ejemplo",
+            // El form-def no suma aparte: sus números ya entran por max() en los
+            // totales, contarlo de nuevo duplicaría el esfuerzo.
+            points: 0,
+            level: "\u2014",
+            levelKey: "info",
+            share: 0,
+            detail: js.kind === "form-def" ? js.fields + " campos \xB7 " + js.sections + " secciones" : "JSON de datos",
+            metrics: js.kind === "form-def" ? {
+              campos: js.fields,
+              secciones: js.sections,
+              repeaters: js.repeaters,
+              lookups: js.lookups,
+              condicionales: js.conditionals
+            } : { claves: js.topLevelKeys || 0 }
+          });
+        }
+        out.sort(function(a, b) {
+          return b.points - a.points;
+        });
+        return out;
+      }
       async function analyzeZip(zipBytes, configOverride) {
         var config = {
           weights: Object.assign({}, DEFAULT_CONFIG.weights, configOverride && configOverride.weights || {}),
@@ -100282,8 +100370,10 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         totals.uniqueConfigs = 0;
         for (var u = 0; u < pdfs.length; u++) totals.uniqueConfigs += pdfs[u].uniqueConfigs;
         var score = scoreProject(totals, config);
+        var byFile = classifyFiles(pdfs, excels, jsons, config, score.points);
         return {
           inventory,
+          byFile,
           reuse: totals.reuse,
           pdfs,
           excels,
@@ -100295,7 +100385,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           config
         };
       }
-      module.exports = { analyzeZip, DEFAULT_CONFIG, analyzeExcel, analyzeJson, scoreProject, calibrateThresholds };
+      module.exports = { analyzeZip, DEFAULT_CONFIG, analyzeExcel, analyzeJson, scoreProject, calibrateThresholds, classifyFiles };
     }
   });
 

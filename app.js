@@ -3509,6 +3509,29 @@
                 '<td>' + escapeHtml(f.detail || f.error || '') + '</td></tr>';
         }).join('');
 
+        // ── Clasificación por archivo ─────────────────────────────────────────
+        var byFile = res.byFile || [];
+        $('#quoterByFilePanel').hidden = !byFile.length;
+        $('#quoteByFileBody').innerHTML = byFile.map(function(f) {
+            // Barra proporcional para ver de un vistazo quién pesa más.
+            var bar = f.share
+                ? '<div style="height:4px;border-radius:2px;background:var(--accent);width:' +
+                  Math.max(4, Math.min(100, f.share)) + '%;margin-top:3px;opacity:0.7;"></div>'
+                : '';
+            var lvl = f.levelKey === 'info'
+                ? '<span style="color:var(--text-dim);">—</span>'
+                : '<span class="sev ' + (f.levelKey === 'baja' ? 'info' : f.levelKey === 'media' ? 'warning' : 'critical') + '">' +
+                  escapeHtml(f.level) + '</span>';
+            return '<tr>' +
+                '<td><span class="q-tag ' + escapeHtml(f.kind) + '">' + escapeHtml(f.kind) + '</span> ' + escapeHtml(f.file) + '</td>' +
+                '<td style="color:var(--text-muted);">' + escapeHtml(f.role) + '</td>' +
+                '<td style="color:var(--text-muted);font-size:0.78rem;">' + escapeHtml(f.detail) + '</td>' +
+                '<td style="text-align:right;font-weight:700;">' + f.points + '</td>' +
+                '<td style="text-align:right;">' + f.share + '%' + bar + '</td>' +
+                '<td>' + lvl + '</td>' +
+                '</tr>';
+        }).join('');
+
         // ── Espacios por PDF ──────────────────────────────────────────────────
         $('#quoterPdfPanel').hidden = !res.pdfs.length;
         var tot = { pages: 0, fields: 0, text: 0, check: 0, other: 0, groups: 0 };
@@ -3670,6 +3693,7 @@
                 comparaciones: (r.reuse.pdf.pairs || []).concat(r.reuse.excel.pairs || []),
             },
             totales: r.totals,
+            clasificacionPorArchivo: r.byFile,
             desglosePuntos: r.score.breakdown,
             inventario: r.inventory,
             pdfs: r.pdfs,

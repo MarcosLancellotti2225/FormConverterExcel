@@ -562,6 +562,98 @@ function scoreProject(totals, config) {
     };
 }
 
+// ─── Clasificación por archivo ───────────────────────────────────────────────
+
+function levelFor(points, th) {
+    if (points <= th.baja) return { level: 'Baja', levelKey: 'baja' };
+    if (points <= th.media) return { level: 'Media', levelKey: 'media' };
+    return { level: 'Alta', levelKey: 'alta' };
+}
+
+/**
+ * Cuánto aporta cada archivo por separado y de qué tipo es. Sirve para ver de
+ * dónde viene el peso del proyecto: un PDF enorme, una ficha con muchas reglas,
+ * o varios archivos chicos.
+ */
+function classifyFiles(pdfs, excels, jsons, config, totalPoints) {
+    var w = config.weights;
+    var th = normalizeThresholds(config.thresholds) || DEFAULT_CONFIG.thresholds;
+    var out = [];
+
+    // El PDF con más campos se toma como el formulario principal; el resto son
+    // variantes (abreviado, anexo) que reaprovechan lo del principal.
+    var biggest = null;
+    for (var i = 0; i < pdfs.length; i++) {
+        if (!biggest || pdfs[i].fieldCount > biggest.fieldCount) biggest = pdfs[i];
+    }
+
+    for (var p = 0; p < pdfs.length; p++) {
+        var pdf = pdfs[p];
+        var pts = pdf.fieldCount * w.pdfField + pdf.pages * w.pdfPage +
+            (pdf.repeaterGroups || 0) * w.repeater;
+        pts = Math.round(pts * 10) / 10;
+        var lv = levelFor(pts, th);
+        out.push({
+            file: pdf.file, kind: 'pdf',
+            role: pdfs.length > 1 && pdf === biggest ? 'Formulario principal'
+                : (pdfs.length > 1 ? 'Variante / anexo' : 'Formulario'),
+            points: pts, level: lv.level, levelKey: lv.levelKey,
+            share: totalPoints ? Math.round(pts / totalPoints * 100) : 0,
+            detail: pdf.fieldCount + ' espacios · ' + pdf.pages + ' págs',
+            metrics: {
+                espacios: pdf.fieldCount, paginas: pdf.pages,
+                gruposIndexados: pdf.repeaterGroups || 0,
+                configuracionesUnicas: pdf.uniqueConfigs,
+            },
+        });
+    }
+
+    for (var e = 0; e < excels.length; e++) {
+        var x = excels[e];
+        var cats = (x.catalogs || 0) + (x.catalogRefs || 0);
+        var xpts = x.businessRules * w.businessRule +
+            x.conditionalRules * w.conditionalRule +
+            cats * w.catalog + (x.catalogItems || 0) * w.catalogItem;
+        xpts = Math.round(xpts * 10) / 10;
+        var xlv = levelFor(xpts, th);
+        // Una matriz sin reglas y solo con catálogos es un anexo de datos.
+        var onlyCatalogs = x.businessRules === 0 && x.conditionalRules === 0 && cats > 0;
+        out.push({
+            file: x.file, kind: 'excel',
+            role: onlyCatalogs ? 'Catálogos / datos' : 'Ficha de reglas',
+            points: xpts, level: xlv.level, levelKey: xlv.levelKey,
+            share: totalPoints ? Math.round(xpts / totalPoints * 100) : 0,
+            detail: x.businessRules + ' reglas · ' + x.sheetCount + ' pestañas',
+            metrics: {
+                reglas: x.businessRules, condicionales: x.conditionalRules,
+                catalogos: cats, pestanas: x.sheetCount,
+                pestanasIgnoradas: x.ignoredSheets || 0, campos: x.fieldRows,
+            },
+        });
+    }
+
+    for (var j = 0; j < jsons.length; j++) {
+        var js = jsons[j];
+        out.push({
+            file: js.file, kind: 'json',
+            role: js.kind === 'form-def' ? 'Definición ya construida' : 'Datos / ejemplo',
+            // El form-def no suma aparte: sus números ya entran por max() en los
+            // totales, contarlo de nuevo duplicaría el esfuerzo.
+            points: 0, level: '—', levelKey: 'info', share: 0,
+            detail: js.kind === 'form-def'
+                ? (js.fields + ' campos · ' + js.sections + ' secciones')
+                : 'JSON de datos',
+            metrics: js.kind === 'form-def'
+                ? { campos: js.fields, secciones: js.sections, repeaters: js.repeaters,
+                    lookups: js.lookups, condicionales: js.conditionals }
+                : { claves: js.topLevelKeys || 0 },
+        });
+    }
+
+    out.sort(function (a, b) { return b.points - a.points; });
+    return out;
+}
+
 // ─── Entrada principal ───────────────────────────────────────────────────────
 
 /**
@@ -676,9 +768,11 @@ async function analyzeZip(zipBytes, configOverride) {
     for (var u = 0; u < pdfs.length; u++) totals.uniqueConfigs += pdfs[u].uniqueConfigs;
 
     var score = scoreProject(totals, config);
+    var byFile = classifyFiles(pdfs, excels, jsons, config, score.points);
 
     return {
         inventory: inventory,
+        byFile: byFile,
         reuse: totals.reuse,
         pdfs: pdfs,
         excels: excels,
@@ -691,4 +785,4 @@ async function analyzeZip(zipBytes, configOverride) {
     };
 }
 
-module.exports = { analyzeZip, DEFAULT_CONFIG, analyzeExcel, analyzeJson, scoreProject, calibrateThresholds };
+module.exports = { analyzeZip, DEFAULT_CONFIG, analyzeExcel, analyzeJson, scoreProject, calibrateThresholds, classifyFiles };
