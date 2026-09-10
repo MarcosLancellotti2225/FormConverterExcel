@@ -3509,31 +3509,77 @@
                 '<td>' + escapeHtml(f.detail || f.error || '') + '</td></tr>';
         }).join('');
 
-        // Pestañas de Excel
+        // ── Espacios por PDF ──────────────────────────────────────────────────
+        $('#quoterPdfPanel').hidden = !res.pdfs.length;
+        var tot = { pages: 0, fields: 0, text: 0, check: 0, other: 0, groups: 0 };
+        var pdfRows = res.pdfs.map(function(p) {
+            // Los tipos que reporta el detector se agrupan en 3 columnas legibles.
+            var text = 0, check = 0, other = 0;
+            Object.keys(p.byType).forEach(function(k) {
+                var n = p.byType[k];
+                if (/text/i.test(k)) text += n;
+                else if (/check|radio|button/i.test(k)) check += n;
+                else other += n;
+            });
+            tot.pages += p.pages; tot.fields += p.fieldCount;
+            tot.text += text; tot.check += check; tot.other += other;
+            tot.groups += p.repeaterGroups || 0;
+            return '<tr>' +
+                '<td>' + escapeHtml(p.file) + '</td>' +
+                '<td style="text-align:right;">' + p.pages + '</td>' +
+                '<td style="text-align:right;font-weight:700;color:var(--accent);">' + p.fieldCount + '</td>' +
+                '<td style="text-align:right;">' + text + '</td>' +
+                '<td style="text-align:right;">' + check + '</td>' +
+                '<td style="text-align:right;color:var(--text-dim);">' + other + '</td>' +
+                '<td style="text-align:right;">' + (p.repeaterGroups || 0) + '</td>' +
+                '</tr>';
+        }).join('');
+        $('#quotePdfBody').innerHTML = pdfRows ||
+            '<tr><td colspan="7" style="color:var(--text-dim);">Sin PDFs en el ZIP</td></tr>';
+        $('#quotePdfFoot').innerHTML = res.pdfs.length > 1
+            ? '<tr style="border-top:2px solid var(--border);font-weight:700;">' +
+              '<td>TOTAL (' + res.pdfs.length + ' PDFs)</td>' +
+              '<td style="text-align:right;">' + tot.pages + '</td>' +
+              '<td style="text-align:right;color:var(--accent);">' + tot.fields + '</td>' +
+              '<td style="text-align:right;">' + tot.text + '</td>' +
+              '<td style="text-align:right;">' + tot.check + '</td>' +
+              '<td style="text-align:right;">' + tot.other + '</td>' +
+              '<td style="text-align:right;">' + tot.groups + '</td></tr>'
+            : '';
+
+        // ── Reglas de negocio por matriz ──────────────────────────────────────
+        $('#quoterExcelPanel').hidden = !res.excels.length;
         var sheetRows = '';
         res.excels.forEach(function(x) {
+            // Fila cabecera por archivo, con el total de reglas de esa matriz.
+            sheetRows += '<tr style="background:var(--bg-elevated);font-weight:700;">' +
+                '<td>' + escapeHtml(x.file) + ' <span style="font-weight:400;color:var(--text-dim);">(' + x.sheetCount + ' pestañas)</span></td>' +
+                '<td></td>' +
+                '<td style="text-align:right;">' + (x.fieldRows || 0) + '</td>' +
+                '<td style="text-align:right;color:var(--accent);">' + (x.businessRules || 0) + '</td>' +
+                '<td style="text-align:right;">' + (x.conditionalRules || 0) + '</td>' +
+                '<td style="text-align:right;">' + ((x.catalogs || 0) + (x.catalogRefs || 0)) + '</td>' +
+                '<td></td></tr>';
             x.sheets.forEach(function(s) {
-                sheetRows += '<tr><td style="color:var(--text-dim);">' + escapeHtml(x.file) + '</td>' +
-                    '<td>' + escapeHtml(s.name) + '</td>' +
+                var tipo = s.ignored ? '<span style="color:var(--text-dim);">ignorada (output/índice)</span>'
+                    : s.isCatalog ? '<span class="q-tag catalogo">catálogo ' + s.catalogItems + '</span>'
+                    : s.empty ? '<span style="color:var(--text-dim);">vacía</span>'
+                    : 'reglas';
+                sheetRows += '<tr>' +
+                    '<td style="padding-left:1.5rem;color:var(--text-muted);">' + escapeHtml(s.name) + '</td>' +
                     '<td style="text-align:right;">' + (s.rows || 0) + '</td>' +
                     '<td style="text-align:right;">' + (s.fieldRows || 0) + '</td>' +
                     '<td style="text-align:right;font-weight:600;">' + (s.businessRules || 0) + '</td>' +
                     '<td style="text-align:right;">' + (s.conditionalRules || 0) + '</td>' +
-                    '<td>' + (s.isCatalog ? '<span class="q-tag catalogo">catálogo ' + s.catalogItems + '</span>'
-                        : (s.empty ? '<span style="color:var(--text-dim);">vacía</span>' : 'reglas')) + '</td></tr>';
+                    '<td style="text-align:right;color:var(--text-dim);">' + (s.catalogRefs || 0) + '</td>' +
+                    '<td>' + tipo + '</td></tr>';
             });
         });
         $('#quoteSheetsBody').innerHTML = sheetRows ||
             '<tr><td colspan="7" style="color:var(--text-dim);">Sin Excels en el ZIP</td></tr>';
 
-        // PDFs y JSONs
+        // ── JSONs ─────────────────────────────────────────────────────────────
         var docRows = '';
-        res.pdfs.forEach(function(p) {
-            var types = Object.keys(p.byType).map(function(k) { return k + ': ' + p.byType[k]; }).join(', ');
-            docRows += '<tr><td>' + escapeHtml(p.file) + '</td><td><span class="q-tag pdf">PDF</span></td>' +
-                '<td>' + p.fieldCount + ' campos · ' + p.pages + ' pág · ' + escapeHtml(types) +
-                (p.repeaterGroups ? ' · ' + p.repeaterGroups + ' grupos [n]' : '') + '</td></tr>';
-        });
         res.jsons.forEach(function(j) {
             var det = j.kind === 'form-def'
                 ? (j.fields + ' campos · ' + j.sections + ' secciones · ' + j.repeaters + ' repeaters · ' +
@@ -3543,7 +3589,7 @@
                 '<td>' + escapeHtml(det) + '</td></tr>';
         });
         $('#quoteDocsBody').innerHTML = docRows ||
-            '<tr><td colspan="3" style="color:var(--text-dim);">Sin PDFs ni JSONs</td></tr>';
+            '<tr><td colspan="3" style="color:var(--text-dim);">Sin JSONs en el ZIP</td></tr>';
     }
 
     function renderQuoteReuse(res) {
