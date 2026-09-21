@@ -20,23 +20,43 @@ const {parseCondicion} = require('./tipos.js');
 const {corregirTerminos, corregirTildes, GRUPOS_PERSONA, normalizarCodigoPersona, ORDEN_SECCIONES, sinAcentos, comoId} = require('./catalogos.js');
 const etiqueta = (c) => c.label ?? c.id;
 // --- R01 · id == "field_" + sourceName -------------------------------------
-// Se compara contra las tres formas del id: literal, sin acentos y slugificado.
-// Las dos últimas son tolerancia, no laxitud: Signaframe deriva el id bajando a
-// minúsculas y reemplazando lo no alfanumérico por `_`, así que un sourceName
-// indexado (`depGeneroFem[0]`) llega como `field_depgenerofem_0`. Comparar solo
-// contra el crudo marcaba error en todos los campos de un repeater del PDF.
+// Se aceptan las tres formas en que la plataforma puede derivar el id:
+// slugificado (el caso real de los indexados de repeater), crudo en minúsculas,
+// y sin acentos. Comparar solo contra el crudo daba 117 falsos positivos en un
+// formulario, porque `depGeneroFem[0]` produce `field_depgenerofem_0`.
+//
+// Dos excepciones más, las dos verificadas contra form-def que están en
+// producción funcionando:
+//
+//  1. El helper que escribe en el widget de OTRO campo comparte su sourceName y
+//     desambigua el id con un sufijo (`..._helper`, `..._pdf`). El render
+//     igual lo pinta porque el sourceName está explícito en sourceMeta; el id
+//     solo tiene que ser único. Solo se acepta si el campo es efectivamente un
+//     helper: oculto, compartido, o con autoFillConcat.
+//  2. El contenedor sintético de un repeater no corresponde a ningún widget del
+//     PDF, y su sourceName se escribe igual que el id, ya con el prefijo
+//     `field_`. Duplicarlo daría `field_field_...`.
+const esHelper = (c) => Boolean(c.hidden || c.sharedValue || c.autoFillConcat);
+
 const rIdSourceName = (m) => m.campos
     .filter((cp) => cp.campo.sourceMeta?.sourceName)
     .filter((cp) => {
-    const esperado = `field_${cp.campo.sourceMeta.sourceName.toLowerCase()}`;
+    const sn = cp.campo.sourceMeta.sourceName;
     const real = cp.campo.id.toLowerCase();
-    return real !== esperado && sinAcentos(real) !== sinAcentos(esperado) && comoId(real) !== comoId(esperado);
+    const base = comoId(sn);
+    const aceptados = [`field_${base}`, `field_${sn.toLowerCase()}`];
+    if (base.startsWith('field_'))
+        aceptados.push(base); // repeater sintético
+    const coincide = (e) => real === e ||
+        sinAcentos(real) === sinAcentos(e) ||
+        (esHelper(cp.campo) && real.startsWith(`${e}_`)); // helper con sufijo
+    return !aceptados.some(coincide);
 })
     .map((cp) => ({
     regla: 'R01',
     severidad: 'error',
     titulo: 'El id no coincide con su sourceName',
-    detalle: `\`${cp.campo.id}\` debería ser \`field_${cp.campo.sourceMeta.sourceName.toLowerCase()}\`. El render mapea por id → sourceName → sourceMeta: si no coinciden, el campo no pinta.`,
+    detalle: `\`${cp.campo.id}\` debería ser \`field_${comoId(cp.campo.sourceMeta.sourceName)}\`. El render mapea por id → sourceName → sourceMeta: si no coinciden, el campo no pinta.`,
     campoIds: [cp.campo.id],
 }));
 // --- R02 · ids duplicados ---------------------------------------------------
@@ -601,9 +621,21 @@ function revisar(m) {
         try {
             out.push(...regla(m));
         }
-        catch {
+        catch (e) {
             // Una regla que explota no puede tumbar el diagnóstico entero: el resto
             // sigue valiendo y el usuario necesita ver algo, no una pantalla vacía.
+            //
+            // Pero tampoco puede fallar en silencio. Sin este hallazgo, una regla
+            // rota se saltea y el diagnóstico se ve MÁS limpio que la realidad: el
+            // caso peligroso es creer que un form-def está bien porque la regla que
+            // lo detectaba estaba muerta. Pasó de verdad durante una integración.
+            out.push({
+                regla: 'R00',
+                severidad: 'aviso',
+                titulo: 'Una regla falló y no se evaluó',
+                detalle: `\`${regla.name || 'anónima'}\` lanzó "${e instanceof Error ? e.message : String(e)}". El diagnóstico está incompleto: lo que esa regla detecta no se revisó. No tomar la ausencia de hallazgos suyos como que está todo bien.`,
+                campoIds: [],
+            });
         }
     }
     return out.sort((a, b) => PESO[a.severidad] - PESO[b.severidad] || a.regla.localeCompare(b.regla));

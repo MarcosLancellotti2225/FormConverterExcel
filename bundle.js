@@ -99575,7 +99575,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       var corregirTildes = (texto) => aplicar(texto, TILDES);
       var corregirTerminos = (texto) => aplicar(texto, TERMINOS);
       var sinAcentos = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
-      var comoId = (s) => sinAcentos(s.toLowerCase()).replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+      var comoId = (sourceName) => sourceName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
       module.exports = { TIPO_ID_FISICA, TIPO_ID_JURIDICA, ESTADO_CIVIL, MONEDA, FORMA_PAGO, TIPO_TRAMITE, TIPO_PERSONA, ALIAS_PERSONA, normalizarCodigoPersona, GRUPOS_PERSONA, ORDEN_SECCIONES, ANCHOS_ACORDADOS, TILDES, TERMINOS, corregirTildes, corregirTerminos, sinAcentos, comoId };
     }
   });
@@ -99586,15 +99586,21 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       var { parseCondicion } = require_tipos();
       var { corregirTerminos, corregirTildes, GRUPOS_PERSONA, normalizarCodigoPersona, ORDEN_SECCIONES, sinAcentos, comoId } = require_catalogos2();
       var etiqueta = (c) => c.label ?? c.id;
+      var esHelper = (c) => Boolean(c.hidden || c.sharedValue || c.autoFillConcat);
       var rIdSourceName = (m) => m.campos.filter((cp) => cp.campo.sourceMeta?.sourceName).filter((cp) => {
-        const esperado = `field_${cp.campo.sourceMeta.sourceName.toLowerCase()}`;
+        const sn = cp.campo.sourceMeta.sourceName;
         const real = cp.campo.id.toLowerCase();
-        return real !== esperado && sinAcentos(real) !== sinAcentos(esperado) && comoId(real) !== comoId(esperado);
+        const base = comoId(sn);
+        const aceptados = [`field_${base}`, `field_${sn.toLowerCase()}`];
+        if (base.startsWith("field_"))
+          aceptados.push(base);
+        const coincide = (e) => real === e || sinAcentos(real) === sinAcentos(e) || esHelper(cp.campo) && real.startsWith(`${e}_`);
+        return !aceptados.some(coincide);
       }).map((cp) => ({
         regla: "R01",
         severidad: "error",
         titulo: "El id no coincide con su sourceName",
-        detalle: `\`${cp.campo.id}\` deber\xEDa ser \`field_${cp.campo.sourceMeta.sourceName.toLowerCase()}\`. El render mapea por id \u2192 sourceName \u2192 sourceMeta: si no coinciden, el campo no pinta.`,
+        detalle: `\`${cp.campo.id}\` deber\xEDa ser \`field_${comoId(cp.campo.sourceMeta.sourceName)}\`. El render mapea por id \u2192 sourceName \u2192 sourceMeta: si no coinciden, el campo no pinta.`,
         campoIds: [cp.campo.id]
       }));
       var rIdsDuplicados = (m) => {
@@ -100095,7 +100101,14 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         for (const regla of REGLAS) {
           try {
             out.push(...regla(m));
-          } catch {
+          } catch (e) {
+            out.push({
+              regla: "R00",
+              severidad: "aviso",
+              titulo: "Una regla fall\xF3 y no se evalu\xF3",
+              detalle: `\`${regla.name || "an\xF3nima"}\` lanz\xF3 "${e instanceof Error ? e.message : String(e)}". El diagn\xF3stico est\xE1 incompleto: lo que esa regla detecta no se revis\xF3. No tomar la ausencia de hallazgos suyos como que est\xE1 todo bien.`,
+              campoIds: []
+            });
           }
         }
         return out.sort((a, b) => PESO[a.severidad] - PESO[b.severidad] || a.regla.localeCompare(b.regla));

@@ -183,17 +183,20 @@ const corregirTerminos = (texto) => aplicar(texto, TERMINOS);
  */
 const sinAcentos = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
 /**
- * Slugifica como lo hace Signaframe al derivar el id de un sourceName: baja a
- * minúsculas y reemplaza todo lo que no sea alfanumérico por `_`.
+ * El id que Signaframe deriva de un sourceName.
  *
- * Hace falta en R01 por el mismo motivo que `sinAcentos`. Un sourceName
- * indexado —`depGeneroFem[0]`, de un repeater del PDF— llega al form-def como
- * `field_depgenerofem_0`, y comparar contra el sourceName crudo marcaba error
- * en todos: sobre un form-def real con 117 campos indexados, R01 daba 117
- * falsos positivos y tapaba los hallazgos que sí importaban.
+ * No es solo pasar a minúsculas: la plataforma **slugifica**. Un sourceName
+ * indexado de repeater, `depGeneroFem[0]`, llega como `field_depgenerofem_0`,
+ * no como `field_depgenerofem[0]`. Verificado contra los form-def reales, donde
+ * los 118 campos indexados siguen esta forma sin excepción.
+ *
+ * Comparar contra el sourceName crudo daba 117 falsos positivos en un solo
+ * formulario: el 69% de todo el ruido del diagnóstico, tapando los hallazgos
+ * de verdad.
  */
-const comoId = (s) => sinAcentos(s.toLowerCase())
-    .replace(/[^a-z0-9]+/g, '_')   // cada corrida de no-alfanuméricos es UN separador:
-    .replace(/^_+|_+$/g, '');      // `...fem[0]` y `...fem_0` tienen que dar lo mismo
+const comoId = (sourceName) => sourceName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_') // corridas de no-alfanuméricos -> un solo _
+    .replace(/^_+|_+$/g, '');    //   sin _ colgando: `[0]` da `_0`, no `_0_`
 
 module.exports = { TIPO_ID_FISICA, TIPO_ID_JURIDICA, ESTADO_CIVIL, MONEDA, FORMA_PAGO, TIPO_TRAMITE, TIPO_PERSONA, ALIAS_PERSONA, normalizarCodigoPersona, GRUPOS_PERSONA, ORDEN_SECCIONES, ANCHOS_ACORDADOS, TILDES, TERMINOS, corregirTildes, corregirTerminos, sinAcentos, comoId };
