@@ -4,12 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Form Tools</title>
-    <link rel="stylesheet" href="styles.css?v=74">
+    <link rel="stylesheet" href="styles.css?v=75">
     <link rel="stylesheet" href="src/pdf-converter-v2/ui/styles.css">
 </head>
 <body>
     <header class="topbar">
         <div class="brand">
+            <button id="btnBackToHome" class="secondary btn-sm" hidden>← Volver</button>
             <div class="logo">FT</div>
             <div class="titles">
                 <h1>Form Tools</h1>
@@ -17,7 +18,6 @@
             </div>
         </div>
         <div class="topbar-right">
-            <button id="btnBackToHome" class="secondary btn-sm" hidden>Volver al inicio</button>
             <a class="repo-link" href="https://github.com/MarcosLancellotti2225/FormConverterExcel" target="_blank">repo</a>
         </div>
     </header>
@@ -522,15 +522,38 @@
                 </div>
             </section>
 
-            <section class="panel">
-                <h2>El circuito</h2>
-                <p class="hint">Cada paso indica quién lo hace. Los que tienen herramienta se abren con un click.</p>
-                <ol class="v2-steps" id="v2Steps"></ol>
+            <section class="panel" id="v2Puerta">
+                <h2>¿Por dónde entrás?</h2>
+                <p class="hint">Elegí lo que ya tenés en la mano y te llevo al paso que sigue. Podés ignorarlo y entrar donde quieras.</p>
+                <div class="v2-puerta-ops" id="v2PuertaOps"></div>
+                <p class="v2-puerta-estado" id="v2PuertaEstado" hidden></p>
             </section>
 
             <section class="panel">
-                <h2>Herramientas disponibles</h2>
-                <p class="hint">Todo lo que ya está construido y se reutiliza desde acá.</p>
+                <h2>El circuito</h2>
+                <p class="hint">Cada paso dice qué necesitás antes de empezar, qué hacés y con qué archivo salís.</p>
+                <ol class="v2-steps" id="v2Steps"></ol>
+            </section>
+
+            <section class="panel v2-skill" id="v2Skill">
+                <h2>La skill para Claude</h2>
+                <p class="hint">
+                    Las reglas de plataforma de Signframe y las convenciones del INS, empaquetadas.
+                    Se la pasás a Claude y arma, corrige y valida form-defs con el criterio que ya acordamos,
+                    sin que le tengas que explicar nada.
+                </p>
+                <p class="v2-skill-instalar">
+                    Descomprimila dentro de <code>~/.claude/skills/</code> y reiniciá Claude Code.
+                </p>
+                <div class="v2-skill-bajar">
+                    <a class="primary btn-sm" id="v2SkillLink" href="public/skill-signframe-form-def.zip" download>Descargar la skill</a>
+                    <span class="v2-skill-ver" id="v2SkillVer"></span>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>Herramientas sueltas</h2>
+                <p class="hint">Las mismas piezas que usan los pasos de arriba, por separado, para cuando ya sabés qué buscás.</p>
                 <div class="v2-grid" id="v2Tools"></div>
             </section>
         </div>
@@ -894,7 +917,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=74"></script>
-    <script src="app.js?v=74"></script>
+    <script src="bundle.js?v=75"></script>
+    <script src="app.js?v=75"></script>
 </body>
 </html>

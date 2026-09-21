@@ -36,13 +36,24 @@
         });
     }
 
+    // De dónde entraste a la herramienta abierta: 'v2' si fue desde el hub,
+    // null si fue desde la grilla del inicio o por URL directa. Es lo que hace
+    // que "Volver" te devuelva al lugar del que saliste y no siempre al inicio.
+    var origenModo = null;
+
     function wireBackButton() {
         $('#btnBackToHome').addEventListener('click', function() {
-            selectMode(null);
+            if (origenModo === 'v2' && currentMode !== 'v2') {
+                selectMode('v2');
+                v2AlVolver();
+            } else {
+                selectMode(null);
+            }
         });
     }
 
-    function selectMode(mode) {
+    function selectMode(mode, origen) {
+        origenModo = mode ? (origen || null) : null;
         currentMode = mode;
         $('#modeSelector').hidden = !!mode;
         $('#convertPdfFlow').hidden = mode !== 'convert-pdf';
@@ -54,7 +65,9 @@
         $('#quoterFlow').hidden = mode !== 'quoter';
         $('#jsonMapFlow').hidden = mode !== 'json-map';
         $('#v2Flow').hidden = mode !== 'v2';
-        $('#btnBackToHome').hidden = !mode;
+        var volver = $('#btnBackToHome');
+        volver.hidden = !mode;
+        volver.textContent = (origenModo === 'v2' && mode !== 'v2') ? '← Volver al 2.0' : '← Volver';
         var main = document.querySelector('main');
         if (mode === 'convert-pdf' || mode === 'detect-fields' || mode === 'signframe' || mode === 'canonical-matrix') {
             main.classList.add('wide-mode');
@@ -3160,16 +3173,130 @@
     // todavía no tiene la app. Agregar algo nuevo es sumar una entrada acá.
 
     // [paso, quién lo hace, qué pasa, modo al que salta (null = fuera de la app)]
+    // El circuito, escrito como instrucción y no como índice: cada paso dice con
+    // qué entrás, qué hacés y con qué archivo salís. El mapeo ficha ↔ PDF vive
+    // adentro del paso 1 porque ahí es donde pasa — no podés renombrar un campo
+    // sin haber resuelto antes cómo se llama.
     var V2_CIRCUITO = [
-        ['Etapa 0', 'app', 'Detectar los campos del PDF, editarlos y exportar el mapeo', 'detect-fields'],
-        ['Etapa 0', 'app', 'Renombrar los AcroForms y escribir el PDF final', 'convert-pdf'],
-        ['Mapeo', 'afuera', 'Resolver ficha ↔ PDF leyendo formulario, ficha y paquete', null],
-        ['Signframe', 'afuera', 'Subir el PDF renombrado y bajar el JSON main', null],
-        ['Etapa 1', 'app', 'Colapsar el mapeo a matriz canónica y fusionar el negocio de la Ficha', 'canonical-matrix'],
-        ['Etapa 1', 'app', 'Generar el form-definition desde la matriz canónica', 'signframe'],
-        ['Etapa 2', 'app', 'Auditar el form-def: 26 reglas de plataforma y el JSON que genera', 'json-map'],
-        ['Entrega', 'app', 'Cotizar el esfuerzo y sacar el reporte para comercial', 'quoter'],
+        {
+            etapa: 'Etapa 0',
+            titulo: 'Del PDF crudo al PDF renombrado',
+            quien: 'app',
+            necesitas: 'El PDF del INS sin tocar, la ficha de configuración y el paquete de campos.',
+            hacer: [
+                'Subí el PDF crudo al Detector de Campos. Te lista todos los AcroForms con su tipo, página y posición: revisá contra el formulario impreso que no falte ninguno y exportá el inventario.',
+                'Con la ficha al lado, resolvé cómo se llama cada campo. Esto no lo hace la app: leés el formulario, la ficha y el paquete, y decidís. Es lo que va a la columna N.',
+                'Volvé con esa lista al Convertir PDF, aplicá los nombres sobre el PDF y descargalo.',
+            ],
+            queda: 'El PDF renombrado y el mapeo en Excel.',
+            herramientas: ['detect-fields', 'convert-pdf'],
+        },
+        {
+            etapa: 'Signframe',
+            titulo: 'Importar y bajar el JSON main',
+            quien: 'afuera',
+            necesitas: 'El PDF renombrado del paso 1.',
+            hacer: [
+                'Entrá a Signframe y subí el PDF renombrado. Esperá a que termine el import antes de tocar nada.',
+                'Revisá que haya reconocido la misma cantidad de campos que tenía el PDF. Si perdió campos, el problema está en los nombres y volvés al paso 1.',
+                'Bajá el JSON main y guardalo al lado del PDF.',
+            ],
+            queda: 'El JSON main de Signframe.',
+            herramientas: [],
+        },
+        {
+            etapa: 'Etapa 1',
+            titulo: 'Armar la matriz canónica',
+            quien: 'app',
+            necesitas: 'El mapeo en Excel del paso 1 y la ficha de configuración.',
+            hacer: [
+                'Cargá los dos archivos. La app colapsa el mapeo a dos hojas (Campos y Opciones), agrupa por raíz los radios, repeaters y lookups, y le fusiona el negocio que viene de la ficha.',
+                'Revisá la hoja Campos: es donde vas a ver si algún campo quedó sin pregunta o sin regla. Corregí ahí mismo antes de seguir.',
+            ],
+            queda: 'La matriz canónica en Excel, de 2 hojas.',
+            herramientas: ['canonical-matrix'],
+        },
+        {
+            etapa: 'Etapa 1',
+            titulo: 'Generar el form-definition',
+            quien: 'app',
+            necesitas: 'La matriz canónica y el JSON main de Signframe.',
+            hacer: [
+                'Cargá la matriz y el main. La app alinea cada grupo de sourceNames con su fila de la matriz y arma el form-definition completo.',
+                'Mirá los 8 checks de validación que corren solos al final. Si alguno falla, te dice qué campo y por qué.',
+            ],
+            queda: 'El form-definition en JSON, listo para subir.',
+            herramientas: ['signframe'],
+        },
+        {
+            etapa: 'Etapa 2',
+            titulo: 'Auditar antes de entregar',
+            quien: 'app',
+            necesitas: 'El form-definition del paso 4.',
+            hacer: [
+                'Cargalo y mirá el JSON de salida y el de entrada dibujados enteros, con todas las rutas.',
+                'Pasale las 26 reglas de plataforma. Leé primero los hallazgos en rojo: esos rompen el formulario. Los amarillos se pueden entregar, pero anotalos.',
+                'Si tenés un JSON real de ejemplo del cliente, cargalo también y te marca las rutas que no coinciden.',
+            ],
+            queda: 'El form-definition corregido, con los hallazgos resueltos.',
+            herramientas: ['json-map'],
+        },
+        {
+            etapa: 'Entrega',
+            titulo: 'Cotizar el esfuerzo',
+            quien: 'app',
+            necesitas: 'Un ZIP con todo lo del formulario: los PDFs, las fichas y los JSONs.',
+            hacer: [
+                'Subí el ZIP. Te cuenta los campos de cada PDF, las reglas de negocio de cada ficha, y mide cuánto se repite entre formularios para descontarlo.',
+                'Te da la complejidad Baja, Media o Alta por formulario y la de la entrega completa, que no son lo mismo.',
+                'Bajá el reporte en PDF o Word y mandáselo a comercial.',
+            ],
+            queda: 'El reporte comercial en PDF o Word.',
+            herramientas: ['quoter'],
+        },
     ];
+
+    // Las puertas del paso 0, dichas como lo que tenés y no como la etapa que te
+    // toca. `hechos` son los pasos que ya quedaron atrás (índice 0 = paso 1);
+    // `destino` es dónde te dejo parado.
+    var V2_PUERTAS = [
+        { id: 'cero', label: 'Arranco de cero', detalle: 'Solo tengo el PDF del INS', hechos: 0, destino: 0 },
+        { id: 'renombrado', label: 'Ya tengo el PDF renombrado', detalle: 'La Etapa 0 está hecha', hechos: 1, destino: 2 },
+        { id: 'matriz', label: 'Ya tengo la matriz canónica', detalle: 'Me falta generar el form-def', hechos: 3, destino: 3 },
+        { id: 'formdef', label: 'Ya tengo el form-def', detalle: 'Lo quiero auditar antes de entregar', hechos: 4, destino: 4 },
+    ];
+
+    var V2_LS_KEY = 'formtools.v2.entrada';
+    var v2State = { entrada: null };
+
+    // localStorage puede no estar (modo privado, storage bloqueado, un iframe
+    // sandboxeado). En ese caso la pantalla anda igual: todo desplegado y sin
+    // nada en gris, que es el default correcto para el que entra por primera vez.
+    function v2LeerEntrada() {
+        try {
+            var v = localStorage.getItem(V2_LS_KEY);
+            return V2_PUERTAS.some(function(p) { return p.id === v; }) ? v : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function v2GuardarEntrada(id) {
+        try {
+            if (id) localStorage.setItem(V2_LS_KEY, id);
+            else localStorage.removeItem(V2_LS_KEY);
+        } catch (e) {
+            /* sin persistencia: la elección vale para esta visita nomás */
+        }
+    }
+
+    function v2PuertaActiva() {
+        if (!v2State.entrada) return null;
+        for (var i = 0; i < V2_PUERTAS.length; i++) {
+            if (V2_PUERTAS[i].id === v2State.entrada) return V2_PUERTAS[i];
+        }
+        return null;
+    }
 
     var V2_TOOLS = [
         ['detect-fields', 'Detector de Campos', 'Los campos del PDF con tipo, página y posición'],
@@ -3182,24 +3309,94 @@
         ['metadata-pdf', 'Metadata PDF', 'Ver y editar el Document Info, y el tope de fuente'],
     ];
 
-    function initV2Flow() {
-        $('#v2Steps').innerHTML = V2_CIRCUITO.map(function(p, i) {
-            var etapa = p[0], quien = p[1], que = p[2], modo = p[3];
-            var tag = quien === 'app'
-                ? '<span class="v2-tag app">en la app</span>'
-                : '<span class="v2-tag fuera">afuera</span>';
-            var accion = modo
-                ? '<button class="link-btn v2-ir" data-modo="' + modo + '">abrir →</button>'
-                : '<span class="v2-nota">criterio de una persona</span>';
-            return '<li class="v2-step">' +
-                '<span class="v2-num">' + (i + 1) + '</span>' +
-                '<span class="v2-etapa">' + escapeHtml(etapa) + '</span>' +
-                tag +
-                '<span class="v2-que">' + escapeHtml(que) + '</span>' +
-                accion +
-                '</li>';
+    function v2NombreTool(modo) {
+        for (var i = 0; i < V2_TOOLS.length; i++) {
+            if (V2_TOOLS[i][0] === modo) return V2_TOOLS[i][1];
+        }
+        return modo;
+    }
+
+    function v2RenderPuerta() {
+        var activa = v2PuertaActiva();
+        $('#v2PuertaOps').innerHTML = V2_PUERTAS.map(function(p) {
+            var sel = activa && activa.id === p.id ? ' activa' : '';
+            return '<button class="v2-puerta' + sel + '" data-puerta="' + p.id + '">' +
+                '<span class="v2-puerta-l">' + escapeHtml(p.label) + '</span>' +
+                '<span class="v2-puerta-d">' + escapeHtml(p.detalle) + '</span>' +
+                '</button>';
         }).join('');
 
+        var est = $('#v2PuertaEstado');
+        est.hidden = !activa;
+        if (activa) {
+            est.innerHTML = 'Seguís desde el paso ' + (activa.destino + 1) + '. ' +
+                '<button class="link-btn" id="v2Reset">¿empezás de nuevo?</button>';
+        }
+    }
+
+    function v2RenderPasos() {
+        var activa = v2PuertaActiva();
+        $('#v2Steps').innerHTML = V2_CIRCUITO.map(function(p, i) {
+            var hecho = activa && i < activa.hechos;
+            var foco = activa && i === activa.destino;
+            var tag = p.quien === 'app'
+                ? '<span class="v2-tag app">en la app</span>'
+                : '<span class="v2-tag fuera">afuera</span>';
+            var botones = p.herramientas.map(function(m) {
+                return '<button class="secondary btn-sm v2-ir" data-modo="' + m + '">' +
+                    escapeHtml(v2NombreTool(m)) + ' →</button>';
+            }).join('');
+
+            return '<li class="v2-step' + (hecho ? ' hecho' : '') + (foco ? ' foco' : '') + '" id="v2Paso' + i + '">' +
+                '<div class="v2-step-cab">' +
+                    '<span class="v2-num">' + (hecho ? '✓' : i + 1) + '</span>' +
+                    '<span class="v2-etapa">' + escapeHtml(p.etapa) + '</span>' +
+                    '<span class="v2-titulo">' + escapeHtml(p.titulo) + '</span>' +
+                    tag +
+                    (hecho ? '<span class="v2-nota">ya lo hiciste</span>' : '') +
+                '</div>' +
+                '<div class="v2-step-cuerpo">' +
+                    '<p class="v2-linea"><span class="v2-rot">Qué necesitás</span>' + escapeHtml(p.necesitas) + '</p>' +
+                    '<div class="v2-linea"><span class="v2-rot">Qué hacés</span>' +
+                        '<ol class="v2-hacer">' + p.hacer.map(function(h) {
+                            return '<li>' + escapeHtml(h) + '</li>';
+                        }).join('') + '</ol>' +
+                    '</div>' +
+                    '<p class="v2-linea"><span class="v2-rot">Qué te queda</span>' + escapeHtml(p.queda) + '</p>' +
+                    (botones ? '<div class="v2-step-acc">' + botones + '</div>' : '') +
+                '</div>' +
+                '</li>';
+        }).join('');
+    }
+
+    function v2AplicarPuerta(id, scrollear) {
+        v2State.entrada = id;
+        v2GuardarEntrada(id);
+        v2RenderPuerta();
+        v2RenderPasos();
+        var activa = v2PuertaActiva();
+        if (scrollear && activa) {
+            var el = $('#v2Paso' + activa.destino);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+
+    function v2RenderSkill() {
+        // La versión sale del JSON que escribe scripts/build-skill-zip.js, así
+        // que republicar el zip no obliga a tocar el HTML.
+        fetch('public/skill-signframe-form-def.json', { cache: 'no-store' })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(meta) {
+                if (!meta) throw new Error('sin meta');
+                $('#v2SkillVer').textContent = 'v' + meta.version + ' · ' + meta.fecha +
+                    ' · ' + Math.round(meta.bytes / 1024) + ' KB · ' + meta.archivos + ' archivos';
+            })
+            .catch(function() {
+                $('#v2SkillVer').textContent = '';
+            });
+    }
+
+    function initV2Flow() {
         $('#v2Tools').innerHTML = V2_TOOLS.map(function(t) {
             return '<button class="v2-tool v2-ir" data-modo="' + t[0] + '">' +
                 '<span class="v2-tool-n">' + escapeHtml(t[1]) + '</span>' +
@@ -3207,11 +3404,27 @@
                 '</button>';
         }).join('');
 
-        // Un solo listener para los dos bloques.
+        v2State.entrada = v2LeerEntrada();
+        v2RenderPuerta();
+        v2RenderPasos();
+        v2RenderSkill();
+
+        // Un solo listener para toda la pantalla.
         $('#v2Flow').addEventListener('click', function(e) {
-            var b = e.target.closest('.v2-ir');
-            if (b) selectMode(b.dataset.modo);
+            var ir = e.target.closest('.v2-ir');
+            if (ir) { selectMode(ir.dataset.modo, 'v2'); return; }
+            var puerta = e.target.closest('[data-puerta]');
+            if (puerta) { v2AplicarPuerta(puerta.dataset.puerta, true); return; }
+            if (e.target.closest('#v2Reset')) v2AplicarPuerta(null, false);
         });
+    }
+
+    // Al volver al hub, si ya elegiste puerta te deja parado en tu paso.
+    function v2AlVolver() {
+        var activa = v2PuertaActiva();
+        if (!activa) return;
+        var el = $('#v2Paso' + activa.destino);
+        if (el) el.scrollIntoView({ block: 'center' });
     }
 
     // ==================== MAPA JSON FLOW ====================
