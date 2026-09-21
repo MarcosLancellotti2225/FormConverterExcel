@@ -18,6 +18,12 @@
 
 * { box-sizing: border-box; }
 
+/* `hidden` es cómo la app apaga pantallas enteras (#modeSelector, #xxxFlow).
+   Sin esto, cualquier regla de autor con `display` (p. ej. `.mode-grid { display: grid }`)
+   le gana al `[hidden] { display: none }` del navegador y la pantalla vieja
+   queda pintada encima de la nueva. */
+[hidden] { display: none !important; }
+
 /* Tope de fuente para controles de formulario: base pareja en --field-font-max.
    Los estilos específicos (clases) con su propio tamaño se respetan; esto evita
    que los inputs "pelados" hereden un tamaño grande y queden disparejos. */
@@ -1865,3 +1871,27 @@ footer {
 .jm-regla { display:inline-block; padding:0 5px; border-radius:3px; font-weight:700;
     background:var(--accent); color:#0d1117; font-size:0.68rem; }
 .jm-ref { color:var(--text-dim); font-size:0.68rem; }
+
+/* ============ 2.0 ============ */
+.mode-card-v2 .mode-icon { background: linear-gradient(135deg, var(--accent), var(--accent-teal)); color:#0d1117; font-size:1.1rem; }
+.v2-hero { background: linear-gradient(135deg, rgba(163,113,247,0.09), rgba(57,197,207,0.06)); border-color: rgba(163,113,247,0.3); }
+.v2-steps { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:1px; }
+.v2-step { display:flex; align-items:center; gap:0.7rem; flex-wrap:wrap;
+    padding:0.55rem 0.6rem; border-radius:6px; font-size:0.85rem; }
+.v2-step:hover { background: var(--bg-elevated); }
+.v2-num { width:20px; height:20px; border-radius:50%; background:var(--bg-elevated);
+    display:grid; place-items:center; font-size:0.68rem; font-weight:700; color:var(--text-muted); flex:none; }
+.v2-etapa { min-width:74px; font-weight:600; color:var(--text); font-size:0.78rem; }
+.v2-tag { font-size:0.66rem; padding:1px 7px; border-radius:99px; font-weight:600; }
+.v2-tag.app { color:var(--accent-green); background:rgba(63,185,80,0.13); }
+.v2-tag.fuera { color:var(--text-dim); background:var(--bg-elevated); }
+.v2-que { flex:1; min-width:220px; color:var(--text-muted); }
+.v2-nota { font-size:0.75rem; color:var(--text-dim); font-style:italic; }
+.v2-ir { font-size:0.78rem; }
+.v2-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:0.6rem; }
+.v2-tool { text-align:left; padding:0.7rem 0.8rem; border-radius:8px; cursor:pointer;
+    background:var(--bg-elevated); border:1px solid var(--border); font-family:inherit;
+    display:flex; flex-direction:column; gap:2px; transition:border-color .15s, transform .15s; }
+.v2-tool:hover { border-color:var(--accent); transform:translateY(-1px); }
+.v2-tool-n { font-weight:600; color:var(--text); font-size:0.85rem; }
+.v2-tool-d { color:var(--text-muted); font-size:0.75rem; line-height:1.35; }

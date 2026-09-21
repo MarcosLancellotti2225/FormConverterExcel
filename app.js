@@ -20,8 +20,12 @@
         initMetadataFlow();
         initQuoterFlow();
         initJsonMapFlow();
+        initV2Flow();
 
-        selectMode(null);
+        // Ojo con el orden: selectMode(null) limpia el hash, así que hay que
+        // leerlo antes o el deep-link se pierde en el arranque.
+        abrirModoDeLaUrl();
+        window.addEventListener('hashchange', abrirModoDeLaUrl);
     }
 
     function wireModeSelector() {
@@ -49,6 +53,7 @@
         $('#metadataFlow').hidden = mode !== 'metadata-pdf';
         $('#quoterFlow').hidden = mode !== 'quoter';
         $('#jsonMapFlow').hidden = mode !== 'json-map';
+        $('#v2Flow').hidden = mode !== 'v2';
         $('#btnBackToHome').hidden = !mode;
         var main = document.querySelector('main');
         if (mode === 'convert-pdf' || mode === 'detect-fields' || mode === 'signframe' || mode === 'canonical-matrix') {
@@ -58,6 +63,21 @@
         }
         // Home (sin modo): container más ancho para el selector de tarjetas
         main.classList.toggle('home-mode', !mode);
+
+        // El modo abierto queda en el hash, así una herramienta se puede linkear
+        // y el refresh no te devuelve al inicio.
+        var hash = mode ? '#' + mode : '';
+        if (location.hash !== hash) {
+            history.replaceState(null, '', location.pathname + location.search + hash);
+        }
+    }
+
+    // Abre el modo que venga en la URL (#json-map, #v2, ...). Si no es válido,
+    // se ignora y queda el home.
+    function abrirModoDeLaUrl() {
+        var m = (location.hash || '').replace(/^#/, '');
+        var existe = m && document.querySelector('.mode-card[data-mode="' + m + '"]');
+        selectMode(existe ? m : null);
     }
 
     function formatSize(n) {
@@ -3132,6 +3152,66 @@
         var blob = new Blob([canonState.result.xlsxBytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         var base = canonState.mapping ? canonState.mapping.name.replace(/\.(xlsx|xls)$/i, '') : 'matriz';
         InsPipelineBundle.downloadBlob(blob, base + '_canonica.xlsx');
+    }
+
+    // ==================== 2.0 ====================
+    // La puerta de la versión nueva. No duplica herramientas: engancha las que
+    // ya existen y deja escrito el circuito completo, incluidos los pasos que
+    // todavía no tiene la app. Agregar algo nuevo es sumar una entrada acá.
+
+    // [paso, quién lo hace, qué pasa, modo al que salta (null = fuera de la app)]
+    var V2_CIRCUITO = [
+        ['Etapa 0', 'app', 'Detectar los campos del PDF, editarlos y exportar el mapeo', 'detect-fields'],
+        ['Etapa 0', 'app', 'Renombrar los AcroForms y escribir el PDF final', 'convert-pdf'],
+        ['Mapeo', 'afuera', 'Resolver ficha ↔ PDF leyendo formulario, ficha y paquete', null],
+        ['Signframe', 'afuera', 'Subir el PDF renombrado y bajar el JSON main', null],
+        ['Etapa 1', 'app', 'Colapsar el mapeo a matriz canónica y fusionar el negocio de la Ficha', 'canonical-matrix'],
+        ['Etapa 1', 'app', 'Generar el form-definition desde la matriz canónica', 'signframe'],
+        ['Etapa 2', 'app', 'Auditar el form-def: 26 reglas de plataforma y el JSON que genera', 'json-map'],
+        ['Entrega', 'app', 'Cotizar el esfuerzo y sacar el reporte para comercial', 'quoter'],
+    ];
+
+    var V2_TOOLS = [
+        ['detect-fields', 'Detector de Campos', 'Los campos del PDF con tipo, página y posición'],
+        ['convert-pdf', 'Convertir PDF', 'Renombrar, agregar, borrar y dibujar campos'],
+        ['canonical-matrix', 'Matriz Canónica', 'Del mapeo a 2 hojas, con el negocio fusionado'],
+        ['signframe', 'Generador Signframe', 'La matriz canónica al form-definition'],
+        ['json-map', 'Mapa JSON', 'El JSON que genera y consume + las 26 reglas'],
+        ['quoter', 'Cotizador', 'Complejidad Baja/Media/Alta y reporte comercial'],
+        ['merge-pdf', 'Concatenar PDFs', 'Unir varios PDFs sin romper los AcroForms'],
+        ['metadata-pdf', 'Metadata PDF', 'Ver y editar el Document Info, y el tope de fuente'],
+    ];
+
+    function initV2Flow() {
+        $('#v2Steps').innerHTML = V2_CIRCUITO.map(function(p, i) {
+            var etapa = p[0], quien = p[1], que = p[2], modo = p[3];
+            var tag = quien === 'app'
+                ? '<span class="v2-tag app">en la app</span>'
+                : '<span class="v2-tag fuera">afuera</span>';
+            var accion = modo
+                ? '<button class="link-btn v2-ir" data-modo="' + modo + '">abrir →</button>'
+                : '<span class="v2-nota">criterio de una persona</span>';
+            return '<li class="v2-step">' +
+                '<span class="v2-num">' + (i + 1) + '</span>' +
+                '<span class="v2-etapa">' + escapeHtml(etapa) + '</span>' +
+                tag +
+                '<span class="v2-que">' + escapeHtml(que) + '</span>' +
+                accion +
+                '</li>';
+        }).join('');
+
+        $('#v2Tools').innerHTML = V2_TOOLS.map(function(t) {
+            return '<button class="v2-tool v2-ir" data-modo="' + t[0] + '">' +
+                '<span class="v2-tool-n">' + escapeHtml(t[1]) + '</span>' +
+                '<span class="v2-tool-d">' + escapeHtml(t[2]) + '</span>' +
+                '</button>';
+        }).join('');
+
+        // Un solo listener para los dos bloques.
+        $('#v2Flow').addEventListener('click', function(e) {
+            var b = e.target.closest('.v2-ir');
+            if (b) selectMode(b.dataset.modo);
+        });
     }
 
     // ==================== MAPA JSON FLOW ====================

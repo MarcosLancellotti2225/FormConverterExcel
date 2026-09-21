@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Form Tools</title>
-    <link rel="stylesheet" href="styles.css?v=72">
+    <link rel="stylesheet" href="styles.css?v=74">
     <link rel="stylesheet" href="src/pdf-converter-v2/ui/styles.css">
 </head>
 <body>
@@ -25,6 +25,18 @@
     <main>
         <!-- ============ MODE SELECTOR ============ -->
         <div id="modeSelector" class="mode-grid">
+            <div class="mode-card mode-card-v2" data-mode="v2">
+                <div class="mode-icon">2.0</div>
+                <h2>2.0</h2>
+                <p>La puerta de la versión nueva: el circuito completo en orden, con la herramienta que resuelve cada paso y lugar para lo que falta.</p>
+                <ul class="mode-features">
+                    <li>El circuito de punta a punta</li>
+                    <li>Atajo directo a cada herramienta</li>
+                    <li>Reutiliza lo que ya está hecho</li>
+                    <li>Acá se agrega lo nuevo</li>
+                </ul>
+                <button class="primary">Entrar</button>
+            </div>
             <div class="mode-card" data-mode="detect-fields">
                 <div class="mode-icon">🔍</div>
                 <h2>Detector de Campos</h2>
@@ -497,6 +509,32 @@
             </section>
         </div>
 
+        <!-- ============ 2.0 FLOW ============ -->
+        <div id="v2Flow" hidden>
+            <section class="panel v2-hero">
+                <div>
+                    <h2 style="font-size:1.35rem;margin:0 0 0.35rem;">Formularios INS — 2.0</h2>
+                    <p class="hint" style="margin:0;max-width:60ch;">
+                        Lo mecánico y determinístico lo hace la app: leer el PDF, medir, escribir, contar y auditar.
+                        El mapeo ficha ↔ PDF y las decisiones del formulario se siguen resolviendo afuera — no salen
+                        de ningún score. Acá está el circuito en el orden real, con lo que ya existe enganchado.
+                    </p>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>El circuito</h2>
+                <p class="hint">Cada paso indica quién lo hace. Los que tienen herramienta se abren con un click.</p>
+                <ol class="v2-steps" id="v2Steps"></ol>
+            </section>
+
+            <section class="panel">
+                <h2>Herramientas disponibles</h2>
+                <p class="hint">Todo lo que ya está construido y se reutiliza desde acá.</p>
+                <div class="v2-grid" id="v2Tools"></div>
+            </section>
+        </div>
+
         <!-- ============ MAPA JSON FLOW ============ -->
         <div id="jsonMapFlow" hidden>
             <section class="panel">
@@ -856,7 +894,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=72"></script>
-    <script src="app.js?v=72"></script>
+    <script src="bundle.js?v=74"></script>
+    <script src="app.js?v=74"></script>
 </body>
 </html>
