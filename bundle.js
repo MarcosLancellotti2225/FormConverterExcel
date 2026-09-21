@@ -99251,10 +99251,882 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
     }
   });
 
+  // src/json-mapper/revisor/tipos.js
+  var require_tipos = __commonJS({
+    "src/json-mapper/revisor/tipos.js"(exports, module) {
+      function parseCondicion(raw) {
+        if (!raw)
+          return null;
+        try {
+          const o = JSON.parse(raw);
+          return o && typeof o === "object" ? o : null;
+        } catch {
+          return null;
+        }
+      }
+      module.exports = { parseCondicion };
+    }
+  });
+
+  // src/json-mapper/revisor/modelo.js
+  var require_modelo = __commonJS({
+    "src/json-mapper/revisor/modelo.js"(exports, module) {
+      var { parseCondicion } = require_tipos();
+      function esOculto(x) {
+        return x.hidden === true;
+      }
+      function tipoEmitido(c) {
+        switch (c.type) {
+          case "boolean":
+            return "boolean";
+          case "number":
+            return "number";
+          case "date":
+            return "string (fecha)";
+          case "select":
+            return c.selectJsonValueType === "number" ? "number" : "string";
+          case "radio":
+          case "checkbox":
+            return c.jsonValue != null ? "string" : "boolean (solo true)";
+          default:
+            return "string";
+        }
+      }
+      function origenDe(c) {
+        if (c.autoFillConcat)
+          return "concat";
+        if (c.defaultValue != null && c.defaultValue !== "")
+          return "default";
+        if (c.prefillKey)
+          return "prefill";
+        return "usuario";
+      }
+      function rutaDe(c) {
+        if (c.excludeFromJson === true)
+          return null;
+        const r = c.jsonOutputPath ?? c.salidaJSON;
+        return typeof r === "string" && r.length > 0 ? r : null;
+      }
+      function insertar(arbol, hoja) {
+        const partes = hoja.ruta.split(".").filter(Boolean);
+        let nodo = arbol;
+        let acum = "";
+        partes.forEach((p, i) => {
+          acum = acum ? `${acum}.${p}` : p;
+          let hijo = nodo.hijos.find((h) => h.nombre === p);
+          if (!hijo) {
+            hijo = { nombre: p, ruta: acum, hijos: [] };
+            nodo.hijos.push(hijo);
+          }
+          if (i === partes.length - 1)
+            hijo.hoja = hoja;
+          nodo = hijo;
+        });
+      }
+      function construirModelo(def) {
+        const campos = [];
+        const recorrer = (sec, ruta, ocultoPadre) => {
+          const rutaAqui = [...ruta, sec.title ?? sec.id];
+          const oculto = ocultoPadre || esOculto(sec) || Boolean(sec.conditionalVisibility?.includes("NEVER_EXISTS"));
+          for (const campo of sec.fields ?? []) {
+            campos.push({
+              campo,
+              ruta: rutaAqui,
+              seccionId: sec.id,
+              ocultoEfectivo: oculto || esOculto(campo)
+            });
+            for (const sub of campo.repeaterConfig?.fields ?? []) {
+              campos.push({
+                campo: sub,
+                ruta: [...rutaAqui, campo.label ?? campo.id],
+                seccionId: sec.id,
+                ocultoEfectivo: oculto,
+                dentroDeRepeater: campo.id
+              });
+            }
+          }
+          for (const sub of sec.subsections ?? [])
+            recorrer(sub, rutaAqui, oculto);
+        };
+        for (const sec of def.sections ?? [])
+          recorrer(sec, [], false);
+        const porId = /* @__PURE__ */ new Map();
+        for (const cp of campos)
+          if (!cp.dentroDeRepeater)
+            porId.set(cp.campo.id, cp);
+        const porSourceName = /* @__PURE__ */ new Map();
+        for (const cp of campos) {
+          const sn = cp.campo.sourceMeta?.sourceName;
+          if (sn)
+            porSourceName.set(sn, cp);
+        }
+        const porRuta = /* @__PURE__ */ new Map();
+        for (const cp of campos) {
+          if (cp.dentroDeRepeater)
+            continue;
+          const ruta = rutaDe(cp.campo);
+          if (!ruta)
+            continue;
+          const ya = porRuta.get(ruta);
+          if (ya)
+            ya.escriben.push(cp);
+          else
+            porRuta.set(ruta, {
+              ruta,
+              escriben: [cp],
+              tipoEmitido: tipoEmitido(cp.campo),
+              origen: origenDe(cp.campo)
+            });
+        }
+        for (const cp of campos) {
+          const rc = cp.campo.repeaterConfig;
+          if (!rc?.jsonSlotPattern)
+            continue;
+          for (const sub of rc.fields ?? []) {
+            const ruta = rc.jsonSlotPattern.replace("{sub}", sub.id);
+            const ya = porRuta.get(ruta);
+            if (ya)
+              ya.escriben.push(cp);
+            else
+              porRuta.set(ruta, {
+                ruta,
+                escriben: [cp],
+                tipoEmitido: tipoEmitido(sub),
+                origen: "repeater"
+              });
+          }
+        }
+        const arbol = { nombre: "", ruta: "", hijos: [] };
+        for (const hoja of porRuta.values())
+          insertar(arbol, hoja);
+        const sourceNamesPdf = (def._sourcePdf?.fieldPositions ?? []).map((p) => p.sourceName).filter((sn) => sn && !porSourceName.has(sn));
+        return {
+          def,
+          secciones: def.sections ?? [],
+          campos,
+          porId,
+          porRuta,
+          arbol,
+          porSourceName,
+          sourceNamesPdf
+        };
+      }
+      function referenciasDe(c) {
+        const out = /* @__PURE__ */ new Set();
+        for (const raw of [c.conditionalVisibility, c.conditionalRequired]) {
+          for (const cond of parseCondicion(raw)?.conditions ?? []) {
+            if (cond.fieldId)
+              out.add(cond.fieldId);
+          }
+        }
+        for (const id of c.autoFillConcat?.sourceFieldIds ?? [])
+          out.add(id);
+        for (const p of c.autoFillConcat?.parts ?? []) {
+          if (p.fieldId)
+            out.add(p.fieldId);
+          if (p.condition?.fieldId)
+            out.add(p.condition.fieldId);
+        }
+        for (const id of c.radioGroupFields ?? [])
+          out.add(id);
+        if (c.parentFieldId)
+          out.add(c.parentFieldId);
+        if (c.grandParentFieldId)
+          out.add(c.grandParentFieldId);
+        return [...out];
+      }
+      module.exports = { tipoEmitido, construirModelo, referenciasDe };
+    }
+  });
+
+  // src/json-mapper/revisor/catalogos.js
+  var require_catalogos2 = __commonJS({
+    "src/json-mapper/revisor/catalogos.js"(exports, module) {
+      var TIPO_ID_FISICA = [
+        { label: "F\xEDsica", codigo: "0" },
+        { label: "DIMEX", codigo: "6" },
+        { label: "Pasaporte", codigo: "9" },
+        { label: "DIDI", codigo: "12" }
+      ];
+      var TIPO_ID_JURIDICA = [
+        { label: "Jur\xEDdica Nacional", codigo: "3" },
+        { label: "Gobierno", codigo: "2" },
+        { label: "Instituci\xF3n aut\xF3noma", codigo: "4" },
+        { label: "Jur\xEDdica extranjera", codigo: "7" }
+      ];
+      var ESTADO_CIVIL = [
+        { label: "Soltero (a)", codigo: "1" },
+        { label: "Casado (a)", codigo: "2" },
+        { label: "Separaci\xF3n judicial", codigo: "3" },
+        { label: "Divorciado (a)", codigo: "4" },
+        { label: "Viudo (a)", codigo: "5" },
+        { label: "C\xE9libe", codigo: "6" },
+        { label: "Reconciliaci\xF3n judicial", codigo: "7" },
+        { label: "Anulado", codigo: "8" },
+        { label: "Uni\xF3n libre", codigo: "9" }
+      ];
+      var MONEDA = [
+        { label: "Colones", codigo: "CRC" },
+        { label: "D\xF3lares", codigo: "USD" }
+      ];
+      var FORMA_PAGO = [
+        { label: "Anual", codigo: "1" },
+        { label: "Semestral", codigo: "2" },
+        { label: "Trimestral", codigo: "3" },
+        { label: "Mensual", codigo: "4" },
+        { label: "Deducci\xF3n Mensual", codigo: "5" },
+        { label: "Cargo Autom\xE1tico", codigo: "6" }
+      ];
+      var TIPO_TRAMITE = [
+        { label: "Nuevo Seguro", codigo: "EMI" },
+        { label: "Cambios en tu Seguro", codigo: "VAR" },
+        { label: "Dar de Baja tu Seguro", codigo: "CAN" },
+        { label: "Inclusi\xF3n en p\xF3liza", codigo: "INC" }
+      ];
+      var TIPO_PERSONA = [
+        { label: "Asegurado Directo", codigo: "ASG" },
+        { label: "Dependiente Menor de Edad", codigo: "DME" },
+        { label: "Dependiente Mayor de Edad", codigo: "DMA" },
+        { label: "Asegurado Nominal", codigo: "ASN" },
+        { label: "Beneficiario", codigo: "BNF" },
+        { label: "Tomador de Seguro", codigo: "TOM" },
+        { label: "Representante Legal", codigo: "RPL" },
+        { label: "Persona Jur\xEDdica", codigo: "PJR" }
+      ];
+      var ALIAS_PERSONA = {
+        JRD: "PJR"
+      };
+      var normalizarCodigoPersona = (c) => ALIAS_PERSONA[c] ?? c;
+      var GRUPOS_PERSONA = {
+        asegurado: ["ASG", "DME", "DMA"],
+        tomador: ["TOM"],
+        juridica: ["PJR"]
+      };
+      var ORDEN_SECCIONES = [
+        "Datos Generales",
+        "Datos de la Persona",
+        "Dependientes",
+        "Informaci\xF3n del Riesgo",
+        "Beneficiarios",
+        "Firmas",
+        "Declaraciones y Autorizaci\xF3n"
+      ];
+      var ANCHOS_ACORDADOS = [
+        { patron: /tipo_id|tipoIdentificacion/i, ancho: "half", que: "tipo de identificaci\xF3n" },
+        { patron: /_identificacion$|numeroIdentificacion/i, ancho: "half", que: "n\xFAmero de identificaci\xF3n" },
+        { patron: /primer_?(apellido|nombre)|segundo_?(apellido|nombre)/i, ancho: "quarter", que: "los 4 nombres" },
+        { patron: /nombre_?completo/i, ancho: "full", que: "nombre completo" },
+        { patron: /provincia|canton|distrito/i, ancho: "third", que: "provincia / cant\xF3n / distrito" }
+      ];
+      var TILDES = {
+        Informacion: "Informaci\xF3n",
+        informacion: "informaci\xF3n",
+        Poliza: "P\xF3liza",
+        poliza: "p\xF3liza",
+        Dolares: "D\xF3lares",
+        dolares: "d\xF3lares",
+        Cedula: "C\xE9dula",
+        cedula: "c\xE9dula",
+        Juridica: "Jur\xEDdica",
+        juridica: "jur\xEDdica",
+        Institucion: "Instituci\xF3n",
+        autonoma: "aut\xF3noma",
+        Emision: "Emisi\xF3n",
+        Automatico: "Autom\xE1tico",
+        Deduccion: "Deducci\xF3n",
+        Electronico: "Electr\xF3nico",
+        electronico: "electr\xF3nico",
+        Fisico: "F\xEDsico",
+        Fisica: "F\xEDsica",
+        Telefono: "Tel\xE9fono",
+        telefono: "tel\xE9fono",
+        Direccion: "Direcci\xF3n",
+        direccion: "direcci\xF3n",
+        Canton: "Cant\xF3n",
+        Descripcion: "Descripci\xF3n",
+        Codigo: "C\xF3digo",
+        codigo: "c\xF3digo",
+        Identificacion: "Identificaci\xF3n",
+        identificacion: "identificaci\xF3n",
+        Autorizacion: "Autorizaci\xF3n",
+        Notificacion: "Notificaci\xF3n",
+        notificacion: "notificaci\xF3n",
+        Numero: "N\xFAmero",
+        Ano: "A\xF1o",
+        Dia: "D\xEDa",
+        tramite: "tr\xE1mite",
+        Tramite: "Tr\xE1mite",
+        Ubicacion: "Ubicaci\xF3n",
+        razon: "raz\xF3n"
+      };
+      var TERMINOS = {
+        Genero: "Sexo",
+        G\u00E9nero: "Sexo",
+        genero: "sexo",
+        g\u00E9nero: "sexo"
+      };
+      var aplicar = (texto, dicc) => {
+        let out = texto;
+        for (const [mal, bien] of Object.entries(dicc)) {
+          out = out.replace(new RegExp(`\\b${mal}\\b`, "g"), bien);
+        }
+        return out === texto ? null : out;
+      };
+      var corregirTildes = (texto) => aplicar(texto, TILDES);
+      var corregirTerminos = (texto) => aplicar(texto, TERMINOS);
+      var sinAcentos = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+      var comoId = (s) => sinAcentos(s.toLowerCase()).replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+      module.exports = { TIPO_ID_FISICA, TIPO_ID_JURIDICA, ESTADO_CIVIL, MONEDA, FORMA_PAGO, TIPO_TRAMITE, TIPO_PERSONA, ALIAS_PERSONA, normalizarCodigoPersona, GRUPOS_PERSONA, ORDEN_SECCIONES, ANCHOS_ACORDADOS, TILDES, TERMINOS, corregirTildes, corregirTerminos, sinAcentos, comoId };
+    }
+  });
+
+  // src/json-mapper/revisor/reglas.js
+  var require_reglas = __commonJS({
+    "src/json-mapper/revisor/reglas.js"(exports, module) {
+      var { parseCondicion } = require_tipos();
+      var { corregirTerminos, corregirTildes, GRUPOS_PERSONA, normalizarCodigoPersona, ORDEN_SECCIONES, sinAcentos, comoId } = require_catalogos2();
+      var etiqueta = (c) => c.label ?? c.id;
+      var rIdSourceName = (m) => m.campos.filter((cp) => cp.campo.sourceMeta?.sourceName).filter((cp) => {
+        const esperado = `field_${cp.campo.sourceMeta.sourceName.toLowerCase()}`;
+        const real = cp.campo.id.toLowerCase();
+        return real !== esperado && sinAcentos(real) !== sinAcentos(esperado) && comoId(real) !== comoId(esperado);
+      }).map((cp) => ({
+        regla: "R01",
+        severidad: "error",
+        titulo: "El id no coincide con su sourceName",
+        detalle: `\`${cp.campo.id}\` deber\xEDa ser \`field_${cp.campo.sourceMeta.sourceName.toLowerCase()}\`. El render mapea por id \u2192 sourceName \u2192 sourceMeta: si no coinciden, el campo no pinta.`,
+        campoIds: [cp.campo.id]
+      }));
+      var rIdsDuplicados = (m) => {
+        const cuenta = /* @__PURE__ */ new Map();
+        for (const cp of m.campos) {
+          if (cp.dentroDeRepeater)
+            continue;
+          cuenta.set(cp.campo.id, (cuenta.get(cp.campo.id) ?? 0) + 1);
+        }
+        return [...cuenta.entries()].filter(([, n]) => n > 1).map(([id, n]) => ({
+          regla: "R02",
+          severidad: "error",
+          titulo: "id duplicado",
+          detalle: `\`${id}\` aparece ${n} veces. Las referencias por id se vuelven ambiguas.`,
+          campoIds: [id]
+        }));
+      };
+      var rCondicionRota = (m) => {
+        const out = [];
+        for (const cp of m.campos) {
+          if (cp.dentroDeRepeater)
+            continue;
+          for (const clave of ["conditionalVisibility", "conditionalRequired"]) {
+            for (const cond of parseCondicion(cp.campo[clave])?.conditions ?? []) {
+              if (!cond.fieldId || cond.fieldId === "field_NEVER_EXISTS")
+                continue;
+              if (m.porId.has(cond.fieldId))
+                continue;
+              out.push({
+                regla: "R03",
+                severidad: "error",
+                titulo: "Condici\xF3n apuntando a un campo inexistente",
+                detalle: `\`${etiqueta(cp.campo)}\` condiciona contra \`${cond.fieldId}\`, que no existe. Una condici\xF3n que no matchea no falla: se ignora en silencio y el campo aparece donde no deber\xEDa.`,
+                campoIds: [cp.campo.id],
+                ref: "\xA7P8"
+              });
+            }
+          }
+        }
+        return out;
+      };
+      var rSalidaDesalineada = (m) => m.campos.filter((cp) => {
+        const a = cp.campo.salidaJSON ?? null;
+        const b = cp.campo.jsonOutputPath ?? null;
+        return a !== b && (a != null || b != null);
+      }).map((cp) => ({
+        regla: "R04",
+        severidad: "error",
+        titulo: "salidaJSON y jsonOutputPath no coinciden",
+        detalle: `\`${etiqueta(cp.campo)}\`: salidaJSON = ${cp.campo.salidaJSON ?? "null"}, jsonOutputPath = ${cp.campo.jsonOutputPath ?? "null"}.`,
+        campoIds: [cp.campo.id]
+      }));
+      var rRepeaters = (m) => {
+        const out = [];
+        for (const cp of m.campos) {
+          const rc = cp.campo.repeaterConfig;
+          if (!rc)
+            continue;
+          if (cp.campo.jsonOutputPath || cp.campo.salidaJSON) {
+            out.push({
+              regla: "R05",
+              severidad: "error",
+              titulo: "Repeater con jsonOutputPath",
+              detalle: `\`${etiqueta(cp.campo)}\` es un repeater y tiene ruta de salida propia. El bucle de campos normales escribe el valor interno crudo ah\xED y sale "[object Object]". Los repeaters van con jsonOutputPath y salidaJSON en null.`,
+              campoIds: [cp.campo.id],
+              ref: "\xA7P4"
+            });
+          }
+          if (!rc.jsonSlotPattern) {
+            out.push({
+              regla: "R06",
+              severidad: "error",
+              titulo: "Repeater sin jsonSlotPattern",
+              detalle: `\`${etiqueta(cp.campo)}\` no tiene patr\xF3n de salida, as\xED que va a colgar una clave con su id crudo de la ra\xEDz del JSON. Ojo: excludeFromJson NO apaga un repeater.`,
+              campoIds: [cp.campo.id],
+              ref: "\xA7P4"
+            });
+          } else if (rc.jsonSlotPattern.includes("{i1}")) {
+            out.push({
+              regla: "R07",
+              severidad: "error",
+              titulo: "Patr\xF3n de repeater 1-based",
+              detalle: `\`${etiqueta(cp.campo)}\` usa {i1}: la posici\xF3n 0 del array queda en null. Para arrays JSON siempre {i} o {i0}.`,
+              campoIds: [cp.campo.id],
+              ref: "\xA7P4"
+            });
+          }
+        }
+        return out;
+      };
+      var rSourceFieldIds = (m) => {
+        const out = [];
+        for (const cp of m.campos) {
+          const afc = cp.campo.autoFillConcat;
+          if (!afc?.parts)
+            continue;
+          const declarados = new Set(afc.sourceFieldIds ?? []);
+          const faltantes = /* @__PURE__ */ new Set();
+          for (const p of afc.parts) {
+            const fid = p.condition?.fieldId;
+            if (fid && !declarados.has(fid))
+              faltantes.add(fid);
+          }
+          if (faltantes.size) {
+            out.push({
+              regla: "R08",
+              severidad: "error",
+              titulo: "Helper que escribe siempre",
+              detalle: `\`${etiqueta(cp.campo)}\` condiciona contra ${[...faltantes].map((f) => `\`${f}\``).join(", ")}, pero no est\xE1 en sourceFieldIds. El autoFillConcat solo se re-eval\xFAa con los ids declarados ah\xED: sin eso, el helper escribe siempre, sin importar la condici\xF3n.`,
+              campoIds: [cp.campo.id],
+              ref: "\xA7P13"
+            });
+          }
+        }
+        return out;
+      };
+      var rCasillaX = (m) => {
+        const out = [];
+        for (const cp of m.campos) {
+          const nativo = cp.campo.sourceMeta?.nativeType;
+          if (nativo !== "Checkbox")
+            continue;
+          for (const p of cp.campo.autoFillConcat?.parts ?? []) {
+            if (p.kind === "text" && p.value === "X") {
+              out.push({
+                regla: "R09",
+                severidad: "error",
+                titulo: 'Casilla que pinta con "X"',
+                detalle: `\`${etiqueta(cp.campo)}\` es /Btn en el PDF y se marca con la cadena "X". Un checkbox se marca con true; con "X" puede no pintarse nunca.`,
+                campoIds: [cp.campo.id],
+                ref: "\xA7E2"
+              });
+              break;
+            }
+          }
+        }
+        return out;
+      };
+      var rDosFormas = (m) => {
+        const out = [];
+        const conOpciones = m.campos.filter((cp) => (cp.campo.options?.length ?? 0) > 0 && cp.campo.prefillKey);
+        for (const origen of conOpciones) {
+          const labels = /* @__PURE__ */ new Map();
+          for (const o of origen.campo.options ?? []) {
+            if (o.label && o.jsonValue && o.label !== o.jsonValue)
+              labels.set(o.label, o.jsonValue);
+          }
+          if (!labels.size)
+            continue;
+          const comparados = /* @__PURE__ */ new Set();
+          const culpables = /* @__PURE__ */ new Set();
+          for (const cp of m.campos) {
+            for (const clave of ["conditionalVisibility", "conditionalRequired"]) {
+              for (const cond of parseCondicion(cp.campo[clave])?.conditions ?? []) {
+                if (cond.fieldId === origen.campo.id && cond.operator === "equals" && cond.value) {
+                  comparados.add(cond.value);
+                  culpables.add(cp.campo.id);
+                }
+              }
+            }
+            for (const p of cp.campo.autoFillConcat?.parts ?? []) {
+              const c = p.condition;
+              if (c?.fieldId === origen.campo.id && c.op === "equals" && c.values) {
+                comparados.add(c.values);
+                culpables.add(cp.campo.id);
+              }
+            }
+          }
+          const soloEtiqueta = [...labels.entries()].filter(([l, v]) => comparados.has(l) && !comparados.has(v));
+          if (soloEtiqueta.length) {
+            out.push({
+              regla: "R10",
+              severidad: "error",
+              titulo: "Condici\xF3n comparada solo por etiqueta",
+              detalle: `\`${etiqueta(origen.campo)}\` se prellena del payload, as\xED que llega el jsonValue, no la etiqueta. Se compara ${soloEtiqueta.map(([l, v]) => `"${l}" pero no "${v}"`).join(", ")}. S\xEDntoma: la secci\xF3n se abre vac\xEDa y el PDF sale en blanco ah\xED, sin ning\xFAn error.`,
+              campoIds: [origen.campo.id, ...culpables].slice(0, 12),
+              ref: "\xA7P18"
+            });
+          }
+        }
+        return out;
+      };
+      var rFantasma = (m) => m.campos.filter((cp) => {
+        const c = cp.campo;
+        if (!c.hidden || c.autoFillConcat)
+          return false;
+        if (c.defaultValue == null || c.defaultValue === "")
+          return false;
+        const ruta = c.jsonOutputPath ?? c.salidaJSON ?? "";
+        const mth = /personas\[(\d+)\]/.exec(ruta);
+        return Boolean(mth) && Number(mth[1]) > 0;
+      }).map((cp) => ({
+        regla: "R11",
+        severidad: "aviso",
+        titulo: "Puede generar una persona fantasma",
+        detalle: `\`${etiqueta(cp.campo)}\` est\xE1 oculto con defaultValue fijo. Un campo oculto escribe siempre, aunque tenga conditionalVisibility: si esa persona no se carg\xF3, va a salir una entrada suelta en el array. Se arregla sacando el defaultValue y condicionando por autoFillConcat contra el nombre.`,
+        campoIds: [cp.campo.id],
+        ruta: cp.campo.jsonOutputPath ?? void 0,
+        ref: "\xA7P14"
+      }));
+      function esGrupoDeOpciones(escriben) {
+        const valores = /* @__PURE__ */ new Set();
+        for (const { campo } of escriben) {
+          if (campo.type !== "radio" && campo.type !== "checkbox")
+            return false;
+          if (!campo.jsonValue)
+            return false;
+          valores.add(campo.jsonValue);
+        }
+        return valores.size === escriben.length;
+      }
+      var rRutaCompartida = (m) => [...m.porRuta.values()].filter((h) => h.escriben.length > 1 && !esGrupoDeOpciones(h.escriben)).map((h) => ({
+        regla: "R12",
+        severidad: "aviso",
+        titulo: "Dos campos escriben la misma ruta",
+        detalle: `${h.escriben.map((cp) => `\`${etiqueta(cp.campo)}\``).join(" y ")} escriben \`${h.ruta}\`. El \xFAltimo gana; si es a prop\xF3sito (un select visible y su casilla oculta), el que no manda deber\xEDa ir con excludeFromJson.`,
+        campoIds: h.escriben.map((cp) => cp.campo.id),
+        ruta: h.ruta
+      }));
+      var rNoPinta = (m) => m.campos.filter((cp) => {
+        const c = cp.campo;
+        if (!c.sourceMeta?.sourceName)
+          return false;
+        if (c.type === "signature")
+          return false;
+        return !c.autoFillConcat && !c.prefillKey && !c.jsonOutputPath && c.hidden === true;
+      }).map((cp) => ({
+        regla: "R13",
+        severidad: "nota",
+        titulo: "Casillero del PDF que queda vac\xEDo",
+        detalle: `\`${etiqueta(cp.campo)}\` est\xE1 oculto y no recibe valor de ning\xFAn lado, as\xED que su casillero sale en blanco. Es correcto si el campo no est\xE1 en la ficha o es de uso interno del INS.`,
+        campoIds: [cp.campo.id]
+      }));
+      var rPrefillApi = (m) => m.campos.filter((cp) => cp.campo.prefillMode === "api").map((cp) => ({
+        regla: "R14",
+        severidad: "aviso",
+        titulo: 'prefillMode "api"',
+        detalle: `\`${etiqueta(cp.campo)}\` usa prefillMode "api". La convenci\xF3n es "optional" siempre; "api" suele ser resto de una versi\xF3n vieja.`,
+        campoIds: [cp.campo.id]
+      }));
+      var rTildes = (m) => {
+        const out = [];
+        for (const cp of m.campos) {
+          if (cp.ocultoEfectivo || cp.campo.hidden)
+            continue;
+          const lbl = cp.campo.label;
+          if (!lbl)
+            continue;
+          const fix = corregirTildes(lbl);
+          if (fix) {
+            out.push({
+              regla: "R15",
+              severidad: "nota",
+              titulo: "Label sin tildes",
+              detalle: `"${lbl}" \u2192 "${fix}". Corregir tambi\xE9n las opciones y las condiciones que comparan ese texto, todo junto.`,
+              campoIds: [cp.campo.id]
+            });
+          }
+        }
+        return out;
+      };
+      var rDescripcionVacia = (m) => m.campos.filter((cp) => {
+        const ruta = cp.campo.jsonOutputPath ?? cp.campo.salidaJSON ?? "";
+        if (!/\.descripcion[A-Z]/.test(ruta))
+          return false;
+        return !cp.campo.autoFillConcat && !cp.campo.prefillKey && cp.campo.defaultValue == null;
+      }).map((cp) => ({
+        regla: "R16",
+        severidad: "aviso",
+        titulo: "Descripci\xF3n que nunca se llena",
+        detalle: `\`${etiqueta(cp.campo)}\` escribe una ruta de descripci\xF3n pero no tiene de d\xF3nde sacar el valor. Va con autoFillConcat sobre su select, con valueSource "visible".`,
+        campoIds: [cp.campo.id],
+        ruta: cp.campo.jsonOutputPath ?? void 0,
+        ref: "\xA7P11"
+      }));
+      var rEdad = (m) => m.campos.filter((cp) => {
+        const ruta = cp.campo.jsonOutputPath ?? "";
+        return /\.edad$/.test(ruta) && !cp.campo.autoFillConcat;
+      }).map((cp) => ({
+        regla: "R17",
+        severidad: "aviso",
+        titulo: "Edad sin calcular",
+        detalle: `\`${etiqueta(cp.campo)}\` es de solo lectura pero no tiene la f\xF3rmula, as\xED que queda siempre vac\xEDo. Va con autoFillConcat: dateRef "today" + el campo de fecha de nacimiento, con op "diffYears".`,
+        campoIds: [cp.campo.id],
+        ref: "\xA7P16"
+      }));
+      var rCascada = (m) => {
+        const out = [];
+        const prefijo = (id) => id.replace(/^field_/, "").split("_")[0];
+        for (const cp of m.campos) {
+          for (const clave of ["parentFieldId", "grandParentFieldId"]) {
+            const padre = cp.campo[clave];
+            if (!padre)
+              continue;
+            if (prefijo(cp.campo.id) !== prefijo(padre)) {
+              out.push({
+                regla: "R18",
+                severidad: "aviso",
+                titulo: "Cascada apuntando a otra persona",
+                detalle: `\`${etiqueta(cp.campo)}\` filtra contra \`${padre}\`, que parece de otro bloque. Cant\xF3n y distrito tienen que colgar de la provincia de la MISMA persona o el filtro no corresponde.`,
+                campoIds: [cp.campo.id, padre],
+                ref: "\xA7P17"
+              });
+            }
+          }
+        }
+        return out;
+      };
+      var rFechaIso = (m) => {
+        const out = [];
+        for (const cp of m.campos) {
+          const id = cp.campo.id.toLowerCase();
+          const esDia = /_dia$/.test(id);
+          const esMes = /_mes$/.test(id);
+          if (!esDia && !esMes)
+            continue;
+          for (const p of cp.campo.autoFillConcat?.parts ?? []) {
+            for (const t of p.transforms ?? []) {
+              if (t.kind !== "substring")
+                continue;
+              const malDia = esDia && t.start === 8;
+              const malMes = esMes && t.start === 5;
+              if (malDia || malMes) {
+                out.push({
+                  regla: "R19",
+                  severidad: "error",
+                  titulo: "Fecha cortada en formato ISO",
+                  detalle: `\`${etiqueta(cp.campo)}\` corta desde ${t.start}, que es la posici\xF3n en AAAA-MM-DD. Sobre una fecha DD/MM/AAAA el d\xEDa va 0-2, el mes 3-5 y el a\xF1o 6-10: as\xED como est\xE1, el PDF sale con el d\xEDa y el mes cambiados.`,
+                  campoIds: [cp.campo.id],
+                  ref: "\xA7M9"
+                });
+              }
+            }
+          }
+        }
+        return out;
+      };
+      var rNombreCompleto = (m) => m.campos.filter((cp) => {
+        const ruta = cp.campo.jsonOutputPath ?? "";
+        if (!/\.nombreCompleto$/.test(ruta))
+          return false;
+        return Boolean(cp.campo.autoFillConcat) && (!cp.campo.readOnly || Boolean(cp.campo.prefillKey));
+      }).map((cp) => ({
+        regla: "R20",
+        severidad: "aviso",
+        titulo: "Nombre completo desbloqueado",
+        detalle: `\`${etiqueta(cp.campo)}\` se arma por concatenaci\xF3n pero sigue editable o prellenado. Para que quede bloqueado va readOnly true, sin prefillKey y sin prefillMode. Excepci\xF3n: si esa persona no tiene los 4 nombres en la ficha (el Tomador), queda editable a prop\xF3sito.`,
+        campoIds: [cp.campo.id]
+      }));
+      var rRadioGroup = (m) => {
+        const out = [];
+        for (const cp of m.campos) {
+          for (const ref of cp.campo.radioGroupFields ?? []) {
+            if (!m.porId.has(ref)) {
+              out.push({
+                regla: "R21",
+                severidad: "error",
+                titulo: "Grupo de radios roto",
+                detalle: `\`${etiqueta(cp.campo)}\` agrupa con \`${ref}\`, que no existe. El grupo no se forma y los radios se ven como texto suelto, sin casillas.`,
+                campoIds: [cp.campo.id]
+              });
+            }
+          }
+        }
+        return out;
+      };
+      var rFirma = (m) => {
+        const hay = m.campos.some((cp) => cp.campo.type === "signature");
+        if (hay)
+          return [];
+        return [
+          {
+            regla: "R22",
+            severidad: "aviso",
+            titulo: "No hay campo de firma",
+            detalle: 'El form-def no tiene ning\xFAn campo type "signature". Va en la secci\xF3n Firmas, oculto, con el correo y el nombre del firmante precargados del encabezado y copia al intermediario.',
+            campoIds: [],
+            ref: "\xA7P20"
+          }
+        ];
+      };
+      var rOrdenSecciones = (m) => {
+        const titulos = m.secciones.map((s) => s.title ?? s.id);
+        const decl = titulos.findIndex((t) => /declaracion/i.test(t));
+        if (decl >= 0 && decl !== titulos.length - 1) {
+          return [
+            {
+              regla: "R23",
+              severidad: "nota",
+              titulo: "Declaraciones no est\xE1 al final",
+              detalle: `"${titulos[decl]}" est\xE1 en la posici\xF3n ${decl + 1} de ${titulos.length}. La convenci\xF3n las pone al final aunque la ficha las liste dentro de Datos Generales: el usuario acepta despu\xE9s de revisar todo. Orden can\xF3nico: ${ORDEN_SECCIONES.join(" \xB7 ")}.`,
+              campoIds: []
+            }
+          ];
+        }
+        return [];
+      };
+      var rGrupoPersona = (m) => {
+        const out = [];
+        const todos = Object.values(GRUPOS_PERSONA).flat();
+        const revisarCondicion = (raw, donde, campoId) => {
+          const cond = parseCondicion(raw);
+          if (!cond?.conditions?.length || cond.logic !== "or")
+            return;
+          const codigos = cond.conditions.map((c) => c.value).filter((v) => Boolean(v)).map(normalizarCodigoPersona).filter((v) => todos.includes(v));
+          if (!codigos.length)
+            return;
+          for (const [nombre, grupo] of Object.entries(GRUPOS_PERSONA)) {
+            const presentes = grupo.filter((g) => codigos.includes(g));
+            if (!presentes.length || presentes.length === grupo.length)
+              continue;
+            const faltan = grupo.filter((g) => !codigos.includes(g));
+            out.push({
+              regla: "R24",
+              severidad: "aviso",
+              titulo: "Grupo de tipo de persona incompleto",
+              detalle: `"${donde}" se muestra para ${presentes.join(", ")} pero no para ${faltan.join(", ")}, que son del mismo grupo (${nombre}). Si el request trae uno de los que faltan, el bloque no aparece y el PDF sale en blanco ah\xED.`,
+              campoIds: campoId ? [campoId] : [],
+              ref: "\xA7P18"
+            });
+          }
+        };
+        const recorrer = (sec) => {
+          revisarCondicion(sec.conditionalVisibility, sec.title ?? sec.id, null);
+          for (const f of sec.fields ?? [])
+            revisarCondicion(f.conditionalVisibility, f.label ?? f.id, f.id);
+          for (const s of sec.subsections ?? [])
+            recorrer(s);
+        };
+        for (const sec of m.secciones)
+          recorrer(sec);
+        return out;
+      };
+      var rPdfSinUsar = (m) => {
+        if (!m.sourceNamesPdf.length)
+          return [];
+        return [
+          {
+            regla: "R25",
+            severidad: "nota",
+            titulo: `${m.sourceNamesPdf.length} campos del PDF sin usar`,
+            detalle: `El PDF trae casilleros que ning\xFAn campo del form-def escribe: ${m.sourceNamesPdf.slice(0, 8).join(", ")}${m.sourceNamesPdf.length > 8 ? "\u2026" : ""}. Van a salir en blanco.`,
+            campoIds: []
+          }
+        ];
+      };
+      var rTerminos = (m) => {
+        const out = [];
+        for (const cp of m.campos) {
+          if (cp.ocultoEfectivo || cp.campo.hidden)
+            continue;
+          for (const texto of [cp.campo.label, cp.campo.radioGroupLabel]) {
+            if (!texto)
+              continue;
+            const fix = corregirTerminos(texto);
+            if (!fix)
+              continue;
+            out.push({
+              regla: "R26",
+              severidad: "nota",
+              titulo: "T\xE9rmino distinto al acordado",
+              detalle: `"${texto}" \u2192 "${fix}". Es una decisi\xF3n de vocabulario, no una tilde. Solo cambia lo visible: las rutas \`codigoGenero\` y \`descripcionGenero\` las define el INS y no se tocan.`,
+              campoIds: [cp.campo.id]
+            });
+          }
+        }
+        return out;
+      };
+      var REGLAS = [
+        rIdSourceName,
+        rIdsDuplicados,
+        rCondicionRota,
+        rSalidaDesalineada,
+        rRepeaters,
+        rSourceFieldIds,
+        rCasillaX,
+        rDosFormas,
+        rFantasma,
+        rRutaCompartida,
+        rNoPinta,
+        rPrefillApi,
+        rTildes,
+        rTerminos,
+        rDescripcionVacia,
+        rEdad,
+        rCascada,
+        rFechaIso,
+        rNombreCompleto,
+        rRadioGroup,
+        rFirma,
+        rOrdenSecciones,
+        rGrupoPersona,
+        rPdfSinUsar
+      ];
+      var PESO = { error: 0, aviso: 1, nota: 2 };
+      function revisar(m) {
+        const out = [];
+        for (const regla of REGLAS) {
+          try {
+            out.push(...regla(m));
+          } catch {
+          }
+        }
+        return out.sort((a, b) => PESO[a.severidad] - PESO[b.severidad] || a.regla.localeCompare(b.regla));
+      }
+      function cobertura(m, ejemplo) {
+        const rutas = /* @__PURE__ */ new Set();
+        const recorrer = (nodo, prefijo) => {
+          if (Array.isArray(nodo)) {
+            nodo.forEach((x) => recorrer(x, `${prefijo}[]`));
+          } else if (nodo && typeof nodo === "object") {
+            for (const [k, v] of Object.entries(nodo))
+              recorrer(v, prefijo ? `${prefijo}.${k}` : k);
+          } else if (prefijo) {
+            rutas.add(prefijo);
+          }
+        };
+        recorrer(ejemplo, "");
+        const nuestras = new Set([...m.porRuta.keys()].map((r) => r.replace(/\[\d+\]/g, "[]")));
+        const faltan = [...rutas].filter((r) => !nuestras.has(r)).sort();
+        return { total: rutas.size, cubiertas: rutas.size - faltan.length, faltan };
+      }
+      module.exports = { revisar, cobertura };
+    }
+  });
+
   // src/json-mapper/index.js
   var require_json_mapper = __commonJS({
     "src/json-mapper/index.js"(exports, module) {
       "use strict";
+      var { construirModelo } = require_modelo();
+      var { revisar: revisarFormDef } = require_reglas();
       function collectFields(json) {
         var sections = json.sections || json.data && json.data.jsonDefinition && json.data.jsonDefinition.sections || json.jsonDefinition && json.jsonDefinition.sections || [];
         var out = [];
@@ -99526,29 +100398,6 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             }
           }
         }
-        for (var c = 0; c < outList.length; c++) {
-          var e2 = outList[c];
-          if (e2.fields.length <= 1) continue;
-          var types = Object.keys(e2.types);
-          var isOptionGroup = types.length === 1 && (types[0] === "radio" || types[0] === "checkbox");
-          var detail;
-          if (isOptionGroup) {
-            detail = e2.fields.length + " opciones del mismo grupo escriben esta ruta: es lo esperado.";
-          } else if (types.length === 1) {
-            detail = e2.fields.length + ' campos "' + types[0] + '" escriben la misma ruta: el \xFAltimo en completarse pisa al anterior.';
-          } else {
-            detail = e2.fields.length + " campos de tipos distintos (" + types.join(", ") + ") escriben la misma ruta: revisar cu\xE1l gana.";
-          }
-          issues.push({
-            severity: isOptionGroup ? "info" : "warning",
-            type: "ruta-compartida",
-            path: e2.path,
-            detail,
-            fields: e2.fields.map(function(x) {
-              return x.id;
-            })
-          });
-        }
         if (noOutput.length) {
           issues.push({
             severity: "warning",
@@ -99560,6 +100409,30 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             })
           });
         }
+        var deRevisor = [];
+        try {
+          var modeloRev = construirModelo(json);
+          var SEV = { error: "critical", aviso: "warning", nota: "info" };
+          deRevisor = revisarFormDef(modeloRev).map(function(h) {
+            return {
+              severity: SEV[h.severidad] || "warning",
+              type: h.regla,
+              path: h.ruta || null,
+              detail: h.titulo + " \u2014 " + h.detalle.replace(/`/g, ""),
+              fields: h.campoIds || [],
+              ref: h.ref || null
+            };
+          });
+        } catch (e) {
+          issues.push({
+            severity: "warning",
+            type: "revisor",
+            path: null,
+            detail: "No se pudieron correr las reglas de plataforma: " + e.message,
+            fields: []
+          });
+        }
+        issues = issues.concat(deRevisor);
         issues.sort(function(x, y) {
           var rank = { critical: 0, warning: 1, info: 2 };
           return rank[x.severity] - rank[y.severity] || String(x.path).localeCompare(String(y.path));
@@ -99587,7 +100460,8 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             }).length,
             warnings: issues.filter(function(i2) {
               return i2.severity === "warning";
-            }).length
+            }).length,
+            reglasPlataforma: deRevisor.length
           }
         };
       }

@@ -3202,6 +3202,7 @@
             ['Excluidos del JSON', res.stats.excluded],
             ['Sin ruta', res.stats.withoutOutput],
             ['Críticos', res.stats.critical],
+            ['Reglas de plataforma', res.stats.reglasPlataforma || 0],
         ];
         $('#jmStats').innerHTML = stats.map(function(s) {
             return '<div class="sf-stat"><span class="sf-stat-label">' + escapeHtml(s[0]) +
@@ -3212,9 +3213,15 @@
         renderJmPaths();
 
         $('#jmIssuesBody').innerHTML = res.issues.map(function(i) {
+            // Las reglas de plataforma vienen con código (R09) y a veces con la
+            // referencia de la spec (§E2); se muestran para poder ir a buscarlas.
+            var codigo = /^R\d+$/.test(i.type)
+                ? '<span class="jm-regla">' + escapeHtml(i.type) + '</span> '
+                : '';
+            var ref = i.ref ? ' <span class="jm-ref">' + escapeHtml(i.ref) + '</span>' : '';
             return '<tr>' +
                 '<td><span class="sev ' + i.severity + '">' + i.severity + '</span></td>' +
-                '<td style="font-family:monospace;font-size:0.72rem;">' + escapeHtml(i.path || '—') + '</td>' +
+                '<td style="font-family:monospace;font-size:0.72rem;">' + codigo + escapeHtml(i.path || '—') + ref + '</td>' +
                 '<td>' + escapeHtml(i.detail) + '</td>' +
                 '<td style="font-family:monospace;font-size:0.7rem;color:var(--text-dim);">' +
                     escapeHtml((i.fields || []).slice(0, 4).join(', ')) +

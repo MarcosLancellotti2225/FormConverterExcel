@@ -1,5 +1,8 @@
 'use strict';
 
+var { construirModelo } = require('./revisor/modelo');
+var { revisar: revisarFormDef } = require('./revisor/reglas');
+
 /**
  * Mapa de JSON de un form-definition de Signframe.
  *
@@ -309,28 +312,9 @@ function analyzeFormDef(json) {
         }
     }
 
-    // 2) Varios campos escribiendo la misma ruta.
-    for (var c = 0; c < outList.length; c++) {
-        var e2 = outList[c];
-        if (e2.fields.length <= 1) continue;
-        var types = Object.keys(e2.types);
-        var isOptionGroup = types.length === 1 && (types[0] === 'radio' || types[0] === 'checkbox');
-        var detail;
-        if (isOptionGroup) {
-            detail = e2.fields.length + ' opciones del mismo grupo escriben esta ruta: es lo esperado.';
-        } else if (types.length === 1) {
-            detail = e2.fields.length + ' campos "' + types[0] + '" escriben la misma ruta: el último en completarse pisa al anterior.';
-        } else {
-            detail = e2.fields.length + ' campos de tipos distintos (' + types.join(', ') + ') escriben la misma ruta: revisar cuál gana.';
-        }
-        issues.push({
-            severity: isOptionGroup ? 'info' : 'warning',
-            type: 'ruta-compartida',
-            path: e2.path,
-            detail: detail,
-            fields: e2.fields.map(function (x) { return x.id; }),
-        });
-    }
+    // 2) Varios campos escribiendo la misma ruta → la cubre R12 del Revisor, con
+    //    la misma excepción para grupos de opciones. Se dejó una sola para no
+    //    reportar el mismo problema dos veces con distinto texto.
 
     // 3) Campos sin salida ni excludeFromJson.
     if (noOutput.length) {
@@ -342,6 +326,35 @@ function analyzeFormDef(json) {
             fields: noOutput.slice(0, 30).map(function (x) { return x.id; }),
         });
     }
+
+    // ── Reglas de plataforma (motor del Revisor) ─────────────────────────────
+    // 26 reglas portadas de frombuilder v4.0.0. Cada una es un error que ya
+    // costó caro y que Signframe no valida al guardar, así que o se chequea acá
+    // o no se chequea. Aportan lo que este módulo no puede deducir del árbol:
+    // convenciones del INS, catálogos y comportamiento de la plataforma.
+    var deRevisor = [];
+    try {
+        var modeloRev = construirModelo(json);
+        var SEV = { error: 'critical', aviso: 'warning', nota: 'info' };
+        deRevisor = revisarFormDef(modeloRev).map(function (h) {
+            return {
+                severity: SEV[h.severidad] || 'warning',
+                type: h.regla,
+                path: h.ruta || null,
+                detail: h.titulo + ' — ' + h.detalle.replace(/`/g, ''),
+                fields: h.campoIds || [],
+                ref: h.ref || null,
+            };
+        });
+    } catch (e) {
+        issues.push({
+            severity: 'warning', type: 'revisor',
+            path: null,
+            detail: 'No se pudieron correr las reglas de plataforma: ' + e.message,
+            fields: [],
+        });
+    }
+    issues = issues.concat(deRevisor);
 
     issues.sort(function (x, y) {
         var rank = { critical: 0, warning: 1, info: 2 };
@@ -368,6 +381,7 @@ function analyzeFormDef(json) {
             repeaters: repeaters.length,
             critical: issues.filter(function (i2) { return i2.severity === 'critical'; }).length,
             warnings: issues.filter(function (i2) { return i2.severity === 'warning'; }).length,
+            reglasPlataforma: deRevisor.length,
         },
     };
 }
