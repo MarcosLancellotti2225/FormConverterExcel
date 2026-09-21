@@ -65,9 +65,9 @@
         $('#quoterFlow').hidden = mode !== 'quoter';
         $('#jsonMapFlow').hidden = mode !== 'json-map';
         $('#v2Flow').hidden = mode !== 'v2';
-        var volver = $('#btnBackToHome');
-        volver.hidden = !mode;
-        volver.textContent = (origenModo === 'v2' && mode !== 'v2') ? '← Volver al 2.0' : '← Volver';
+        // Mismo texto en todas las pantallas: el botón se lee igual siempre.
+        // Lo que cambia es el destino, que lo decide `origenModo`.
+        $('#btnBackToHome').hidden = !mode;
         var main = document.querySelector('main');
         if (mode === 'convert-pdf' || mode === 'detect-fields' || mode === 'signframe' || mode === 'canonical-matrix') {
             main.classList.add('wide-mode');
@@ -3190,6 +3190,10 @@
             ],
             queda: 'El PDF renombrado y el mapeo en Excel.',
             herramientas: ['detect-fields', 'convert-pdf'],
+            // Acá termina lo que hace la app y quedás solo con los tres
+            // archivos. Por eso la skill y el prompt viven en este paso y no
+            // en un panel aparte: es el momento en que se usan.
+            handoff: true,
         },
         {
             etapa: 'Signframe',
@@ -3346,6 +3350,11 @@
                 return '<button class="secondary btn-sm v2-ir" data-modo="' + m + '">' +
                     escapeHtml(v2NombreTool(m)) + ' →</button>';
             }).join('');
+            // El último paso no encadena con nada. Todos los demás llevan el
+            // mismo botón, también los que se hacen afuera.
+            if (i < V2_CIRCUITO.length - 1) {
+                botones += '<button class="link-btn v2-sig" data-sig="' + (i + 1) + '">Siguiente paso →</button>';
+            }
 
             return '<li class="v2-step' + (hecho ? ' hecho' : '') + (foco ? ' foco' : '') + '" id="v2Paso' + i + '">' +
                 '<div class="v2-step-cab">' +
@@ -3363,10 +3372,25 @@
                         }).join('') + '</ol>' +
                     '</div>' +
                     '<p class="v2-linea"><span class="v2-rot">Qué te queda</span>' + escapeHtml(p.queda) + '</p>' +
+                    (p.handoff ? v2HandoffHtml() : '') +
                     (botones ? '<div class="v2-step-acc">' + botones + '</div>' : '') +
                 '</div>' +
                 '</li>';
         }).join('');
+
+        // Cada render rehace el DOM del handoff, así que se vuelve a llenar acá
+        // y no en el init: si no, al elegir una puerta quedaba vacío.
+        v2RenderSkillMeta();
+        v2RenderPrompt();
+    }
+
+    function v2IrAPaso(i) {
+        var el = $('#v2Paso' + i);
+        if (!el) return;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Un destello, para no perder de vista a cuál saltaste.
+        el.classList.add('v2-salto');
+        setTimeout(function() { el.classList.remove('v2-salto'); }, 1200);
     }
 
     function v2AplicarPuerta(id, scrollear) {
@@ -3381,19 +3405,93 @@
         }
     }
 
-    function v2RenderSkill() {
+    // El handoff: lo que necesitás cuando la app ya hizo lo suyo y seguís vos
+    // con Claude. Se inyecta adentro del paso que lo declara.
+    function v2HandoffHtml() {
+        return '<div class="v2-handoff">' +
+            '<p class="v2-handoff-t">Desde acá seguís con Claude</p>' +
+            '<p class="v2-handoff-d">Ya tenés el PDF renombrado, el paquete de campos y la ficha. ' +
+                'La skill le da el criterio que ya acordamos: las reglas de plataforma de Signframe ' +
+                'y las convenciones del INS, para que no le tengas que explicar nada.</p>' +
+            '<p class="v2-skill-instalar">Descomprimila dentro de <code>~/.claude/skills/</code> y reiniciá Claude Code.</p>' +
+            '<div class="v2-skill-bajar">' +
+                '<a id="v2SkillLink" href="public/skill-signframe-form-def.zip" download>Descargar la skill</a>' +
+                '<span class="v2-skill-ver" id="v2SkillVer"></span>' +
+            '</div>' +
+            '<div class="v2-prompt-cab">' +
+                '<span class="v2-rot">El prompt para arrancar</span>' +
+                '<button class="secondary btn-sm" id="v2PromptCopiar" hidden>Copiar</button>' +
+            '</div>' +
+            '<pre class="v2-prompt" id="v2Prompt">Cargando…</pre>' +
+            '</div>';
+    }
+
+    function v2RenderSkillMeta() {
         // La versión sale del JSON que escribe scripts/build-skill-zip.js, así
         // que republicar el zip no obliga a tocar el HTML.
+        var ver = $('#v2SkillVer');
+        if (!ver) return;
         fetch('public/skill-signframe-form-def.json', { cache: 'no-store' })
             .then(function(r) { return r.ok ? r.json() : null; })
             .then(function(meta) {
                 if (!meta) throw new Error('sin meta');
-                $('#v2SkillVer').textContent = 'v' + meta.version + ' · ' + meta.fecha +
+                ver.textContent = 'v' + meta.version + ' · ' + meta.fecha +
                     ' · ' + Math.round(meta.bytes / 1024) + ' KB · ' + meta.archivos + ' archivos';
             })
+            .catch(function() { ver.textContent = ''; });
+    }
+
+    // El prompt vive en public/prompt-form-def.md y se trae en cada carga: se
+    // edita seguido, y así cambiarlo no obliga a tocar app.js ni a bumpear el
+    // cache-bust. Si no se puede traer, se dice y no se ofrece copiar vacío.
+    function v2RenderPrompt() {
+        var pre = $('#v2Prompt');
+        var btn = $('#v2PromptCopiar');
+        if (!pre) return;
+        fetch('public/prompt-form-def.md', { cache: 'no-store' })
+            .then(function(r) { return r.ok ? r.text() : null; })
+            .then(function(txt) {
+                if (!txt) throw new Error('sin prompt');
+                pre.textContent = txt.trim();
+                if (btn) btn.hidden = false;
+            })
             .catch(function() {
-                $('#v2SkillVer').textContent = '';
+                pre.textContent = 'No se pudo cargar el prompt. Está en public/prompt-form-def.md.';
+                pre.classList.add('v2-prompt-error');
+                if (btn) btn.hidden = true;
             });
+    }
+
+    // navigator.clipboard solo existe en contexto seguro (https o localhost).
+    // Abierta como file:// o por IP, el fallback del textarea es lo único que
+    // funciona, así que va siempre como red de contención.
+    function v2CopiarPrompt(btn) {
+        var texto = $('#v2Prompt').textContent;
+        var avisar = function(ok) {
+            btn.textContent = ok ? 'Copiado ✓' : 'No se pudo copiar';
+            setTimeout(function() { btn.textContent = 'Copiar'; }, 1800);
+        };
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(texto).then(function() { avisar(true); }, function() {
+                avisar(v2CopiarConTextarea(texto));
+            });
+        } else {
+            avisar(v2CopiarConTextarea(texto));
+        }
+    }
+
+    function v2CopiarConTextarea(texto) {
+        var ta = document.createElement('textarea');
+        ta.value = texto;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        document.body.removeChild(ta);
+        return ok;
     }
 
     function initV2Flow() {
@@ -3407,12 +3505,15 @@
         v2State.entrada = v2LeerEntrada();
         v2RenderPuerta();
         v2RenderPasos();
-        v2RenderSkill();
 
         // Un solo listener para toda la pantalla.
         $('#v2Flow').addEventListener('click', function(e) {
             var ir = e.target.closest('.v2-ir');
             if (ir) { selectMode(ir.dataset.modo, 'v2'); return; }
+            var sig = e.target.closest('.v2-sig');
+            if (sig) { v2IrAPaso(Number(sig.dataset.sig)); return; }
+            var copiar = e.target.closest('#v2PromptCopiar');
+            if (copiar) { v2CopiarPrompt(copiar); return; }
             var puerta = e.target.closest('[data-puerta]');
             if (puerta) { v2AplicarPuerta(puerta.dataset.puerta, true); return; }
             if (e.target.closest('#v2Reset')) v2AplicarPuerta(null, false);

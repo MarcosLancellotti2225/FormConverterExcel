@@ -1914,9 +1914,27 @@ footer {
 .v2-nota { font-size:0.75rem; color:var(--text-dim); font-style:italic; }
 .v2-ir { font-size:0.78rem; }
 
+/* El handoff: vive adentro del paso, que es donde se usa. */
+.v2-handoff { border:1px solid rgba(57,197,207,0.3); border-radius:8px;
+    background:rgba(57,197,207,0.05); padding:0.85rem 0.95rem;
+    display:flex; flex-direction:column; gap:0.55rem; }
+.v2-handoff-t { margin:0; font-weight:600; color:var(--accent-teal); font-size:0.85rem; }
+.v2-handoff-d { margin:0; color:var(--text-muted); line-height:1.5; }
+.v2-prompt-cab { display:flex; align-items:center; justify-content:space-between; gap:0.6rem; }
+.v2-prompt-cab .v2-rot { margin:0; }
+.v2-prompt { margin:0; padding:0.8rem 0.9rem; border-radius:6px;
+    background:var(--bg); border:1px solid var(--border); color:var(--text-muted);
+    font-family:'SFMono-Regular', Consolas, monospace; font-size:0.74rem; line-height:1.55;
+    white-space:pre-wrap; max-height:260px; overflow:auto; }
+.v2-prompt-error { color:var(--accent-amber); font-style:italic; white-space:normal; }
+.v2-salto { animation: v2-destello 1.2s ease-out; }
+@keyframes v2-destello {
+    0%, 60% { border-color: var(--accent-teal); }
+    100% { border-color: var(--border); }
+}
+
 /* La skill descargable. */
-.v2-skill { border-color:rgba(57,197,207,0.3); }
-.v2-skill-instalar { margin:0 0 0.9rem; font-size:0.82rem; color:var(--text-muted); }
+.v2-skill-instalar { margin:0; font-size:0.82rem; color:var(--text-muted); }
 .v2-skill-instalar code { background:var(--bg-elevated); padding:1px 6px; border-radius:4px; font-size:0.8rem; }
 .v2-skill-bajar { display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap; }
 /* Es un <a download>, no un <button>, así que no le llega `button.primary`. */
