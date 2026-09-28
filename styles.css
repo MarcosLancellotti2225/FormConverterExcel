@@ -1950,3 +1950,55 @@ footer {
 .v2-tool:hover { border-color:var(--accent); transform:translateY(-1px); }
 .v2-tool-n { font-weight:600; color:var(--text); font-size:0.85rem; }
 .v2-tool-d { color:var(--text-muted); font-size:0.75rem; line-height:1.35; }
+
+/* ── Estructura: la ficha del INS en una sola tabla ───────────────────────── */
+.est-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:0.6rem; }
+.est-stat { background:var(--bg-elevated); border:1px solid var(--border); border-radius:8px;
+    padding:0.6rem 0.7rem; display:flex; flex-direction:column; gap:1px; }
+.est-stat-n { font-size:1.3rem; font-weight:700; color:var(--accent); line-height:1.1; }
+.est-stat-l { font-size:0.78rem; color:var(--text); font-weight:600; }
+.est-stat-d { font-size:0.68rem; color:var(--text-dim); }
+
+.est-aviso { margin:0.9rem 0 0.4rem; font-size:0.82rem; color:var(--accent-amber); }
+.est-typos { margin:0; padding-left:1.1rem; font-size:0.78rem; color:var(--text-muted); }
+.est-typos code { background:var(--bg-elevated); padding:0 4px; border-radius:3px; }
+
+.est-barra { display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-bottom:0.8rem; }
+.est-barra input[type=text] { flex:1; min-width:220px; padding:0.4rem 0.6rem;
+    background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); }
+.est-barra select { padding:0.4rem 0.5rem; background:var(--bg);
+    border:1px solid var(--border); border-radius:6px; color:var(--text); }
+.est-check { display:flex; align-items:center; gap:0.3rem; font-size:0.78rem; color:var(--text-muted); }
+.est-conteo { font-size:0.75rem; color:var(--text-dim); margin-left:auto; }
+
+.est-grupo { border:1px solid var(--border); border-radius:8px; margin-bottom:0.6rem;
+    background:var(--bg-elevated); overflow:hidden; }
+.est-grupo > summary { padding:0.55rem 0.8rem; cursor:pointer; font-weight:600;
+    font-size:0.82rem; color:var(--text); background:var(--bg-panel); }
+.est-grupo-n { color:var(--text-dim); font-weight:400; font-size:0.75rem; }
+
+.est-tabla { width:100%; border-collapse:collapse; font-size:0.76rem; }
+.est-tabla th { text-align:left; padding:0.4rem 0.6rem; color:var(--text-dim);
+    font-weight:600; font-size:0.68rem; text-transform:uppercase; letter-spacing:0.04em;
+    border-bottom:1px solid var(--border); white-space:nowrap; }
+.est-tabla td { padding:0.4rem 0.6rem; border-bottom:1px solid var(--border);
+    color:var(--text-muted); vertical-align:top; }
+.est-tabla tr:last-child td { border-bottom:none; }
+.est-tabla code { font-size:0.72rem; color:var(--accent-teal); word-break:break-all; }
+.est-fila:hover { background:var(--bg-panel); }
+.est-oculto { opacity:0.55; }
+.est-n { color:var(--text-dim); }
+.est-pdf { display:block; font-size:0.68rem; color:var(--text-dim); }
+.est-tipo { font-size:0.7rem; padding:1px 6px; border-radius:99px;
+    background:var(--bg-panel); color:var(--text-muted); white-space:nowrap; }
+.est-chip { display:inline-block; font-size:0.68rem; padding:1px 6px; margin:1px 2px 1px 0;
+    border-radius:99px; background:rgba(163,113,247,0.14); color:var(--accent); }
+.est-regla { max-width:280px; color:var(--text-dim); font-size:0.72rem; }
+.est-vacio { color:var(--text-dim); }
+.est-destino { font-size:0.68rem; padding:1px 7px; border-radius:99px; font-weight:600;
+    background:var(--bg-panel); color:var(--text-muted); white-space:nowrap; }
+.est-d-soloJSON .est-destino { background:rgba(57,197,207,0.15); color:var(--accent-teal); }
+.est-d-oculto   .est-destino { background:rgba(139,148,158,0.2); color:var(--text-dim); }
+.est-d-readOnly .est-destino { background:rgba(210,153,34,0.15); color:var(--accent-amber); }
+.est-d-excluido .est-destino { background:rgba(248,81,73,0.13); color:var(--accent-red); }
+.est-d-label    .est-destino { background:rgba(163,113,247,0.14); color:var(--accent); }

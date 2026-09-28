@@ -103,6 +103,10 @@ const rCondicionRota = (m) => {
     return out;
 };
 // --- R04 · salidaJSON != jsonOutputPath ------------------------------------
+// Verificado en el front de Signframe (formDataTransform.ts): `salidaJSON` no
+// lo lee nadie. La salida la produce únicamente `jsonOutputPath`. Que los dos
+// no coincidan no rompe nada, pero deja el form-def diciendo dos cosas
+// distintas, y el que lo lea después va a creer la que no manda.
 const rSalidaDesalineada = (m) => m.campos
     .filter((cp) => {
     const a = cp.campo.salidaJSON ?? null;
@@ -111,9 +115,9 @@ const rSalidaDesalineada = (m) => m.campos
 })
     .map((cp) => ({
     regla: 'R04',
-    severidad: 'error',
+    severidad: 'nota',
     titulo: 'salidaJSON y jsonOutputPath no coinciden',
-    detalle: `\`${etiqueta(cp.campo)}\`: salidaJSON = ${cp.campo.salidaJSON ?? 'null'}, jsonOutputPath = ${cp.campo.jsonOutputPath ?? 'null'}.`,
+    detalle: `\`${etiqueta(cp.campo)}\`: salidaJSON = ${cp.campo.salidaJSON ?? 'null'}, jsonOutputPath = ${cp.campo.jsonOutputPath ?? 'null'}. Signframe solo lee jsonOutputPath; salidaJSON no lo consume nadie. La salida real es \`${cp.campo.jsonOutputPath ?? 'ninguna'}\`.`,
     campoIds: [cp.campo.id],
 }));
 // --- R05/R06/R07 · repeaters (§P4) -----------------------------------------
@@ -183,26 +187,31 @@ const rSourceFieldIds = (m) => {
     }
     return out;
 };
-// --- R09 · casilla del PDF que pinta con "X" (§E2) --------------------------
+// --- R09 · checkedPdfValue que el back ignora (§E2) -------------------------
+// Verificado en el back (PdfFieldValuesResolver.cs): a un checkbox o radio con
+// valor no vacío le escribe SIEMPRE "X", sin mirar `checkedPdfValue`. Pintar
+// con "X" entonces no es un defecto — es lo único que pasa.
+//
+// Lo que sí vale avisar es lo contrario: un campo que declara un
+// `checkedPdfValue` distinto de "X". Eso no se cumple nunca, y el que lea el
+// form-def después va a creer que esa casilla pinta otra cosa.
 const rCasillaX = (m) => {
     const out = [];
     for (const cp of m.campos) {
         const nativo = cp.campo.sourceMeta?.nativeType;
-        if (nativo !== 'Checkbox')
+        if (nativo !== 'Checkbox' && nativo !== 'RadioGroup')
             continue;
-        for (const p of cp.campo.autoFillConcat?.parts ?? []) {
-            if (p.kind === 'text' && p.value === 'X') {
-                out.push({
-                    regla: 'R09',
-                    severidad: 'error',
-                    titulo: 'Casilla que pinta con "X"',
-                    detalle: `\`${etiqueta(cp.campo)}\` es /Btn en el PDF y se marca con la cadena "X". Un checkbox se marca con true; con "X" puede no pintarse nunca.`,
-                    campoIds: [cp.campo.id],
-                    ref: '§E2',
-                });
-                break;
-            }
-        }
+        const declarado = cp.campo.checkedPdfValue;
+        if (declarado == null || declarado === 'X')
+            continue;
+        out.push({
+            regla: 'R09',
+            severidad: 'nota',
+            titulo: 'checkedPdfValue que no se usa',
+            detalle: `\`${etiqueta(cp.campo)}\` declara checkedPdfValue = ${JSON.stringify(declarado)}, pero el back escribe siempre "X" en una casilla marcada y no lee esa propiedad. El PDF va a salir con "X"; el form-def dice otra cosa.`,
+            campoIds: [cp.campo.id],
+            ref: '§E2',
+        });
     }
     return out;
 };
@@ -409,31 +418,94 @@ const rCascada = (m) => {
     }
     return out;
 };
-// --- R19 · substring de fecha en formato ISO (§M9) -------------------------
+// --- R19 · substring de fecha contra el formato equivocado (§M9) -----------
+// El date picker guarda YYYY-MM-DD en formData, pero al enviar cada token de
+// tipo date se FORMATEA ANTES de los transforms, y por lado
+// (concatEngine.ts): el lado pdf usa `pdfDateFormat ?? dateFormat ??
+// "DD/MM/YYYY"`, el lado json usa `jsonDateFormat ?? dateFormat ??
+// "DD/MM/YYYY"`. Recién después corre el substring.
+//
+// Por eso no alcanza con asumir un formato: hay que calcular el efectivo del
+// campo fuente. Un helper día/mes/año pinta el PDF, así que manda el lado pdf.
+// Sin pdfDateFormat ni dateFormat llega "28/09/2026" y el día va 0-2: cortar
+// 8-10 ahí devuelve "26", el año. Pero si alguien setea pdfDateFormat
+// "YYYY-MM-DD", el 8-10 pasa a ser correcto y no hay nada que marcar.
+const FORMATO_FECHA_POR_DEFECTO = 'DD/MM/YYYY';
+
+/** Dónde cae cada parte dentro de un formato ("DD/MM/YYYY" → dia [0,2)). */
+const posicionesDe = (formato) => {
+    const buscar = (tokens) => {
+        for (const t of tokens) {
+            const i = formato.indexOf(t);
+            if (i !== -1)
+                return { start: i, end: i + t.length };
+        }
+        return null;
+    };
+    return {
+        dia: buscar(['DD']),
+        mes: buscar(['MM']),
+        anio: buscar(['YYYY', 'AAAA']),
+    };
+};
+
+/** El formato con el que llega la fecha del lado que pinta el PDF. */
+const formatoPdfDe = (campoFuente) => campoFuente?.pdfDateFormat
+    ?? campoFuente?.dateFormat
+    ?? FORMATO_FECHA_POR_DEFECTO;
+
+/** Una fecha de ejemplo en ese formato, para mostrar qué recibe el PDF. */
+const ejemploEn = (formato) => formato
+    .replace(/YYYY|AAAA/, '2026')
+    .replace(/DD/, '28')
+    .replace(/MM/, '09');
+
+/** Qué parte de la fecha pretende escribir este helper, por su id. */
+const parteDe = (id) => {
+    const s = id.toLowerCase();
+    if (/_dia$/.test(s))
+        return 'dia';
+    if (/_mes$/.test(s))
+        return 'mes';
+    if (/_(anio|ano|año)$/.test(s))
+        return 'anio';
+    return null;
+};
+
+const NOMBRE_PARTE = { dia: 'día', mes: 'mes', anio: 'año' };
+
 const rFechaIso = (m) => {
     const out = [];
     for (const cp of m.campos) {
-        const id = cp.campo.id.toLowerCase();
-        const esDia = /_dia$/.test(id);
-        const esMes = /_mes$/.test(id);
-        if (!esDia && !esMes)
+        const parte = parteDe(cp.campo.id);
+        if (!parte)
             continue;
         for (const p of cp.campo.autoFillConcat?.parts ?? []) {
+            if (p.kind !== 'field')
+                continue;
+            const fuente = m.porId.get(p.fieldId)?.campo;
+            // Si la fuente no es una fecha, no hay formateo previo y esta regla
+            // no aplica: el substring corre sobre el string crudo.
+            if (!fuente || fuente.type !== 'date')
+                continue;
+            const formato = formatoPdfDe(fuente);
+            const esperado = posicionesDe(formato)[parte];
+            if (!esperado)
+                continue;
             for (const t of p.transforms ?? []) {
                 if (t.kind !== 'substring')
                     continue;
-                const malDia = esDia && t.start === 8;
-                const malMes = esMes && t.start === 5;
-                if (malDia || malMes) {
-                    out.push({
-                        regla: 'R19',
-                        severidad: 'error',
-                        titulo: 'Fecha cortada en formato ISO',
-                        detalle: `\`${etiqueta(cp.campo)}\` corta desde ${t.start}, que es la posición en AAAA-MM-DD. Sobre una fecha DD/MM/AAAA el día va 0-2, el mes 3-5 y el año 6-10: así como está, el PDF sale con el día y el mes cambiados.`,
-                        campoIds: [cp.campo.id],
-                        ref: '§M9',
-                    });
-                }
+                if (t.start === esperado.start && t.end === esperado.end)
+                    continue;
+                const recorte = ejemploEn(formato).slice(t.start, t.end);
+                out.push({
+                    regla: 'R19',
+                    severidad: 'error',
+                    titulo: 'Fecha cortada contra el formato equivocado',
+                    detalle: `\`${etiqueta(cp.campo)}\` escribe el ${NOMBRE_PARTE[parte]} cortando ${t.start}-${t.end}, pero \`${etiqueta(fuente)}\` llega al PDF como ${formato}${fuente.pdfDateFormat ? '' : ' (el default: no tiene pdfDateFormat ni dateFormat)'}, donde el ${NOMBRE_PARTE[parte]} va ${esperado.start}-${esperado.end}. Con una fecha ${ejemploEn(formato)}, el PDF recibe "${recorte}" en vez de "${ejemploEn(formato).slice(esperado.start, esperado.end)}".`,
+                    campoIds: [cp.campo.id],
+                    ref: '§M9',
+                });
             }
         }
     }

@@ -20,6 +20,7 @@
         initMetadataFlow();
         initQuoterFlow();
         initJsonMapFlow();
+        initEstructuraFlow();
         initV2Flow();
 
         // Ojo con el orden: selectMode(null) limpia el hash, así que hay que
@@ -64,12 +65,13 @@
         $('#metadataFlow').hidden = mode !== 'metadata-pdf';
         $('#quoterFlow').hidden = mode !== 'quoter';
         $('#jsonMapFlow').hidden = mode !== 'json-map';
+        $('#estructuraFlow').hidden = mode !== 'estructura';
         $('#v2Flow').hidden = mode !== 'v2';
         // Mismo texto en todas las pantallas: el botón se lee igual siempre.
         // Lo que cambia es el destino, que lo decide `origenModo`.
         $('#btnBackToHome').hidden = !mode;
         var main = document.querySelector('main');
-        if (mode === 'convert-pdf' || mode === 'detect-fields' || mode === 'signframe' || mode === 'canonical-matrix') {
+        if (mode === 'convert-pdf' || mode === 'detect-fields' || mode === 'signframe' || mode === 'canonical-matrix' || mode === 'estructura') {
             main.classList.add('wide-mode');
         } else {
             main.classList.remove('wide-mode');
@@ -3526,6 +3528,183 @@
         if (!activa) return;
         var el = $('#v2Paso' + activa.destino);
         if (el) el.scrollIntoView({ block: 'center' });
+    }
+
+    // ==================== ESTRUCTURA FLOW ====================
+
+    var estState = { ficha: null, formDef: null, analisis: null };
+
+    var EST_DESTINOS = {
+        normal: 'normal', soloJSON: 'solo JSON', soloWeb: 'solo web',
+        oculto: 'oculto', readOnly: 'readOnly', excluido: 'excluido', label: 'label',
+    };
+
+    function initEstructuraFlow() {
+        $('#estFichaInput').addEventListener('change', function(e) {
+            estState.ficha = e.target.files[0] || null;
+            $('#estFichaStatus').textContent = estState.ficha ? estState.ficha.name : '';
+            $('#estRunBtn').disabled = !estState.ficha;
+        });
+        $('#estFormDefInput').addEventListener('change', function(e) {
+            estState.formDef = e.target.files[0] || null;
+            $('#estFormDefStatus').textContent = estState.formDef ? estState.formDef.name : '';
+        });
+        $('#estRunBtn').addEventListener('click', estRun);
+        $('#estExportBtn').addEventListener('click', estExportar);
+
+        ['#estBuscar', '#estFiltroHoja', '#estFiltroDestino', '#estVerOcultos'].forEach(function(sel) {
+            $(sel).addEventListener('input', estRenderTabla);
+            $(sel).addEventListener('change', estRenderTabla);
+        });
+    }
+
+    function estRun() {
+        var err = $('#estError');
+        err.hidden = true;
+        $('#estRunBtn').disabled = true;
+        $('#estRunBtn').textContent = 'Leyendo…';
+
+        InsPipelineBundle.runEstructura({ fichaFile: estState.ficha, formDefFile: estState.formDef })
+            .then(function(a) {
+                estState.analisis = a;
+                estRenderResumen(a);
+                estLlenarFiltros(a);
+                estRenderTabla();
+                $('#estResumen').hidden = false;
+                $('#estTablaPanel').hidden = false;
+                $('#estExportBtn').disabled = false;
+            })
+            .catch(function(e) {
+                err.textContent = e.message;
+                err.hidden = false;
+            })
+            .then(function() {
+                $('#estRunBtn').disabled = false;
+                $('#estRunBtn').textContent = 'Leer la ficha';
+            });
+    }
+
+    function estRenderResumen(a) {
+        var s = a.stats;
+        var tarjetas = [
+            ['Campos', s.campos, 'después de colapsar las opciones'],
+            ['Filas con ruta', s.filasConRuta, 'lo que trae la ficha'],
+            ['Hojas con campos', s.hojasConCampos + ' / ' + s.hojas, ''],
+            ['solo JSON', s.soloJSON, 'no se dibujan'],
+            ['Ocultos', s.ocultos, 'No Aplica'],
+            ['readOnly', s.readOnly, 'Disabled'],
+            ['Prellenados', s.prefill, 'Dato Prellenado'],
+            ['Excluidos', s.excluidos, 'por regla de formulario'],
+            ['Labels', s.labels, 'filas sin ruta'],
+            ['Con sourceName', s.conSourceName, 'cruzables contra el PDF'],
+        ];
+        $('#estStats').innerHTML = tarjetas.map(function(t) {
+            return '<div class="est-stat"><span class="est-stat-n">' + t[1] + '</span>' +
+                '<span class="est-stat-l">' + escapeHtml(t[0]) + '</span>' +
+                (t[2] ? '<span class="est-stat-d">' + escapeHtml(t[2]) + '</span>' : '') + '</div>';
+        }).join('');
+
+        var avisos = '';
+        if (!a.ejemplo.ok) {
+            avisos += '<p class="est-aviso">La hoja "JSON Generado" no se pudo parsear: ' +
+                escapeHtml(a.ejemplo.error) + '. El resto de la ficha se leyó igual.</p>';
+        }
+        if (a.typos.length) {
+            avisos += '<p class="est-aviso">La ficha escribe estas rutas distinto del JSON de ejemplo. ' +
+                '<strong>No se corrigen</strong>: hay que reportarlas.</p><ul class="est-typos">' +
+                a.typos.map(function(t) {
+                    return '<li><code>' + escapeHtml(t.escrito) + '</code> en la hoja <em>' +
+                        escapeHtml(t.hoja) + '</em> · el ejemplo dice <code>' + escapeHtml(t.enEjemplo) + '</code></li>';
+                }).join('') + '</ul>';
+        }
+        $('#estTypos').innerHTML = avisos;
+    }
+
+    function estLlenarFiltros(a) {
+        var hojas = [];
+        var destinos = [];
+        a.filas.forEach(function(f) {
+            if (hojas.indexOf(f.hoja) === -1) hojas.push(f.hoja);
+            if (destinos.indexOf(f.destino) === -1) destinos.push(f.destino);
+        });
+        $('#estFiltroHoja').innerHTML = '<option value="">Todas las hojas</option>' +
+            hojas.map(function(h) { return '<option>' + escapeHtml(h) + '</option>'; }).join('');
+        $('#estFiltroDestino').innerHTML = '<option value="">Todos los destinos</option>' +
+            destinos.map(function(d) {
+                return '<option value="' + d + '">' + escapeHtml(EST_DESTINOS[d] || d) + '</option>';
+            }).join('');
+    }
+
+    function estFiltrar() {
+        var q = $('#estBuscar').value.trim().toLowerCase();
+        var hoja = $('#estFiltroHoja').value;
+        var destino = $('#estFiltroDestino').value;
+        var verOcultos = $('#estVerOcultos').checked;
+
+        return estState.analisis.filas.filter(function(f) {
+            if (hoja && f.hoja !== hoja) return false;
+            if (destino && f.destino !== destino) return false;
+            if (!verOcultos && f.flags.oculto) return false;
+            if (!q) return true;
+            var heno = (f.label + ' ' + f.ruta + ' ' + f.sourceNames.join(' ') + ' ' + f.nombrePdf).toLowerCase();
+            return heno.indexOf(q) !== -1;
+        });
+    }
+
+    function estRenderTabla() {
+        if (!estState.analisis) return;
+        var filas = estFiltrar();
+        $('#estConteo').textContent = filas.length + ' de ' + estState.analisis.filas.length + ' campos';
+
+        // Se reagrupa sobre lo filtrado para que los encabezados vacíos no queden.
+        var grupos = [];
+        var porClave = {};
+        filas.forEach(function(f) {
+            var k = f.paso + ' ▸ ' + f.seccion;
+            if (!porClave[k]) { porClave[k] = { clave: k, filas: [] }; grupos.push(porClave[k]); }
+            porClave[k].filas.push(f);
+        });
+
+        $('#estTabla').innerHTML = grupos.map(function(g) {
+            return '<details class="est-grupo" open>' +
+                '<summary>' + escapeHtml(g.clave) + ' <span class="est-grupo-n">' + g.filas.length + '</span></summary>' +
+                '<table class="est-tabla"><thead><tr>' +
+                    '<th>#</th><th>Label</th><th>Tipo</th><th>Opciones</th><th>Regla</th>' +
+                    '<th>Oblig.</th><th>Ruta</th><th>sourceName</th><th>Destino</th>' +
+                '</tr></thead><tbody>' +
+                g.filas.map(estFilaHtml).join('') +
+                '</tbody></table></details>';
+        }).join('') || '<p class="hint">Ningún campo coincide con el filtro.</p>';
+    }
+
+    function estFilaHtml(f) {
+        var ops = f.opciones.map(function(o) {
+            return '<span class="est-chip" title="' + escapeHtml(o.regla || '') + '">' + escapeHtml(o.valor) + '</span>';
+        }).join('');
+        var regla = f.reglas.join(' · ');
+        var reglaCorta = regla.length > 60 ? regla.slice(0, 60) + '…' : regla;
+        return '<tr class="est-fila est-d-' + f.destino + (f.flags.oculto ? ' est-oculto' : '') + '">' +
+            '<td class="est-n">' + f.n + '</td>' +
+            '<td>' + escapeHtml(f.label) + (f.nombrePdf ? '<span class="est-pdf">' + escapeHtml(f.nombrePdf) + '</span>' : '') + '</td>' +
+            '<td><span class="est-tipo">' + escapeHtml(f.tipo || f.tipoFicha || '—') + '</span></td>' +
+            '<td>' + ops + '</td>' +
+            '<td class="est-regla" title="' + escapeHtml(regla) + '">' + escapeHtml(reglaCorta) + '</td>' +
+            '<td>' + escapeHtml(f.obligatorio) + '</td>' +
+            '<td><code>' + escapeHtml(f.rutaCorta || '—') + '</code>' +
+                (f.rutas.length > 1 ? '<span class="est-pdf">+ ' + escapeHtml(f.rutas[1].split('.').pop()) + '</span>' : '') + '</td>' +
+            '<td>' + (f.sourceNames.length
+                ? f.sourceNames.map(function(s) { return '<code>' + escapeHtml(s) + '</code>'; }).join(' ')
+                : '<span class="est-vacio">—</span>') + '</td>' +
+            '<td><span class="est-destino est-d">' + escapeHtml(EST_DESTINOS[f.destino] || f.destino) + '</span></td>' +
+            '</tr>';
+    }
+
+    function estExportar() {
+        var bytes = InsPipelineBundle.estructuraToXlsx(estState.analisis);
+        var nombre = (estState.ficha.name || 'ficha').replace(/\.[^.]+$/, '');
+        InsPipelineBundle.downloadBlob(new Blob([bytes], {
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        }), 'vista-unica_' + nombre + '.xlsx');
     }
 
     // ==================== MAPA JSON FLOW ====================

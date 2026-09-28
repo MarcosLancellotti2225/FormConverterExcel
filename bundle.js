@@ -99648,9 +99648,9 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         return a !== b && (a != null || b != null);
       }).map((cp) => ({
         regla: "R04",
-        severidad: "error",
+        severidad: "nota",
         titulo: "salidaJSON y jsonOutputPath no coinciden",
-        detalle: `\`${etiqueta(cp.campo)}\`: salidaJSON = ${cp.campo.salidaJSON ?? "null"}, jsonOutputPath = ${cp.campo.jsonOutputPath ?? "null"}.`,
+        detalle: `\`${etiqueta(cp.campo)}\`: salidaJSON = ${cp.campo.salidaJSON ?? "null"}, jsonOutputPath = ${cp.campo.jsonOutputPath ?? "null"}. Signframe solo lee jsonOutputPath; salidaJSON no lo consume nadie. La salida real es \`${cp.campo.jsonOutputPath ?? "ninguna"}\`.`,
         campoIds: [cp.campo.id]
       }));
       var rRepeaters = (m) => {
@@ -99721,21 +99721,19 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const out = [];
         for (const cp of m.campos) {
           const nativo = cp.campo.sourceMeta?.nativeType;
-          if (nativo !== "Checkbox")
+          if (nativo !== "Checkbox" && nativo !== "RadioGroup")
             continue;
-          for (const p of cp.campo.autoFillConcat?.parts ?? []) {
-            if (p.kind === "text" && p.value === "X") {
-              out.push({
-                regla: "R09",
-                severidad: "error",
-                titulo: 'Casilla que pinta con "X"',
-                detalle: `\`${etiqueta(cp.campo)}\` es /Btn en el PDF y se marca con la cadena "X". Un checkbox se marca con true; con "X" puede no pintarse nunca.`,
-                campoIds: [cp.campo.id],
-                ref: "\xA7E2"
-              });
-              break;
-            }
-          }
+          const declarado = cp.campo.checkedPdfValue;
+          if (declarado == null || declarado === "X")
+            continue;
+          out.push({
+            regla: "R09",
+            severidad: "nota",
+            titulo: "checkedPdfValue que no se usa",
+            detalle: `\`${etiqueta(cp.campo)}\` declara checkedPdfValue = ${JSON.stringify(declarado)}, pero el back escribe siempre "X" en una casilla marcada y no lee esa propiedad. El PDF va a salir con "X"; el form-def dice otra cosa.`,
+            campoIds: [cp.campo.id],
+            ref: "\xA7E2"
+          });
         }
         return out;
       };
@@ -99909,30 +99907,65 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         }
         return out;
       };
+      var FORMATO_FECHA_POR_DEFECTO = "DD/MM/YYYY";
+      var posicionesDe = (formato) => {
+        const buscar = (tokens) => {
+          for (const t of tokens) {
+            const i = formato.indexOf(t);
+            if (i !== -1)
+              return { start: i, end: i + t.length };
+          }
+          return null;
+        };
+        return {
+          dia: buscar(["DD"]),
+          mes: buscar(["MM"]),
+          anio: buscar(["YYYY", "AAAA"])
+        };
+      };
+      var formatoPdfDe = (campoFuente) => campoFuente?.pdfDateFormat ?? campoFuente?.dateFormat ?? FORMATO_FECHA_POR_DEFECTO;
+      var ejemploEn = (formato) => formato.replace(/YYYY|AAAA/, "2026").replace(/DD/, "28").replace(/MM/, "09");
+      var parteDe = (id) => {
+        const s = id.toLowerCase();
+        if (/_dia$/.test(s))
+          return "dia";
+        if (/_mes$/.test(s))
+          return "mes";
+        if (/_(anio|ano|año)$/.test(s))
+          return "anio";
+        return null;
+      };
+      var NOMBRE_PARTE = { dia: "d\xEDa", mes: "mes", anio: "a\xF1o" };
       var rFechaIso = (m) => {
         const out = [];
         for (const cp of m.campos) {
-          const id = cp.campo.id.toLowerCase();
-          const esDia = /_dia$/.test(id);
-          const esMes = /_mes$/.test(id);
-          if (!esDia && !esMes)
+          const parte = parteDe(cp.campo.id);
+          if (!parte)
             continue;
           for (const p of cp.campo.autoFillConcat?.parts ?? []) {
+            if (p.kind !== "field")
+              continue;
+            const fuente = m.porId.get(p.fieldId)?.campo;
+            if (!fuente || fuente.type !== "date")
+              continue;
+            const formato = formatoPdfDe(fuente);
+            const esperado = posicionesDe(formato)[parte];
+            if (!esperado)
+              continue;
             for (const t of p.transforms ?? []) {
               if (t.kind !== "substring")
                 continue;
-              const malDia = esDia && t.start === 8;
-              const malMes = esMes && t.start === 5;
-              if (malDia || malMes) {
-                out.push({
-                  regla: "R19",
-                  severidad: "error",
-                  titulo: "Fecha cortada en formato ISO",
-                  detalle: `\`${etiqueta(cp.campo)}\` corta desde ${t.start}, que es la posici\xF3n en AAAA-MM-DD. Sobre una fecha DD/MM/AAAA el d\xEDa va 0-2, el mes 3-5 y el a\xF1o 6-10: as\xED como est\xE1, el PDF sale con el d\xEDa y el mes cambiados.`,
-                  campoIds: [cp.campo.id],
-                  ref: "\xA7M9"
-                });
-              }
+              if (t.start === esperado.start && t.end === esperado.end)
+                continue;
+              const recorte = ejemploEn(formato).slice(t.start, t.end);
+              out.push({
+                regla: "R19",
+                severidad: "error",
+                titulo: "Fecha cortada contra el formato equivocado",
+                detalle: `\`${etiqueta(cp.campo)}\` escribe el ${NOMBRE_PARTE[parte]} cortando ${t.start}-${t.end}, pero \`${etiqueta(fuente)}\` llega al PDF como ${formato}${fuente.pdfDateFormat ? "" : " (el default: no tiene pdfDateFormat ni dateFormat)"}, donde el ${NOMBRE_PARTE[parte]} va ${esperado.start}-${esperado.end}. Con una fecha ${ejemploEn(formato)}, el PDF recibe "${recorte}" en vez de "${ejemploEn(formato).slice(esperado.start, esperado.end)}".`,
+                campoIds: [cp.campo.id],
+                ref: "\xA7M9"
+              });
             }
           }
         }
@@ -100596,6 +100629,543 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         };
       }
       module.exports = { analyzeFormDef, parsePath, splitPrefillKey, compareWithSample, flattenJson, normalizePath };
+    }
+  });
+
+  // src/estructura/ficha-reader.js
+  var require_ficha_reader = __commonJS({
+    "src/estructura/ficha-reader.js"(exports, module) {
+      "use strict";
+      var XLSX = require_xlsx();
+      var COL = {
+        PASO: 0,
+        SECCION: 1,
+        NOMBRE_PDF: 2,
+        LABEL: 3,
+        TIPO: 4,
+        VALOR: 5,
+        REGLA: 6,
+        OBLIGATORIO: 7,
+        FORMULARIOS: 8,
+        VISUALIZACION: 9,
+        OBSERVACIONES: 10,
+        SECCION_JSON: 11,
+        RUTA: 12,
+        SOURCE_NAME: 13
+      };
+      var HOJA_INDICE = "Estructura base JSON";
+      var HOJA_EJEMPLO = "JSON Generado";
+      var SIN_CAMPOS = [
+        "NO APLICA PARA ESTE FORMULARIO",
+        "NO POSEE CAMPOS PROPIOS"
+      ];
+      var TIPOS = {
+        "TEXTO": "text",
+        "NUMERICO": "number",
+        "NUMERICO/PORCENTUAL": "number",
+        "FECHA": "date",
+        "COMBO": "select",
+        "RADIO/COMBO": "radio",
+        "BOOLEAN": "boolean",
+        "CHECKBOX": "checkbox",
+        "CHECK BOX": "checkbox",
+        "TABLA": "tabla",
+        "COMENTARIO INFORMATIVO": "label"
+      };
+      function norm(v) {
+        if (v == null) return "";
+        return String(v).replace(/\s+/g, " ").trim();
+      }
+      function clave(v) {
+        return norm(v).normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+      }
+      function contiene(texto, aguja) {
+        return clave(texto).indexOf(clave(aguja)) !== -1;
+      }
+      function hojaRuta(ruta) {
+        if (!ruta) return "";
+        var partes = String(ruta).split(".");
+        return partes[partes.length - 1].replace(/\[\]$/, "");
+      }
+      function hojaVacia(filas) {
+        for (var i = 0; i < filas.length; i++) {
+          for (var j = 0; j < filas[i].length; j++) {
+            var c = clave(filas[i][j]);
+            for (var k = 0; k < SIN_CAMPOS.length; k++) {
+              if (c.indexOf(SIN_CAMPOS[k]) !== -1) return true;
+            }
+          }
+        }
+        return false;
+      }
+      function clasificar(fila) {
+        var obligatorio = norm(fila[COL.OBLIGATORIO]);
+        var paso = norm(fila[COL.PASO]);
+        var visual = norm(fila[COL.VISUALIZACION]);
+        var regla = norm(fila[COL.REGLA]);
+        var ruta = norm(fila[COL.RUTA]);
+        return {
+          soloJSON: clave(obligatorio) === "JSON" || clave(paso) === "JSON",
+          soloWeb: clave(obligatorio) === "WEB",
+          oculto: contiene(visual, "No Aplica"),
+          readOnly: contiene(visual, "Disabled"),
+          prefill: contiene(visual, "Dato Prellenado"),
+          // "No aplica Formulario D0873": la regla excluye el campo de un producto.
+          excluido: /no aplica\s+formulario/i.test(regla),
+          // Sin ruta de salida no es un campo: es un texto en el formulario.
+          esLabel: !ruta
+        };
+      }
+      function destinoDe(flags) {
+        if (flags.excluido) return "excluido";
+        if (flags.esLabel) return "label";
+        if (flags.soloJSON) return "soloJSON";
+        if (flags.soloWeb) return "soloWeb";
+        if (flags.oculto) return "oculto";
+        if (flags.readOnly) return "readOnly";
+        return "normal";
+      }
+      function leerIndice(ws) {
+        var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+        var nodos = [];
+        var ultimoNodo = "";
+        for (var i = 1; i < raw.length; i++) {
+          var nodo = norm(raw[i][0]);
+          var paso = norm(raw[i][1]);
+          var seccion = norm(raw[i][2]);
+          if (!nodo && !paso && !seccion) continue;
+          if (!nodo) nodo = ultimoNodo;
+          else ultimoNodo = nodo;
+          nodos.push({ nodo, paso, seccion, instancia: !norm(raw[i][0]) });
+        }
+        return nodos;
+      }
+      function leerEjemplo(ws) {
+        var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+        var texto = raw.map(function(fila) {
+          return fila.map(function(c) {
+            return c == null ? "" : String(c);
+          }).join("");
+        }).join("\n");
+        try {
+          return { json: JSON.parse(texto), texto, error: null };
+        } catch (e) {
+          return { json: null, texto, error: e.message };
+        }
+      }
+      function leerFila(fila, hoja, numeroFila) {
+        var rutaCruda = norm(fila[COL.RUTA]);
+        var rutas = rutaCruda ? rutaCruda.split(",").map(norm).filter(Boolean) : [];
+        var tipoFicha = norm(fila[COL.TIPO]);
+        var flags = clasificar(fila);
+        return {
+          hoja,
+          fila: numeroFila,
+          paso: norm(fila[COL.PASO]),
+          seccion: norm(fila[COL.SECCION]),
+          nombrePdf: norm(fila[COL.NOMBRE_PDF]),
+          label: norm(fila[COL.LABEL]),
+          tipoFicha,
+          tipo: TIPOS[clave(tipoFicha)] || null,
+          valor: norm(fila[COL.VALOR]),
+          regla: norm(fila[COL.REGLA]),
+          obligatorio: norm(fila[COL.OBLIGATORIO]),
+          formularios: norm(fila[COL.FORMULARIOS]),
+          visualizacion: norm(fila[COL.VISUALIZACION]),
+          observaciones: norm(fila[COL.OBSERVACIONES]),
+          seccionJson: norm(fila[COL.SECCION_JSON]),
+          ruta: rutas[0] || "",
+          rutas,
+          sourceName: norm(fila[COL.SOURCE_NAME]),
+          flags
+        };
+      }
+      function colapsar(filas) {
+        var campos = [];
+        var porRuta = /* @__PURE__ */ Object.create(null);
+        filas.forEach(function(f) {
+          if (!f.ruta) {
+            campos.push(aCampo(f));
+            return;
+          }
+          var previo = porRuta[f.ruta];
+          if (!previo) {
+            var campo = aCampo(f);
+            porRuta[f.ruta] = campo;
+            campos.push(campo);
+            return;
+          }
+          previo.filas.push(f.fila);
+          if (f.valor) previo.opciones.push({ valor: f.valor, regla: f.regla });
+          if (f.sourceName && previo.sourceNames.indexOf(f.sourceName) === -1) {
+            previo.sourceNames.push(f.sourceName);
+          }
+          if (f.regla && previo.reglas.indexOf(f.regla) === -1) previo.reglas.push(f.regla);
+        });
+        return campos;
+      }
+      function aCampo(f) {
+        return {
+          hoja: f.hoja,
+          filas: [f.fila],
+          paso: f.paso,
+          seccion: f.seccion,
+          nombrePdf: f.nombrePdf,
+          label: f.label,
+          tipoFicha: f.tipoFicha,
+          tipo: f.tipo,
+          opciones: f.valor ? [{ valor: f.valor, regla: f.regla }] : [],
+          reglas: f.regla ? [f.regla] : [],
+          obligatorio: f.obligatorio,
+          formularios: f.formularios,
+          visualizacion: f.visualizacion,
+          observaciones: f.observaciones,
+          seccionJson: f.seccionJson,
+          ruta: f.ruta,
+          rutas: f.rutas,
+          hojaRuta: hojaRuta(f.ruta),
+          sourceNames: f.sourceName ? [f.sourceName] : [],
+          flags: f.flags,
+          destino: destinoDe(f.flags)
+        };
+      }
+      function leerFicha(bytes) {
+        var wb = XLSX.read(bytes, { type: "array" });
+        var nombres = wb.SheetNames;
+        if (!nombres.length) throw new Error("La ficha no tiene hojas");
+        var indice = [];
+        var ejemplo = { json: null, texto: "", error: 'La ficha no trae hoja "' + HOJA_EJEMPLO + '"' };
+        var hojas = [];
+        var campos = [];
+        nombres.forEach(function(nombre) {
+          var ws = wb.Sheets[nombre];
+          if (clave(nombre) === clave(HOJA_INDICE)) {
+            indice = leerIndice(ws);
+            hojas.push({ nombre, rol: "indice", filas: indice.length, campos: 0 });
+            return;
+          }
+          if (clave(nombre) === clave(HOJA_EJEMPLO)) {
+            ejemplo = leerEjemplo(ws);
+            hojas.push({ nombre, rol: "ejemplo", filas: 0, campos: 0 });
+            return;
+          }
+          var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+          if (hojaVacia(raw)) {
+            hojas.push({ nombre, rol: "nodo", filas: 0, campos: 0, motivo: "no aplica" });
+            return;
+          }
+          var filas = [];
+          for (var i = 1; i < raw.length; i++) {
+            var fila = raw[i];
+            if (!norm(fila[COL.LABEL]) && !norm(fila[COL.RUTA]) && !norm(fila[COL.SOURCE_NAME])) continue;
+            filas.push(leerFila(fila, nombre, i + 1));
+          }
+          var delaHoja = colapsar(filas);
+          campos = campos.concat(delaHoja);
+          hojas.push({ nombre, rol: "nodo", filas: filas.length, campos: delaHoja.length });
+        });
+        return {
+          campos,
+          indice,
+          ejemplo,
+          hojas,
+          stats: estadisticas(campos, hojas)
+        };
+      }
+      function estadisticas(campos, hojas) {
+        var porDestino = /* @__PURE__ */ Object.create(null);
+        var conSourceName = 0;
+        campos.forEach(function(c) {
+          porDestino[c.destino] = (porDestino[c.destino] || 0) + 1;
+          if (c.sourceNames.length) conSourceName++;
+        });
+        return {
+          hojas: hojas.length,
+          hojasConCampos: hojas.filter(function(h) {
+            return h.campos > 0;
+          }).length,
+          filasConRuta: campos.reduce(function(n, c) {
+            return n + (c.ruta ? c.filas.length : 0);
+          }, 0),
+          campos: campos.length,
+          soloJSON: campos.filter(function(c) {
+            return c.flags.soloJSON;
+          }).length,
+          ocultos: campos.filter(function(c) {
+            return c.flags.oculto;
+          }).length,
+          readOnly: campos.filter(function(c) {
+            return c.flags.readOnly;
+          }).length,
+          prefill: campos.filter(function(c) {
+            return c.flags.prefill;
+          }).length,
+          excluidos: campos.filter(function(c) {
+            return c.flags.excluido;
+          }).length,
+          labels: campos.filter(function(c) {
+            return c.flags.esLabel;
+          }).length,
+          conSourceName,
+          porDestino
+        };
+      }
+      function typosContraEjemplo(campos, ejemplo) {
+        if (!ejemplo || !ejemplo.json) return [];
+        var delEjemplo = /* @__PURE__ */ new Set();
+        (function recorrer(nodo, prefijo) {
+          if (nodo == null || typeof nodo !== "object") return;
+          if (Array.isArray(nodo)) {
+            recorrer(nodo[0], prefijo + "[]");
+            return;
+          }
+          Object.keys(nodo).forEach(function(k) {
+            var ruta = prefijo ? prefijo + "." + k : k;
+            delEjemplo.add(k);
+            recorrer(nodo[k], ruta);
+          });
+        })(ejemplo.json, "");
+        var hallazgos = [];
+        campos.forEach(function(c) {
+          if (!c.hojaRuta || delEjemplo.has(c.hojaRuta)) return;
+          var parecido = null;
+          delEjemplo.forEach(function(k) {
+            if (parecido) return;
+            if (clave(k) === clave(c.hojaRuta)) {
+              parecido = k;
+              return;
+            }
+            if (k.length > 4 && distancia(k.toLowerCase(), c.hojaRuta.toLowerCase()) <= 2) parecido = k;
+          });
+          if (parecido) {
+            hallazgos.push({
+              hoja: c.hoja,
+              ruta: c.ruta,
+              escrito: c.hojaRuta,
+              enEjemplo: parecido,
+              detalle: "La ficha escribe `" + c.hojaRuta + "` y el JSON de ejemplo `" + parecido + "`."
+            });
+          }
+        });
+        return hallazgos;
+      }
+      function distancia(a, b) {
+        if (Math.abs(a.length - b.length) > 2) return 99;
+        var fila = [];
+        for (var j = 0; j <= b.length; j++) fila[j] = j;
+        for (var i = 1; i <= a.length; i++) {
+          var previo = fila[0];
+          fila[0] = i;
+          for (var k = 1; k <= b.length; k++) {
+            var temp = fila[k];
+            fila[k] = Math.min(
+              fila[k] + 1,
+              fila[k - 1] + 1,
+              previo + (a[i - 1] === b[k - 1] ? 0 : 1)
+            );
+            previo = temp;
+          }
+        }
+        return fila[b.length];
+      }
+      module.exports = {
+        leerFicha,
+        typosContraEjemplo,
+        // exportados para los tests
+        norm,
+        clave,
+        hojaRuta,
+        clasificar,
+        destinoDe,
+        colapsar,
+        TIPOS,
+        COL
+      };
+    }
+  });
+
+  // src/estructura/index.js
+  var require_estructura = __commonJS({
+    "src/estructura/index.js"(exports, module) {
+      "use strict";
+      var XLSX = require_xlsx();
+      var { leerFicha, typosContraEjemplo } = require_ficha_reader();
+      function agrupar(campos) {
+        const grupos = [];
+        const porClave = /* @__PURE__ */ Object.create(null);
+        campos.forEach(function(c) {
+          const paso = c.paso || "(sin paso)";
+          const seccion = c.seccion || "(sin secci\xF3n)";
+          const k = paso + " \u25B8 " + seccion;
+          if (!porClave[k]) {
+            porClave[k] = { paso, seccion, clave: k, campos: [] };
+            grupos.push(porClave[k]);
+          }
+          porClave[k].campos.push(c);
+        });
+        return grupos;
+      }
+      function aFila(c) {
+        return {
+          n: 0,
+          // se numera en analizarEstructura, ya aplanado
+          hoja: c.hoja,
+          paso: c.paso,
+          seccion: c.seccion,
+          label: c.label,
+          nombrePdf: c.nombrePdf,
+          tipoFicha: c.tipoFicha,
+          tipo: c.tipo,
+          opciones: c.opciones,
+          reglas: c.reglas,
+          obligatorio: c.obligatorio,
+          visualizacion: c.visualizacion,
+          observaciones: c.observaciones,
+          formularios: c.formularios,
+          ruta: c.ruta,
+          rutas: c.rutas,
+          rutaCorta: c.ruta.replace(/^datosFormulario\./, ""),
+          hojaRuta: c.hojaRuta,
+          sourceNames: c.sourceNames,
+          destino: c.destino,
+          flags: c.flags,
+          // Lado form-def — se llena en v1.1.0 con el cruce.
+          formDef: null,
+          estado: "sin-cruzar",
+          motivo: ""
+        };
+      }
+      function analizarEstructura(fichaBytes, formDef) {
+        const ficha = leerFicha(fichaBytes);
+        const filas = ficha.campos.map(aFila);
+        filas.forEach(function(f, i) {
+          f.n = i + 1;
+        });
+        const grupos = agrupar(filas);
+        return {
+          filas,
+          grupos,
+          indice: ficha.indice,
+          hojas: ficha.hojas,
+          ejemplo: { ok: !ficha.ejemplo.error, error: ficha.ejemplo.error },
+          typos: typosContraEjemplo(ficha.campos, ficha.ejemplo),
+          stats: ficha.stats,
+          conFormDef: Boolean(formDef)
+        };
+      }
+      var COLUMNAS = [
+        ["#", function(f) {
+          return f.n;
+        }],
+        ["Hoja", function(f) {
+          return f.hoja;
+        }],
+        ["Paso", function(f) {
+          return f.paso;
+        }],
+        ["Secci\xF3n", function(f) {
+          return f.seccion;
+        }],
+        ["Label (ficha)", function(f) {
+          return f.label;
+        }],
+        ["Nombre en PDF", function(f) {
+          return f.nombrePdf;
+        }],
+        ["Tipo (ficha)", function(f) {
+          return f.tipoFicha;
+        }],
+        ["Tipo (form-def)", function(f) {
+          return f.tipo || "";
+        }],
+        ["Opciones", function(f) {
+          return f.opciones.map(function(o) {
+            return o.valor;
+          }).join(" | ");
+        }],
+        ["Regla", function(f) {
+          return f.reglas.join(" | ");
+        }],
+        ["Obligatorio", function(f) {
+          return f.obligatorio;
+        }],
+        ["Visualizaci\xF3n", function(f) {
+          return f.visualizacion;
+        }],
+        ["Observaciones", function(f) {
+          return f.observaciones;
+        }],
+        ["Formulario", function(f) {
+          return f.formularios;
+        }],
+        ["Ruta JSON", function(f) {
+          return f.rutas.join(", ");
+        }],
+        ["sourceName", function(f) {
+          return f.sourceNames.join(" | ");
+        }],
+        ["Destino", function(f) {
+          return f.destino;
+        }],
+        ["Estado", function(f) {
+          return f.estado;
+        }],
+        ["Motivo", function(f) {
+          return f.motivo;
+        }]
+      ];
+      function exportarVistaUnica(analisis) {
+        const aoa = [COLUMNAS.map(function(c) {
+          return c[0];
+        })];
+        analisis.filas.forEach(function(f) {
+          aoa.push(COLUMNAS.map(function(c) {
+            return c[1](f);
+          }));
+        });
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        ws["!cols"] = [
+          { wch: 5 },
+          { wch: 16 },
+          { wch: 20 },
+          { wch: 22 },
+          { wch: 34 },
+          { wch: 24 },
+          { wch: 14 },
+          { wch: 14 },
+          { wch: 30 },
+          { wch: 40 },
+          { wch: 12 },
+          { wch: 26 },
+          { wch: 26 },
+          { wch: 12 },
+          { wch: 46 },
+          { wch: 22 },
+          { wch: 12 },
+          { wch: 12 },
+          { wch: 34 }
+        ];
+        ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: COLUMNAS.length - 1 } }) };
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Vista \xFAnica");
+        const resumen = [["M\xE9trica", "Valor"]];
+        Object.keys(analisis.stats).forEach(function(k) {
+          const v = analisis.stats[k];
+          if (v !== null && typeof v === "object") return;
+          resumen.push([k, v]);
+        });
+        if (analisis.typos.length) {
+          resumen.push([], ["Typos contra el JSON de ejemplo (no corregidos)", ""]);
+          analisis.typos.forEach(function(t) {
+            resumen.push([t.escrito, "ejemplo: " + t.enEjemplo]);
+          });
+        }
+        const wsR = XLSX.utils.aoa_to_sheet(resumen);
+        wsR["!cols"] = [{ wch: 44 }, { wch: 24 }];
+        XLSX.utils.book_append_sheet(wb, wsR, "Resumen");
+        return new Uint8Array(XLSX.write(wb, { type: "array", bookType: "xlsx" }));
+      }
+      module.exports = { analizarEstructura, exportarVistaUnica, agrupar, COLUMNAS };
     }
   });
 
@@ -102420,6 +102990,26 @@ ${pagesHtml}</body>
         }
         return analyzeFormDef(parsed);
       }
+      async function runEstructura(inputs) {
+        const { analizarEstructura } = require_estructura();
+        const { fichaFile, formDefFile } = inputs;
+        if (!fichaFile) throw new Error("Carg\xE1 la ficha de configuraci\xF3n (xlsx)");
+        const bytes = new Uint8Array(await fichaFile.arrayBuffer());
+        let formDef = null;
+        if (formDefFile) {
+          const text = await fileToText(formDefFile);
+          try {
+            formDef = JSON.parse(text);
+          } catch (e) {
+            throw new Error("El form-definition no es un JSON v\xE1lido: " + e.message);
+          }
+        }
+        return analizarEstructura(bytes, formDef);
+      }
+      function estructuraToXlsx(analisis) {
+        const { exportarVistaUnica } = require_estructura();
+        return exportarVistaUnica(analisis);
+      }
       async function runJsonCompare(inputs) {
         const { analyzeFormDef, compareWithSample } = require_json_mapper();
         const { analysis, sampleFile, direction } = inputs;
@@ -102627,9 +103217,9 @@ ${pagesHtml}</body>
         return new Uint8Array(savedBytes);
       }
       if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, calibrateQuote, buildQuoteReport, buildQuoteDocx, runJsonMap, runJsonCompare, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, calibrateQuote, buildQuoteReport, buildQuoteDocx, runJsonMap, runJsonCompare, runEstructura, estructuraToXlsx, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
       }
-      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, calibrateQuote, buildQuoteReport, buildQuoteDocx, runJsonMap, runJsonCompare, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
+      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, calibrateQuote, buildQuoteReport, buildQuoteDocx, runJsonMap, runJsonCompare, runEstructura, estructuraToXlsx, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
     }
   });
   return require_browser();

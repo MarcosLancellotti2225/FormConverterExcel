@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Form Tools</title>
-    <link rel="stylesheet" href="styles.css?v=76">
+    <link rel="stylesheet" href="styles.css?v=77">
     <link rel="stylesheet" href="src/pdf-converter-v2/ui/styles.css">
 </head>
 <body>
@@ -36,6 +36,18 @@
                     <li>Acá se agrega lo nuevo</li>
                 </ul>
                 <button class="primary">Entrar</button>
+            </div>
+            <div class="mode-card" data-mode="estructura">
+                <div class="mode-icon">▤</div>
+                <h2>Estructura</h2>
+                <p>Cargá la ficha del INS y te la junta entera en una sola tabla, hoja por hoja, con el destino de cada campo.</p>
+                <ul class="mode-features">
+                    <li>Las 14 columnas leídas por posición</li>
+                    <li>Una fila por campo: las opciones se colapsan</li>
+                    <li>soloJSON, oculto, readOnly, prefill, excluido</li>
+                    <li>Exportás la vista única a Excel</li>
+                </ul>
+                <button class="primary">Empezar</button>
             </div>
             <div class="mode-card" data-mode="detect-fields">
                 <div class="mode-icon">🔍</div>
@@ -542,6 +554,51 @@
             </section>
         </div>
 
+        <!-- ============ ESTRUCTURA FLOW ============ -->
+        <div id="estructuraFlow" hidden>
+            <section class="panel">
+                <h2>1. Cargar la ficha</h2>
+                <p class="hint">La ficha de configuración del INS en formato nuevo: una hoja por nodo del JSON, con la hoja <code>Estructura base JSON</code> adelante. El form-def es opcional — sin él ves la ficha sola.</p>
+                <div class="inputs-grid">
+                    <label class="file-slot required" data-slot="est-ficha">
+                        <span class="label">Ficha de configuración</span>
+                        <span class="desc">xlsx, formato nuevo</span>
+                        <input type="file" accept=".xlsx,.xlsm" id="estFichaInput">
+                        <span class="file-status" id="estFichaStatus"></span>
+                    </label>
+                    <label class="file-slot" data-slot="est-formdef">
+                        <span class="label">Form-definition (opcional)</span>
+                        <span class="desc">el json de Signframe</span>
+                        <input type="file" accept=".json" id="estFormDefInput">
+                        <span class="file-status" id="estFormDefStatus"></span>
+                    </label>
+                </div>
+                <div class="actions">
+                    <button class="primary" id="estRunBtn" disabled>Leer la ficha</button>
+                    <button class="secondary" id="estExportBtn" disabled>Exportar vista única</button>
+                </div>
+                <div id="estError" class="error-box" hidden></div>
+            </section>
+
+            <section class="panel" id="estResumen" hidden>
+                <h2>Qué trae la ficha</h2>
+                <div class="est-stats" id="estStats"></div>
+                <div id="estTypos"></div>
+            </section>
+
+            <section class="panel" id="estTablaPanel" hidden>
+                <h2>Vista única</h2>
+                <div class="est-barra">
+                    <input type="text" id="estBuscar" placeholder="Buscar por label, ruta o sourceName…">
+                    <select id="estFiltroHoja"><option value="">Todas las hojas</option></select>
+                    <select id="estFiltroDestino"><option value="">Todos los destinos</option></select>
+                    <label class="est-check"><input type="checkbox" id="estVerOcultos" checked> mostrar ocultos</label>
+                    <span class="est-conteo" id="estConteo"></span>
+                </div>
+                <div id="estTabla"></div>
+            </section>
+        </div>
+
         <!-- ============ MAPA JSON FLOW ============ -->
         <div id="jsonMapFlow" hidden>
             <section class="panel">
@@ -901,7 +958,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=76"></script>
-    <script src="app.js?v=76"></script>
+    <script src="bundle.js?v=77"></script>
+    <script src="app.js?v=77"></script>
 </body>
 </html>

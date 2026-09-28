@@ -979,6 +979,175 @@ async function run() {
         );
     });
 
+    console.log('\n── revisor: R04 / R09 / R19 ─────────────');
+    const { construirModelo } = require('../src/json-mapper/revisor/modelo');
+    const { revisar } = require('../src/json-mapper/revisor/reglas');
+
+    const revisarCampos = (fields, regla) =>
+        revisar(construirModelo({ sections: [{ id: 's1', title: 'Datos Generales', fields }] }))
+            .filter(h => h.regla === regla);
+
+    // Fuente date + un helper que corta una parte de la fecha.
+    const fechaFuente = extra => Object.assign({ id: 'field_fnac', type: 'date', label: 'Fecha' }, extra);
+    const parteFecha = (id, start, end) => ({
+        id, hidden: true, label: id,
+        autoFillConcat: {
+            sourceFieldIds: ['field_fnac'], separator: '',
+            parts: [{ kind: 'field', fieldId: 'field_fnac', transforms: [{ kind: 'substring', start, end }] }],
+        },
+    });
+
+    test('R04: salidaJSON desalineado es nota, no error', () => {
+        const h = revisarCampos([{ id: 'f1', label: 'X', salidaJSON: 'a.b', jsonOutputPath: 'c.d' }], 'R04');
+        assert.strictEqual(h.length, 1);
+        assert.strictEqual(h[0].severidad, 'nota');
+    });
+
+    test('R09: checkedPdfValue distinto de "X" avisa', () => {
+        const h = revisarCampos([{ id: 'f1', label: 'Fuma', sourceMeta: { nativeType: 'Checkbox' }, checkedPdfValue: 'SI' }], 'R09');
+        assert.strictEqual(h.length, 1);
+        assert.strictEqual(h[0].severidad, 'nota');
+    });
+
+    test('R09: pintar con "X" ya no es hallazgo', () => {
+        // El back escribe siempre "X": esto es lo único que pasa, no un defecto.
+        const h = revisarCampos([{
+            id: 'f1', label: 'Fuma', sourceMeta: { nativeType: 'Checkbox' },
+            autoFillConcat: { parts: [{ kind: 'text', value: 'X' }] },
+        }], 'R09');
+        assert.strictEqual(h.length, 0);
+    });
+
+    test('R19: sin pdfDateFormat, el día va 0-2 y 8-10 es error', () => {
+        assert.strictEqual(revisarCampos([fechaFuente({}), parteFecha('field_x_dia', 0, 2)], 'R19').length, 0);
+        const h = revisarCampos([fechaFuente({}), parteFecha('field_x_dia', 8, 10)], 'R19');
+        assert.strictEqual(h.length, 1);
+        assert.match(h[0].detalle, /recibe "26"/);
+    });
+
+    test('R19: con pdfDateFormat ISO, 8-10 pasa a ser correcto', () => {
+        const iso = fechaFuente({ pdfDateFormat: 'YYYY-MM-DD' });
+        assert.strictEqual(revisarCampos([iso, parteFecha('field_x_dia', 8, 10)], 'R19').length, 0);
+        assert.strictEqual(revisarCampos([iso, parteFecha('field_x_dia', 0, 2)], 'R19').length, 1);
+    });
+
+    test('R19: jsonDateFormat no manda del lado del PDF', () => {
+        // El lado pdf usa pdfDateFormat ?? dateFormat ?? DD/MM/YYYY.
+        const h = revisarCampos([fechaFuente({ jsonDateFormat: 'YYYY-MM-DD' }), parteFecha('field_x_dia', 0, 2)], 'R19');
+        assert.strictEqual(h.length, 0);
+    });
+
+    test('R19: si la fuente no es date, no aplica', () => {
+        const h = revisarCampos([fechaFuente({ type: 'text' }), parteFecha('field_x_dia', 8, 10)], 'R19');
+        assert.strictEqual(h.length, 0);
+    });
+
+    console.log('\n── ficha-reader (formato nuevo) ─────────');
+    const { leerFicha, typosContraEjemplo } = require('../src/estructura/ficha-reader');
+    const { construirFichaSintetica } = require('./fixtures/ficha-sintetica');
+    const ficha = leerFicha(construirFichaSintetica());
+    const porRuta = r => ficha.campos.find(c => c.ruta === r);
+
+    test('lee el índice y marca la instancia repetida', () => {
+        assert.strictEqual(ficha.indice.length, 4);
+        const personas = ficha.indice.filter(n => n.nodo === 'datosFormulario.personas[]');
+        assert.strictEqual(personas.length, 2);          // Tomador y Asegurado
+        assert.strictEqual(personas[1].instancia, true); // la segunda viene sin nodo
+    });
+
+    test('hojas "no aplica" y "sin campos propios" aportan 0 filas', () => {
+        const vacias = ficha.hojas.filter(h => h.rol === 'nodo' && h.campos === 0);
+        assert.strictEqual(vacias.length, 2);
+    });
+
+    test('headers escritos distinto: se mapea por posición', () => {
+        // La hoja personas usa headers en mayúsculas y variantes.
+        assert.ok(porRuta('datosFormulario.personas[].indicadorFuma'));
+    });
+
+    test('colapsa Sí/No en un campo con 2 opciones', () => {
+        const c = porRuta('datosFormulario.personas[].indicadorFuma');
+        assert.strictEqual(c.opciones.length, 2);
+        assert.deepStrictEqual(c.opciones.map(o => o.valor), ['Sí', 'No']);
+        // La regla cuelga de la opción, no del campo.
+        assert.match(c.opciones[0].regla, /Despliega/);
+    });
+
+    test('misma ruta con sourceNames distintos: guarda los dos', () => {
+        const c = porRuta('datosFormulario.personas[].indicadorFuma');
+        assert.deepStrictEqual(c.sourceNames, ['fumaSi', 'fumaNo']);
+    });
+
+    test('combo de 3 filas colapsa a 1 campo con 1 sourceName', () => {
+        const c = porRuta('datosFormulario.personas[].codigoEstadoCivil');
+        assert.strictEqual(c.opciones.length, 3);
+        assert.deepStrictEqual(c.sourceNames, ['estadoCivil']);
+    });
+
+    test('dos rutas separadas por coma: código + descripción', () => {
+        const c = porRuta('datosFormulario.datosGenerales.codigoMoneda');
+        assert.strictEqual(c.rutas.length, 2);
+        assert.match(c.rutas[1], /descripcionMoneda$/);
+    });
+
+    test('"Both " con espacio se normaliza', () => {
+        assert.strictEqual(porRuta('datosFormulario.datosGenerales.numeroSolicitud').obligatorio, 'Both');
+    });
+
+    test('clasifica soloJSON por Obligatorio y por Paso', () => {
+        assert.ok(porRuta('datosFormulario.datosGenerales.codigoOficina').flags.soloJSON);
+        assert.ok(porRuta('datosFormulario.datosGenerales.canalVenta').flags.soloJSON);
+        assert.strictEqual(ficha.stats.soloJSON, 2);
+    });
+
+    test('clasifica oculto / readOnly / prefill / excluido', () => {
+        assert.ok(porRuta('datosFormulario.datosGenerales.idInterno').flags.oculto);
+        assert.ok(porRuta('datosFormulario.datosGenerales.fechaSolicitud').flags.readOnly);
+        assert.ok(porRuta('datosFormulario.datosGenerales.numeroPoliza').flags.prefill);
+        assert.ok(porRuta('datosFormulario.datosGenerales.ramoComercial').flags.excluido);
+    });
+
+    test('fila sin ruta queda como label', () => {
+        const labels = ficha.campos.filter(c => c.flags.esLabel);
+        assert.strictEqual(labels.length, 1);
+        assert.match(labels[0].label, /PREGUNTA ADICIONAL/);
+        assert.strictEqual(labels[0].destino, 'label');
+    });
+
+    test('mapea Tipo de dato al type del form-def', () => {
+        assert.strictEqual(porRuta('datosFormulario.datosGenerales.fechaSolicitud').tipo, 'date');
+        assert.strictEqual(porRuta('datosFormulario.datosGenerales.codigoMoneda').tipo, 'select');
+        assert.strictEqual(porRuta('datosFormulario.personas[].indicadorFuma').tipo, 'radio');
+    });
+
+    test('la hoja "JSON Generado" se parsea', () => {
+        assert.strictEqual(ficha.ejemplo.error, null);
+        assert.ok(ficha.ejemplo.json.datosFormulario);
+    });
+
+    test('typo de la ficha se reporta pero NO se corrige', () => {
+        const c = porRuta('datosFormulario.personas[].drograMedicamento');
+        assert.ok(c, 'la ruta se guarda tal cual la escribe la ficha');
+        const typos = typosContraEjemplo(ficha.campos, ficha.ejemplo);
+        const t = typos.find(x => x.escrito === 'drograMedicamento');
+        assert.ok(t, 'se reporta contra el JSON de ejemplo');
+        assert.strictEqual(t.enEjemplo, 'drogaMedicamento');
+    });
+
+    test('conteos de la ficha sintética', () => {
+        // 15 filas con contenido → 12 campos: el Sí/No (2 filas) y el combo de
+        // estado civil (3 filas) colapsan a un campo cada uno.
+        assert.strictEqual(ficha.stats.filasConRuta, 14);   // 15 menos el label
+        assert.strictEqual(ficha.campos.length, 12);
+        assert.strictEqual(ficha.stats.labels, 1);
+        assert.strictEqual(ficha.stats.ocultos, 1);
+        assert.strictEqual(ficha.stats.readOnly, 1);
+        assert.strictEqual(ficha.stats.prefill, 1);
+        assert.strictEqual(ficha.stats.excluidos, 1);
+        assert.strictEqual(ficha.stats.conSourceName, 9);
+        assert.strictEqual(ficha.stats.hojasConCampos, 2);
+    });
+
     console.log('\n── end-to-end pipeline ──────────────────');
     const inputsDir = path.join(ROOT, 'inputs');
     const hasMatrix = fs.existsSync(path.join(inputsDir, 'Matriz_Formularios_VidaColectiva_Secciones.xlsx'));
