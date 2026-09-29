@@ -11,7 +11,7 @@
     "build:D0309": "node src/index.js --pdf=D0309",
     "build:web": "esbuild src/browser.js --bundle --outfile=bundle.js --platform=browser --format=iife --global-name=InsPipelineBundle && cp node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs pdf.worker.min.mjs",
     "serve": "node scripts/serve.js",
-    "test": "node test/smoke.test.js"
+    "test": "node test/smoke.test.js && node test/visor.test.js"
   },
   "keywords": [
     "ins",

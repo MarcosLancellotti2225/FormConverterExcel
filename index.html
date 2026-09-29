@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Form Tools</title>
-    <link rel="stylesheet" href="styles.css?v=77">
+    <link rel="stylesheet" href="styles.css?v=78">
     <link rel="stylesheet" href="src/pdf-converter-v2/ui/styles.css">
 </head>
 <body>
@@ -25,15 +25,27 @@
     <main>
         <!-- ============ MODE SELECTOR ============ -->
         <div id="modeSelector" class="mode-grid">
-            <div class="mode-card mode-card-v2" data-mode="v2">
+            <div class="mode-card mode-card-v2" data-mode="v2" data-href="visor/index.html">
                 <div class="mode-icon">2.0</div>
-                <h2>2.0</h2>
-                <p>La puerta de la versión nueva: el circuito completo en orden, con la herramienta que resuelve cada paso y lugar para lo que falta.</p>
+                <h2>2.0 — Visor de Fichas</h2>
+                <p>De la ficha del INS al form-def, en una sola pantalla: el formulario vivo, los AcroForms del PDF, el main de Signframe y la exportación.</p>
                 <ul class="mode-features">
-                    <li>El circuito de punta a punta</li>
+                    <li>Formulario vivo con las reglas de la col G</li>
+                    <li>Casilleros del PDF asignados a mano</li>
+                    <li>Cruce con el main de Signframe</li>
+                    <li>Exporta el form-def y el JSON que sale</li>
+                </ul>
+                <button class="primary">Abrir el visor</button>
+            </div>
+            <div class="mode-card" data-mode="v2-circuito">
+                <div class="mode-icon">↳</div>
+                <h2>Circuito 2.0</h2>
+                <p>El circuito de punta a punta en 6 pasos, con la herramienta que resuelve cada uno y la skill para seguir con Claude.</p>
+                <ul class="mode-features">
+                    <li>Paso 0: por dónde entrás</li>
+                    <li>Qué necesitás, qué hacés, qué te queda</li>
+                    <li>La skill y el prompt para arrancar</li>
                     <li>Atajo directo a cada herramienta</li>
-                    <li>Reutiliza lo que ya está hecho</li>
-                    <li>Acá se agrega lo nuevo</li>
                 </ul>
                 <button class="primary">Entrar</button>
             </div>
@@ -958,7 +970,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=77"></script>
-    <script src="app.js?v=77"></script>
+    <script src="bundle.js?v=78"></script>
+    <script src="app.js?v=78"></script>
 </body>
 </html>

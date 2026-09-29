@@ -29,23 +29,31 @@
         window.addEventListener('hashchange', abrirModoDeLaUrl);
     }
 
+    // El Visor de Fichas no es un modo: es una página suelta. Vive aparte
+    // porque redefine las mismas variables de tema que el hub (--bg, --accent,
+    // --line) y estiliza body/button/input; adentro de index.html se pisarían
+    // los estilos en los dos sentidos.
+    var VISOR_URL = 'visor/index.html';
+
     function wireModeSelector() {
         $$('.mode-card').forEach(function(card) {
             card.addEventListener('click', function() {
+                if (card.dataset.href) { location.href = card.dataset.href; return; }
                 selectMode(card.dataset.mode);
             });
         });
     }
 
-    // De dónde entraste a la herramienta abierta: 'v2' si fue desde el hub,
+    // De dónde entraste a la herramienta abierta: 'v2-circuito' si fue desde
+    // el circuito,
     // null si fue desde la grilla del inicio o por URL directa. Es lo que hace
     // que "Volver" te devuelva al lugar del que saliste y no siempre al inicio.
     var origenModo = null;
 
     function wireBackButton() {
         $('#btnBackToHome').addEventListener('click', function() {
-            if (origenModo === 'v2' && currentMode !== 'v2') {
-                selectMode('v2');
+            if (origenModo === 'v2-circuito' && currentMode !== 'v2-circuito') {
+                selectMode('v2-circuito');
                 v2AlVolver();
             } else {
                 selectMode(null);
@@ -66,7 +74,7 @@
         $('#quoterFlow').hidden = mode !== 'quoter';
         $('#jsonMapFlow').hidden = mode !== 'json-map';
         $('#estructuraFlow').hidden = mode !== 'estructura';
-        $('#v2Flow').hidden = mode !== 'v2';
+        $('#v2Flow').hidden = mode !== 'v2-circuito';
         // Mismo texto en todas las pantallas: el botón se lee igual siempre.
         // Lo que cambia es el destino, que lo decide `origenModo`.
         $('#btnBackToHome').hidden = !mode;
@@ -87,10 +95,13 @@
         }
     }
 
-    // Abre el modo que venga en la URL (#json-map, #v2, ...). Si no es válido,
-    // se ignora y queda el home.
+    // Abre el modo que venga en la URL (#json-map, #v2-circuito, ...). Si no es
+    // válido, se ignora y queda el home.
     function abrirModoDeLaUrl() {
         var m = (location.hash || '').replace(/^#/, '');
+        // #v2 era el circuito y ahora es el Visor. Los links viejos siguen
+        // andando: el circuito se mudó a #v2-circuito y tiene su propia tarjeta.
+        if (m === 'v2') { location.replace(VISOR_URL); return; }
         var existe = m && document.querySelector('.mode-card[data-mode="' + m + '"]');
         selectMode(existe ? m : null);
     }
@@ -3511,7 +3522,7 @@
         // Un solo listener para toda la pantalla.
         $('#v2Flow').addEventListener('click', function(e) {
             var ir = e.target.closest('.v2-ir');
-            if (ir) { selectMode(ir.dataset.modo, 'v2'); return; }
+            if (ir) { selectMode(ir.dataset.modo, 'v2-circuito'); return; }
             var sig = e.target.closest('.v2-sig');
             if (sig) { v2IrAPaso(Number(sig.dataset.sig)); return; }
             var copiar = e.target.closest('#v2PromptCopiar');

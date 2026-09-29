@@ -1,0 +1,1608 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Visor de Fichas INS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<style>
+/* Layout: carga + resumen arriba · pestañas · formulario vivo a la izquierda, inspector fijo a la derecha (se apila en móvil). Grilla de 12 columnas = anchos de Signframe. */
+:root{
+  --bg:#f3f5f6; --panel:#ffffff; --panel-2:#eef2f3; --ink:#15212a; --muted:#5b6b75; --line:#d6dee2; --field:#ffffff;
+  --accent:#0d6b73; --accent-soft:#d9eeef; --accent-ink:#ffffff;
+  --warn:#9a5b00; --warn-soft:#fbeed6; --bad:#a3262d; --bad-soft:#f9e1e2; --ok:#2d6a3a; --ok-soft:#e0f0e3;
+  --json:#6a3fa0; --json-soft:#ece4f6;
+  --f-display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --r:6px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1519; --panel:#161f25; --panel-2:#1c272e; --ink:#e3eaee; --muted:#93a4ae; --line:#2b3a43; --field:#10181d;
+  --accent:#4fb8bf; --accent-soft:#16363a; --accent-ink:#06191b;
+  --warn:#f0b35a; --warn-soft:#3a2a10; --bad:#f08a90; --bad-soft:#3d1a1d; --ok:#8fd19c; --ok-soft:#173222;
+  --json:#c3a3ec; --json-soft:#2b2140; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1519; --panel:#161f25; --panel-2:#1c272e; --ink:#e3eaee; --muted:#93a4ae; --line:#2b3a43; --field:#10181d;
+  --accent:#4fb8bf; --accent-soft:#16363a; --accent-ink:#06191b;
+  --warn:#f0b35a; --warn-soft:#3a2a10; --bad:#f08a90; --bad-soft:#3d1a1d; --ok:#8fd19c; --ok-soft:#173222;
+  --json:#c3a3ec; --json-soft:#2b2140; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.45;padding-inline:16px;padding-block:14px 40px}
+.wrap{max-width:1440px;margin:0 auto;display:grid;gap:14px}
+h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance;letter-spacing:.01em}
+h1{font-size:22px}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+code{font-family:var(--f-mono);font-size:.92em}
+
+/* Vuelta al hub de Form Tools. Es lo unico que se agrego al archivo suelto. */
+.ft-nav{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:2px}
+.ft-nav a{color:var(--muted);text-decoration:none;font-size:12.5px;border-bottom:1px solid transparent}
+.ft-nav a:hover{color:var(--accent);border-bottom-color:var(--accent)}
+
+.top{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between}
+.top .who{display:grid;gap:2px;min-width:0}
+.top .file{font-family:var(--f-mono);font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.load{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:var(--r);padding:7px 12px;font-weight:500}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.sm{padding:4px 9px;font-size:12.5px}
+.drop{border:1.5px dashed var(--line);border-radius:var(--r);padding:7px 12px;color:var(--muted)}
+.drop.over{border-color:var(--accent);color:var(--accent)}
+.err{background:var(--bad-soft);color:var(--bad);border-radius:var(--r);padding:8px 12px}
+.info{background:var(--warn-soft);color:var(--warn);border-radius:var(--r);padding:8px 12px}
+
+.stats{display:flex;flex-wrap:wrap;gap:8px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:6px 12px;display:flex;gap:8px;align-items:baseline}
+.stat b{font-family:var(--f-display);font-size:19px;font-variant-numeric:tabular-nums}
+.stat span{color:var(--muted);font-size:12px}
+
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tab{border:0;background:none;padding:9px 14px;border-bottom:2px solid transparent;color:var(--muted);font-weight:600;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tab .n{font-family:var(--f-mono);font-size:11px;margin-left:6px;color:var(--muted)}
+
+.work{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:16px;align-items:start}
+@media (max-width:1000px){.work{grid-template-columns:minmax(0,1fr)}}
+.tools{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;font-size:13px;color:var(--muted);margin-bottom:10px}
+.tools label{display:flex;gap:6px;align-items:center;cursor:pointer}
+.tools input[type=search]{border:1px solid var(--line);background:var(--panel);border-radius:var(--r);padding:6px 10px;min-width:0;width:220px;max-width:100%}
+
+.paso{display:grid;gap:12px;margin-bottom:22px}
+.paso-h{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.paso-h .k{font-family:var(--f-mono);font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:.08em}
+.paso-h h2{font-size:18px}
+.sec{background:var(--panel);border:1px solid var(--line);border-radius:var(--r)}
+.sec.off{opacity:.55}
+.sec-h{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)}
+.sec-h h3{font-size:15px}
+.sec-h .meta{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px 16px;padding:14px;align-items:start}
+.f{grid-column:span 6;border:1px solid transparent;border-radius:var(--r);padding:6px 8px;margin:-6px -8px;min-width:0;position:relative}
+.f:hover{background:var(--panel-2)}
+.f.sel{border-color:var(--accent);background:var(--accent-soft)}
+.f.ghost{opacity:.6;border:1px dashed var(--line)}
+.f.appear{animation:appear .35s ease-out}
+@keyframes appear{from{background:var(--accent-soft)}to{background:transparent}}
+.f.w-full{grid-column:span 12}.f.w-three-quarters{grid-column:span 9}.f.w-two-thirds{grid-column:span 8}
+.f.w-half{grid-column:span 6}.f.w-third{grid-column:span 4}.f.w-quarter{grid-column:span 3}.f.w-fit{grid-column:span 3}
+@media (max-width:640px){.grid .f{grid-column:span 12}}
+.f .lab{font-weight:500;font-size:13px;display:block;overflow-wrap:anywhere;padding-right:34px;cursor:pointer}
+.f .req{color:var(--bad);margin-left:2px}
+.f .ctl{margin-top:6px}
+.wtag{position:absolute;top:5px;right:7px;font-family:var(--f-mono);font-size:10px;color:var(--muted)}
+.in{width:100%;border:1px solid var(--line);background:var(--field);border-radius:5px;height:34px;padding:0 10px;min-width:0}
+.in:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+.in[readonly],.in:disabled{background:var(--panel-2);color:var(--muted)}
+textarea.in{height:64px;padding:7px 10px;resize:vertical}
+.rg{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13.5px;min-height:34px;align-items:center}
+.rg.v{flex-direction:column;align-items:flex-start}
+.rg label{display:flex;gap:6px;align-items:center;cursor:pointer}
+.rg input{accent-color:var(--accent);width:16px;height:16px;margin:0}
+.yn{display:inline-flex;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.yn button{border:0;background:var(--field);padding:6px 16px}
+.yn button+button{border-left:1px solid var(--line)}
+.yn button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.chk{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;cursor:pointer}
+.chk input{accent-color:var(--accent);width:16px;height:16px;margin-top:2px}
+.pair{display:flex;gap:6px}.pair>*{flex:1;min-width:0}
+.legend{grid-column:span 12;font-family:var(--f-display);font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);padding-top:4px}
+.badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.b{font-size:10.5px;font-weight:600;letter-spacing:.03em;padding:1px 6px;border-radius:3px;background:var(--panel-2);color:var(--muted);white-space:nowrap}
+.b.json{background:var(--json-soft);color:var(--json)}
+.b.warn{background:var(--warn-soft);color:var(--warn)}
+.b.ok{background:var(--ok-soft);color:var(--ok)}
+.b.acc{background:var(--accent-soft);color:var(--accent)}
+.cond{margin-top:6px;font-size:12px;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.cond .how{color:var(--muted)}
+.cond .st{font-size:10.5px;font-weight:700;padding:0 5px;border-radius:3px}
+.cond .st.prop{background:var(--warn-soft);color:var(--warn)}
+.cond .st.conf{background:var(--ok-soft);color:var(--ok)}
+.rule{margin-top:5px;font-size:12px;color:var(--warn)}
+
+.jsonbox{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 0;overflow-x:auto;font-family:var(--f-mono);font-size:12.5px;line-height:1.7}
+.jl{white-space:pre;padding:0 14px;display:flex;gap:18px;min-width:max-content}
+.jl.leaf{cursor:pointer}
+.jl.leaf:hover{background:var(--panel-2)}
+.jl.sel{background:var(--accent-soft)}
+.jl.empty .jv{color:var(--muted)}
+.jl.off{opacity:.45;text-decoration:line-through}
+.jk{color:var(--accent)}
+.jc{color:var(--muted);font-family:var(--f-body);font-size:12px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;flex-wrap:wrap}
+.seg button{border:0;background:var(--panel);padding:6px 11px;font-size:13px}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+
+.list{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--f-display);font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--panel-2);position:sticky;top:0}
+td.mono{font-family:var(--f-mono);font-size:11.5px;overflow-wrap:anywhere}
+tr.click{cursor:pointer}
+tr.click:hover td{background:var(--panel-2)}
+tr.sel td{background:var(--accent-soft)}
+
+.insp{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:grid;gap:14px;max-height:calc(100vh - 24px);overflow:auto}
+@media (max-width:1000px){.insp{position:static;max-height:none}}
+.insp h3{font-size:16px}
+.insp .empty{color:var(--muted)}
+.blk{display:grid;gap:6px}
+.blk>.t{font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.kv{display:grid;grid-template-columns:96px minmax(0,1fr);gap:4px 10px;font-size:12.5px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;overflow-wrap:anywhere}
+.kv dd.mono{font-family:var(--f-mono);font-size:11.5px}
+.insp>*{min-width:0}
+.chips{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+.chips.types{grid-template-columns:repeat(3,minmax(0,1fr))}
+.chips button{border:1px solid var(--line);background:var(--bg);border-radius:4px;padding:5px 2px;font-size:11.5px;min-width:0;overflow-wrap:anywhere}
+.insp .btn{max-width:100%;text-align:left;overflow-wrap:anywhere}
+.chips button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.src{font-size:12px;color:var(--muted)}
+.bulk{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:8px 12px;margin-bottom:12px;font-size:13px}
+.bulk .t{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
+.opaso{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);margin-bottom:12px}
+.oph{display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.oph .k{font-family:var(--f-mono);font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:.08em}
+.oname{border:1px solid transparent;background:transparent;border-radius:4px;padding:3px 6px;font-family:var(--f-display);font-size:17px;font-weight:700;min-width:0;flex:1}
+.oname.sm{font-family:var(--f-body);font-size:14px;font-weight:600;flex:1 1 180px}
+.oname:hover,.oname:focus{border-color:var(--line);background:var(--field)}
+.osec{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line)}
+.osec:last-child{border-bottom:0}
+.osec.sis{background:var(--panel-2)}
+.oact{display:flex;gap:4px;align-items:center;margin-left:auto}
+.oact select{border:1px solid var(--line);background:var(--field);border-radius:4px;padding:4px 6px;font-size:12.5px;max-width:220px}
+.ob{border:1px solid var(--line);background:var(--bg);border-radius:4px;width:28px;height:28px;padding:0}
+.ob:disabled{opacity:.35;cursor:default}
+.osec.add{background:transparent}
+.mchk{position:absolute;top:6px;left:-2px;width:16px;height:16px;accent-color:var(--accent);z-index:1}
+.f .mchk+.wtag+.lab{padding-left:18px}
+.f.msel{background:var(--accent-soft);border-color:var(--accent)}
+.mbar{position:sticky;top:calc(env(safe-area-inset-top,0px) + 6px);z-index:5;box-shadow:0 4px 14px color-mix(in srgb,var(--ink) 12%,transparent)}
+.mbar button:disabled{opacity:.45;cursor:default}
+.pdfwrap{display:grid;gap:4px;margin-bottom:14px}
+.pdfpage{position:relative;width:100%;border:1px solid var(--line);background:#fff;overflow:hidden}
+.pdfcv{position:absolute;inset:0;width:100%;height:100%;display:block}
+.wbox{position:absolute;padding:0;border:1.5px solid var(--muted);background:color-mix(in srgb,var(--muted) 12%,transparent);border-radius:2px;cursor:pointer}
+.wbox span{position:absolute;left:-1px;top:-13px;font:600 9px/1 var(--f-mono);background:var(--muted);color:var(--bg);padding:1px 3px;border-radius:2px}
+.wbox.st-prop{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 22%,transparent)}.wbox.st-prop span{background:var(--warn)}
+.wbox.st-conf{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 22%,transparent)}.wbox.st-conf span{background:var(--ok)}
+.wbox.sel{outline:3px solid var(--accent);outline-offset:1px;z-index:2}
+.wbox.armedw{box-shadow:0 0 0 3px var(--accent)}
+.wbox.dropok{outline:3px dashed var(--accent)}
+.split{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);gap:12px;align-items:start}
+@media (max-width:760px){.split{grid-template-columns:minmax(0,1fr)}}
+.tlist{position:sticky;top:calc(env(safe-area-inset-top,0px) + 8px);max-height:calc(100vh - 20px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:6px}
+.tsec{font:600 11px/1.3 var(--f-body);letter-spacing:.05em;text-transform:uppercase;color:var(--accent);padding:8px 6px 4px}
+.trow{display:grid;gap:3px;padding:6px 8px;border-radius:4px;cursor:grab;font-size:12.5px;border:1px solid transparent}
+.trow:hover{background:var(--panel-2)}
+.trow.topt{padding-left:22px;color:var(--muted)}
+.trow.has .tl::after{content:" ✓";color:var(--ok);font-weight:700}
+.trow.dropok{outline:2px dashed var(--accent)}
+.trow.armed{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)}
+.tc{display:flex;flex-wrap:wrap;gap:4px}
+.wchip{display:inline-flex;align-items:center;gap:3px;font:500 10.5px/1.4 var(--f-mono);background:var(--ok-soft);color:var(--ok);border-radius:3px;padding:0 2px 0 5px}
+.wchip.prop{background:var(--warn-soft);color:var(--warn)}
+.wchip button{border:0;background:none;color:inherit;padding:0 3px;font-size:12px;cursor:pointer}
+.where{display:grid;gap:3px;font-size:12.5px}
+.raw summary{cursor:pointer;font-size:12.5px;color:var(--accent)}
+.rawwrap{display:grid;gap:8px;margin-top:6px;overflow-x:auto}
+.rawt{font-size:11.5px;border:1px solid var(--line);border-radius:4px;width:100%}
+.rawt caption{text-align:left;font-weight:600;font-size:11.5px;color:var(--muted);padding:2px 0}
+.rawt th{position:static;text-transform:none;letter-spacing:0;font-family:var(--f-body);font-size:11px;width:42%;background:var(--panel-2)}
+.rawt th,.rawt td{padding:4px 6px}
+.sec.inst{border-left:3px solid var(--accent)}
+.inst-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.map-in{width:100%;min-width:0;border:1px solid var(--line);background:var(--field);border-radius:4px;padding:4px 7px;font-family:var(--f-mono);font-size:11.5px}
+.map-in.prop{border-color:var(--warn);background:var(--warn-soft)}
+.map-in.ok{border-color:var(--ok)}
+tr.opt td:first-child{padding-left:26px;color:var(--muted)}
+.save{font-size:12px;color:var(--muted);background:var(--panel-2);border-radius:4px;padding:6px 8px}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.note{font-size:12px;color:var(--muted)}
+.ce{display:grid;gap:6px;background:var(--panel-2);border-radius:5px;padding:8px}
+.ce .row select{flex:1;min-width:0;max-width:100%;border:1px solid var(--line);background:var(--field);border-radius:4px;padding:4px 6px;font-size:12.5px}
+.ce .x{border:0;background:none;color:var(--muted);font-size:15px;padding:0 4px}
+pre.snip{margin:0;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:8px;font-family:var(--f-mono);font-size:10.8px;line-height:1.5;overflow-x:auto;white-space:pre}
+textarea.out{width:100%;min-height:120px;font-family:var(--f-mono);font-size:11px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--ink);padding:8px}
+.rtext{font-size:12.5px;background:var(--warn-soft);color:var(--warn);border-radius:4px;padding:6px 8px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="who">
+      <nav class="ft-nav">
+        <a href="../index.html">← Form Tools</a>
+        <a href="../index.html#v2-circuito">Ver el circuito 2.0 anterior</a>
+      </nav>
+      <h1>Visor de Fichas INS</h1>
+      <div class="file" id="fileName">—</div>
+    </div>
+    <div class="load">
+      <label class="btn primary" for="fileIn">Cargar ficha (.xlsx)</label>
+      <input id="fileIn" type="file" accept=".xlsx,.xls" hidden>
+      <div class="drop" id="drop">o soltala acá</div>
+      <button class="btn" id="btnSample" type="button">Volver al ejemplo</button>
+      <button class="btn primary" id="btnFormDef" type="button">Exportar form-def</button>
+    </div>
+  </header>
+  <div id="error" class="err" hidden></div>
+  <div class="stats" id="stats"></div>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" id="t-form" data-tab="form" aria-selected="true">Formulario</button>
+    <button class="tab" role="tab" id="t-json" data-tab="json" aria-selected="false">JSON que sale</button>
+    <button class="tab" role="tab" id="t-reglas" data-tab="reglas" aria-selected="false">Reglas</button>
+    <button class="tab" role="tab" id="t-acro" data-tab="acro" aria-selected="false">AcroForms del PDF</button>
+    <button class="tab" role="tab" id="t-pdf" data-tab="pdf" aria-selected="false">Main de Signframe</button>
+    <button class="tab" role="tab" id="t-tabla" data-tab="tabla" aria-selected="false">Todo en una tabla</button>
+  </nav>
+
+  <div class="work">
+    <main id="view" style="min-width:0"></main>
+    <aside class="insp" id="insp"></aside>
+  </div>
+</div>
+
+<script id="sample" type="application/json">null</script>
+<script>
+(function(){
+"use strict";
+var WIDTHS=["full","three-quarters","two-thirds","half","third","quarter","fit"];
+var WLABEL={"full":"full","three-quarters":"3/4","two-thirds":"2/3","half":"1/2","third":"1/3","quarter":"1/4","fit":"fit"};
+var TYPES=[["text","Texto"],["textarea","Texto largo"],["number","Número"],["date","Fecha"],["select","Select"],["radio","Radio"],["boolean","Sí/No"],["checkbox","Casilla"],["numcombo","Número + unidad"]];
+var TLABEL={};TYPES.forEach(function(t){TLABEL[t[0]]=t[1]});
+var state={file:"",fields:[],byId:{},byRuta:{},legends:[],ejemplo:null,tab:"form",sel:null,showAll:false,q:"",jsonMode:"vivo",
+  vals:{},inst:{},armed:null,split:false,msel:{},multi:false,mctrl:"",mval:"",mreq:false,ov:{w:{},t:{},c:{}},predet:{w:{},t:{},clases:{}},secHide:{},autoCond:{},lastVisible:{}};
+
+function store(k,v){try{if(v===undefined){var r=localStorage.getItem(k);return r?JSON.parse(r):null}localStorage.setItem(k,JSON.stringify(v))}catch(e){return null}}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function norm(s){return String(s==null?"":s).replace(/\s+/g," ").trim()}
+function low(s){return norm(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"")}
+function leafOf(r){var p=String(r||"").split(".");return p[p.length-1]}
+function shortRoute(r){return String(r||"").replace(/^datosFormulario\./,"")}
+function slug(r){return shortRoute(r).replace(/\[\]/g,"").replace(/^personas\./,"").toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"")}
+function sfId(f){return "field_ficha_"+slug(f.ruta)}
+
+/* ============ lectura de la ficha (por posición de columna) ============ */
+var HEADERS={};
+function parseSheets(sheets){
+  var fields=[],byKey={},legends=[],ejemplo=null,order=0;
+  sheets.forEach(function(sh){
+    var name=norm(sh.name),rows=sh.rows||[];
+    if(/json generado/i.test(name)){
+      var txt=rows.map(function(r){return r&&r[0]!=null?String(r[0]):""}).join("\n");
+      try{ejemplo=JSON.parse(txt)}catch(e){ejemplo=null}
+      return;
+    }
+    if(/estructura base/i.test(name)) return;
+    var head=(rows[0]||[]).filter(function(x){return x!=null&&x!==""}).length;
+    if(head<10) return;
+    HEADERS[name]=rows[0]||[];
+    rows.slice(1).forEach(function(r,ri){
+      if(!r) return;
+      var c=[];for(var i=0;i<14;i++)c[i]=r[i]==null?"":r[i];
+      if(!c.some(function(x){return norm(x)!==""})) return;
+      var ruta=norm(c[12]);
+      if(!ruta){
+        var t=norm(c[2])||norm(c[3])||norm(c[1]);
+        if(t&&norm(c[1])&&!/^no aplica/i.test(t)&&!/no posee campos/i.test(t)) legends.push({hoja:name,paso:norm(c[0]),seccion:norm(c[1]),texto:t,order:order++,fila:ri+2});
+        return;
+      }
+      var key=name+"|"+ruta,f=byKey[key];
+      if(!f){
+        f=byKey[key]={id:"f"+fields.length,hoja:name,order:order++,
+          paso:norm(c[0]),seccion:norm(c[1]),pdf:norm(c[2]),label:norm(c[3])||norm(c[2])||leafOf(ruta),
+          tipo:norm(c[4]),valores:[],reglaRows:[],oblig:norm(c[7]),formI:norm(c[8]),visual:norm(c[9]),
+          obs:norm(c[10]),ruta:ruta,sourceNames:[]};
+        fields.push(f);
+      }
+      var v=c[5]===""?"":norm(c[5]);
+      f.valores.push(v);
+      f.reglaRows.push({valor:v,regla:norm(c[6])});
+      (f.filas=f.filas||[]).push(ri+2);(f.rawRows=f.rawRows||[]).push(c);
+      if(!f.obs&&norm(c[10]))f.obs=norm(c[10]);
+      var sn=norm(c[13]);if(sn&&!/^no aplica$/i.test(sn)&&f.sourceNames.indexOf(sn)<0)f.sourceNames.push(sn);
+    });
+  });
+  fields.forEach(classify);
+  return {fields:fields,legends:legends,ejemplo:ejemplo};
+}
+
+function classify(f){
+  var t=low(f.tipo),vis=low(f.visual),ob=low(f.oblig),pa=low(f.paso);
+  f.soloJSON=ob==="json"||pa==="json"||low(f.seccion)==="json";
+  f.oculto=/no aplica/.test(vis);
+  f.readOnly=/disabled/.test(vis);
+  f.prellenado=/prellenad/.test(vis);
+  f.required=/both|si|sí|obligatori/.test(ob)&&!f.soloJSON;
+  f.reglas=f.reglaRows.filter(function(x){return x.regla});
+  f.excluido=f.reglas.some(function(g){return /no aplica formulario/i.test(g.regla)});
+  var vals=f.valores.filter(function(v){return v!==""});
+  f.catalogo=vals.some(function(v){return /ver cat[aá]logo/i.test(v)});
+  var comboOpts=[],numLen=null,plain=[];
+  vals.forEach(function(v){
+    var m=/^opci[oó]n\s*\d+\s*del combo:\s*(.+)$/i.exec(v);
+    if(m){comboOpts.push(norm(m[1]));return}
+    var n=/campo num[eé]rico con\s*(\d+)/i.exec(v);if(n){numLen=+n[1];return}
+    plain.push(v);
+  });
+  var len=null;
+  f.reglas.map(function(x){return x.regla}).concat(vals).forEach(function(s){var m=/\((\d+)\)|(\d+)\s*caracteres/i.exec(s);if(m&&len==null)len=+(m[1]||m[2])});
+  if(numLen)len=numLen;
+  f.maxLength=len;
+  var multi=f.valores.length>1,w;
+  if(/check/.test(t)) w="checkbox";
+  else if(/boolean/.test(t)) w="boolean";
+  else if(/num[eé]rico y combo/.test(t)) w="numcombo";
+  else if(/alfanum/.test(t)) w="text";
+  else if(/radio/.test(t)) w="radio";
+  else if(/combo/.test(t)) w="select";
+  else if(/fecha/.test(t)) w="date";
+  else if(/num[eé]ric|porcent/.test(t)) w="number";
+  else w="text";
+  if(w==="text"&&len&&len>=120) w="textarea";
+  f.widget0=w;
+  f.options=comboOpts.length?comboOpts:(multi||w==="radio"||w==="select")?plain.filter(function(v){return !/ver cat[aá]logo/i.test(v)}):[];
+  if((w==="radio"||w==="select")&&f.options.length===1&&!multi){f.ejemploValor=f.options[0];f.options=[]}
+  if(!multi&&plain.length===1&&w!=="radio"&&w!=="select")f.ejemploValor=plain[0];
+  if(f.widget0==="numcombo"){f.unidades=f.options;f.options=[]}
+  f.leaf=leafOf(f.ruta);
+}
+
+/* ============ traducción de la col G a condiciones (propuestas) ============ */
+var STOP={};("solo esta estas este pregunta preguntas opcion opciones indico marco selecciono respondio anterior usuario visualiza "+
+ "despliega debe desplegar seccion caso contrario presentar habilita habilitan combo campo para pintar todas adicionales continua "+
+ "partir cual cuales donde desde sobre obligatorio sera seran alguna algun actual usted").split(" ").forEach(function(w){STOP[w]=1});
+function words(s){return low(s).replace(/[^a-z0-9ñ ]/g," ").split(/\s+/).filter(function(w){return w.length>=4&&!STOP[w]})}
+function stem(w){return w.slice(0,5)}
+function overlap(labelWords,textWords){var st={};textWords.forEach(function(w){st[stem(w)]=1});return labelWords.filter(function(w){return st[stem(w)]}).length}
+function isCtrl(f){var w=widgetOf(f);return w==="radio"||w==="select"||w==="boolean"||w==="checkbox"}
+function optsOf(f){var w=widgetOf(f);if(w==="boolean"||((w==="radio"||w==="select")&&!f.options.length&&isSiNo(f)))return ["Sí","No"];if(w==="checkbox")return ["Marcado"];return f.options.length?f.options:(f.catalogo?["Opción de catálogo 1","Opción de catálogo 2","Opción de catálogo 3"]:[])}
+function pickValues(ctrl,text){
+  var t=low(text),m=/\bsi\b/.exec(t),after=m?t.slice(m.index+2):t;
+  var found=[];
+  optsOf(ctrl).forEach(function(o){var re=new RegExp("(^|[^a-z0-9])"+low(o).replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"([^a-z0-9]|$)");var mm=re.exec(after);if(mm)found.push({o:o,i:mm.index})});
+  found.sort(function(a,b){return a.i-b.i});
+  if(found.length>=2&&/opciones/.test(t)) return found.map(function(x){return x.o});
+  if(found.length) return [found[0].o];
+  var o=optsOf(ctrl);return [o.indexOf("Sí")>=0?"Sí":o[0]];
+}
+function buildAutoConds(fields){
+  var auto={},secHide={};
+  function add(dep,ctrl,vals,src,req){
+    if(!dep||!ctrl||dep===ctrl) return;
+    var c=auto[dep.ruta]||(auto[dep.ruta]={logic:"or",conditions:[],required:false,src:[]});
+    vals.forEach(function(v){if(!c.conditions.some(function(x){return x.ruta===ctrl.ruta&&x.value===v}))c.conditions.push({ruta:ctrl.ruta,value:v})});
+    if(req)c.required=true;
+    if(c.src.indexOf(src)<0)c.src.push(src);
+  }
+  var bySheet={};fields.forEach(function(f){(bySheet[f.hoja]=bySheet[f.hoja]||[]).push(f)});
+  // P0: sección que no se presenta
+  fields.forEach(function(f){f.reglas.forEach(function(r){
+    var t=low(r.regla);
+    if(/no se debe(?: de)? presentar/.test(t)&&!/\bsi\b/.test(t)) secHide[f.hoja+"|"+f.seccion]=r.regla;
+  })});
+  // P1: "Solo se visualiza si…", "Se despliega solo si…", "Solo es obligatorio si…", "Solo se habilita(n)…"
+  fields.forEach(function(f){
+    var r=f.reglas.map(function(x){return x.regla}).filter(function(x){return /(solo se (visualiza|despliega|habilita)|se (visualiza|despliega) solo|solo es obligatorio)/i.test(x)})[0];
+    if(!r) return;
+    var list=bySheet[f.hoja],idx=list.indexOf(f),ctrls=[];
+    if(/anterior/i.test(r)){
+      for(var i=idx-1;i>=0;i--){var p=list[i];if(p.reglas.some(function(x){return x.regla===r}))continue;if(isCtrl(p)){ctrls=[p];break}}
+    }else{
+      var tw=words(r),best=0,cands=[];
+      list.slice(0,idx).forEach(function(p){if(!isCtrl(p))return;var lw=words(p.label);if(!lw.length)return;var s=overlap(lw,tw);
+        if(s===lw.length)cands.push(p);else if(s>best){best=s}});
+      if(cands.length)ctrls=cands;
+      else if(best>0){list.slice(0,idx).forEach(function(p){if(isCtrl(p)&&overlap(words(p.label),tw)===best)ctrls=[p]})}
+    }
+    ctrls.forEach(function(c){add(f,c,pickValues(c,r),"regla del campo",/obligatori/i.test(r))});
+  });
+  // P2 específico: "Despliega preguntas de A y B", "se debe pintar la opción para "X""
+  fields.forEach(function(ctrl){
+    ctrl.reglas.forEach(function(rr){
+      var t=rr.regla,m,phrases=null;
+      if(/no debe desplegar|contin[uú]a (con|a partir)/i.test(t)) return;
+      if((m=/despliega preguntas de (.+)/i.exec(t))&&!/todas/i.test(t)) phrases=m[1].replace(/[.]$/,"").split(/\s+y\s+|,/);
+      else if((m=/pintar la opci[oó]n para\s*["“]?([^"”]+)["”]?/i.exec(t))) phrases=[m[1]];
+      if(!phrases) return;
+      var list=bySheet[ctrl.hoja],idx=list.indexOf(ctrl),after=list.slice(idx+1,idx+12).filter(function(x){return x.seccion===ctrl.seccion||/pintar/i.test(t)});
+      phrases.forEach(function(ph){
+        var pw=words(ph),best=null,bs=0;
+        after.forEach(function(d){var s=overlap(words(d.label),pw);if(s>bs){bs=s;best=d}});
+        if(!best&&/pintar/i.test(t)) best=after.filter(function(d){return !isCtrl(d)})[0];
+        if(best&&!(auto[best.ruta]&&auto[best.ruta].src.indexOf("regla del campo")>=0)) add(best,ctrl,[rr.valor||"Sí"],"regla de la opción «"+rr.valor+"»");
+      });
+    });
+  });
+  // P2 general: "Despliega todas las preguntas adicionales de X"
+  fields.forEach(function(ctrl){
+    ctrl.reglas.forEach(function(rr){
+      if(!/despliega todas las preguntas/i.test(rr.regla)) return;
+      bySheet[ctrl.hoja].forEach(function(d){if(d.order>ctrl.order&&d.seccion===ctrl.seccion&&!auto[d.ruta])add(d,ctrl,[rr.valor||"Sí"],"«"+rr.regla+"»")});
+    });
+  });
+  // P3: "En caso afirmativo…" sin regla → pregunta Sí/No anterior
+  Object.keys(bySheet).forEach(function(h){var list=bySheet[h];list.forEach(function(f,i){
+    if(auto[f.ruta]||!/^en caso afirmativo/i.test(f.label)) return;
+    for(var j=i-1;j>=0;j--){if(isCtrl(list[j])){add(f,list[j],["Sí"],"«En caso afirmativo» en la pregunta");break}}
+  })});
+  return {auto:auto,secHide:secHide};
+}
+
+/* ============ decisiones: manual > predeterminado > convención ============ */
+var CONV=[
+  {test:function(f){return /^(codigoTipoIdentificacion|numeroIdentificacion|identificacion)$/.test(f.leaf)},w:"half",txt:"tipo y número de identificación: 1/2 + 1/2"},
+  {test:function(f){return /^(primerNombre|segundoNombre|primerApellido|segundoApellido)$/.test(f.leaf)},w:"quarter",txt:"los 4 nombres: 1/4 cada uno"},
+  {test:function(f){return /^nombreCompleto/.test(f.leaf)},w:"full",txt:"nombre completo: full"},
+  {test:function(f){return /^codigo(Provincia|Canton|Distrito)$/.test(f.leaf)},w:"third",txt:"provincia / cantón / distrito: 1/3"},
+  {test:function(f){return widgetOf(f)==="date"},w:"fit",txt:"fechas: fit"},
+  {test:function(f){return /^telefono/i.test(f.leaf)},w:"quarter",txt:"teléfonos: 1/4"},
+  {test:function(f){return widgetOf(f)==="number"},w:"quarter",txt:"cantidades: 1/4"},
+  {test:function(f){return widgetOf(f)==="checkbox"},w:"full",txt:"casillas con texto legal: full"},
+  {test:function(f){return widgetOf(f)==="textarea"||(f.maxLength&&f.maxLength>=60)||f.label.length>70},w:"full",txt:"texto largo o pregunta larga: full"},
+  {test:function(f){return widgetOf(f)==="numcombo"},w:"half",txt:"número + unidad: 1/2"}
+];
+function key(f){return f.custom?"manual|"+f.cid:f.hoja+"|"+f.ruta}
+function refOf(f){return f.ruta||("@"+f.cid)}
+function makeCustom(c,n){
+  return {id:"cf_"+c.cid,cid:c.cid,custom:true,hoja:"(agregado)",order:1e6+n,paso:"",seccion:c.seccion||"",pdf:"",label:c.label||"Campo nuevo",tipo:"Agregado por vos",
+    valores:[],reglaRows:[],reglas:[],oblig:c.required?"Both":"",formI:"",visual:"",obs:"",ruta:c.ruta||"",sourceNames:[],soloJSON:false,oculto:false,readOnly:false,
+    prellenado:false,required:!!c.required,excluido:false,catalogo:false,maxLength:null,widget0:c.type||"text",options:(c.options||[]).slice(),leaf:leafOf(c.ruta||("campo_"+c.cid)),filas:[],rawRows:[]};
+}
+function rebuildFields(){
+  var base=state.baseFields||[],cf=(state.ov.cf||[]).map(makeCustom);
+  state.fields=base.concat(cf);state.byId={};state.byRuta={};
+  state.fields.forEach(function(f){state.byId[f.id]=f;var r=refOf(f);state.byRuta[f.hoja+"|"+r]=f;if(!state.byRuta["*|"+r])state.byRuta["*|"+r]=f});
+  state._autoPdf=null;state._autoAcro=null;
+}
+function isSiNo(f){
+  if(f.widget0==="boolean") return true;
+  if(f.widget0==="radio"&&!f.options.length) return true;
+  var o=f.options.map(low).sort().join("|");
+  return (f.widget0==="radio"||f.widget0==="select")&&o==="no|si";
+}
+function widgetOf(f){return state.ov.t[key(f)]||state.predet.t[f.leaf]||(isSiNo(f)&&state.predet.clases.sino)||f.widget0}
+function typeSrc(f){if(state.ov.t[key(f)])return "Lo cambiaste vos en esta ficha";if(state.predet.t[f.leaf])return "Tu predeterminado para «"+f.leaf+"»";if(isSiNo(f)&&state.predet.clases.sino)return "Tu ajuste para todas las preguntas Sí/No";return "Según la ficha: «"+(f.tipo||"sin tipo")+"»"}
+function widthOf(f){
+  var o=state.ov.w[key(f)];
+  if(o) return {w:o,src:"Lo cambiaste vos en esta ficha"};
+  if(state.predet.w[f.leaf]) return {w:state.predet.w[f.leaf],src:"Tu predeterminado para «"+f.leaf+"»"};
+  for(var i=0;i<CONV.length;i++) if(CONV[i].test(f)) return {w:CONV[i].w,src:"Convención: "+CONV[i].txt};
+  return {w:"half",src:"Por defecto: 1/2"};
+}
+function condOf(f){
+  var k=key(f);
+  if(k in state.ov.c){var o=state.ov.c[k];return o?Object.assign({status:"conf"},o):null}
+  var a=state.autoCond[f.ruta];return a?Object.assign({status:"prop"},a):null;
+}
+function valueOf(f){return state.vals[f.id]}
+/* personas que se agregan (dependientes, beneficiarios) */
+var INST_NAMES={dependientemenor:["DME","Dependiente menor"],dependientemayor:["DMA","Dependiente mayor"],beneficiario:["BNF","Beneficiario"],dependiente:["DME","Dependiente"]};
+function isAdder(f){return /^indicadorAgregar/i.test(f.leaf)}
+function adderInfo(f){var k=low(f.leaf.replace(/^indicadorAgregar/i,"")),x=INST_NAMES[k]||["OTR",f.leaf.replace(/^indicadorAgregar/i,"")];return {code:x[0],name:x[1]}}
+function personTemplate(ctrl){
+  var anchor=state.fields.filter(function(x){return x.hoja===ctrl.hoja&&/^codigoTipoIdentificacion$/.test(x.leaf)})[0];
+  var sec=anchor?anchor.seccion:ctrl.seccion;
+  return state.fields.filter(function(x){return x.hoja===ctrl.hoja&&x.seccion===sec&&!x.soloJSON&&!x.oculto&&!isAdder(x)});
+}
+function proxy(f,tag){var id=f.id+"__"+tag;var p=state.byId[id];if(!p){p=Object.create(f);p.id=id;p.inst=tag;p.base=f;state.byId[id]=p}return p}
+function instCount(ctrl){var yes=low(valueOf(ctrl)||"")==="si";if(!yes)return 0;var n=state.inst[ctrl.id];return n==null?1:n}
+function matches(ctrl,v){
+  var cur=valueOf(ctrl);
+  if(widgetOf(ctrl)==="checkbox") return v==="Marcado"?!!cur:!cur;
+  return cur!=null&&cur!==""&&low(cur)===low(v);
+}
+function ruleVisible(f,depth){
+  depth=depth||0;if(depth>12) return true;
+  var c=condOf(f);if(!c||!c.conditions.length) return true;
+  var res=c.conditions.map(function(x){var ctrl=state.byRuta[f.hoja+"|"+x.ruta]||state.byRuta["*|"+x.ruta];if(!ctrl)return true;if(f.inst&&state.byId[ctrl.id+"__"+f.inst])ctrl=state.byId[ctrl.id+"__"+f.inst];return ruleVisible(ctrl,depth+1)&&matches(ctrl,x.value)});
+  return c.logic==="and"?res.every(Boolean):res.some(Boolean);
+}
+function governs(f){var r=refOf(f);return state.fields.filter(function(d){var dc=condOf(d);return dc&&dc.conditions.some(function(k){return k.ruta===r})})}
+function staticHidden(f){return f.soloJSON||f.oculto||f.excluido||!!state.ov.hide[key(f)]||!!state.secHide[f.hoja+"|"+f.seccion]}
+/* cualquier campo puede condicionar: los que tienen opciones primero, después el resto (incluidos ocultos y solo JSON) */
+function ctrlOptionsHtml(sel,exclude){
+  var a=state.fields.filter(function(x){return x!==exclude&&isCtrl(x)&&optsOf(x).length}),b=state.fields.filter(function(x){return x!==exclude&&a.indexOf(x)<0});
+  function o(x){return '<option value="'+esc(refOf(x))+'"'+(refOf(x)===sel?" selected":"")+">"+esc(x.label.slice(0,60))+(staticHidden(x)?" (oculto)":"")+"</option>"}
+  return '<optgroup label="Preguntas con opciones">'+a.map(o).join("")+'</optgroup><optgroup label="Otros campos (texto, ocultos, solo JSON)">'+b.map(o).join("")+"</optgroup>";
+}
+function valueCtlHtml(ctrl,val,attr){
+  var op=ctrl&&isCtrl(ctrl)?optsOf(ctrl):[];
+  if(op.length) return '<select '+attr+'>'+op.map(function(v){return "<option"+(low(v)===low(val||"")?" selected":"")+">"+esc(v)+"</option>"}).join("")+"</select>";
+  return '<input '+attr+' value="'+esc(val||"")+'" placeholder="valor exacto, ej. ASG">';
+}
+function condText(c){
+  if(!c) return "";
+  var parts=c.conditions.map(function(x){var ctrl=state.byRuta["*|"+x.ruta];return "«"+esc(ctrl?ctrl.label:leafOf(x.ruta))+"» es <b>"+esc(x.value)+"</b>"});
+  return parts.join(c.logic==="and"?" y ":" o ");
+}
+
+/* ============ carga ============ */
+function loadData(obj){
+  var r=parseSheets(obj.sheets);
+  state.ordering=false;state.file=obj.file;state.sheets=obj.sheets;state.selW=null;state._autoAcro=null;state.fields=r.fields;state.legends=r.legends;state.ejemplo=r.ejemplo;state.sel=null;state.vals={};state.inst={};state.lastVisible={};
+  state.baseFields=r.fields;
+  state.ov=normOv(store("fv2-ov:"+obj.file));state.main=null;rebuildFields();
+  var pd=store("fv2-predet")||{};state.predet={w:pd.w||{},t:pd.t||{},clases:pd.clases||{}};
+  var ac=buildAutoConds(r.fields);state.autoCond=ac.auto;state.secHide=ac.secHide;
+  r.fields.forEach(function(f){if(f.prellenado&&f.ejemploValor&&!/getdate|ver cat/i.test(f.ejemploValor))state.vals[f.id]=f.ejemploValor;if(/getdate/i.test(f.ejemploValor||""))state.vals[f.id]=new Date().toISOString().slice(0,10)});
+  document.getElementById("fileName").textContent=obj.file+(obj.sample?"  ·  ejemplo cargado (D0873)":"");
+  document.getElementById("btnSample").hidden=!!obj.sample;
+  document.getElementById("error").hidden=true;
+  if(!r.fields.length) showErr("No encontré filas con ruta JSON (columna M). ¿Es una ficha del formato nuevo, con una hoja por nodo y 14 columnas?");
+  render();
+  loadRemote();
+}
+function normOv(o){o=o||{};return {cf:o.cf||[],hide:o.hide||{},acro:o.acro||{},w:o.w||{},t:o.t||{},c:o.c||{},layout:o.layout||null,secNames:o.secNames||{},fsec:o.fsec||{},forder:o.forder||{},csecs:o.csecs||[],pdf:o.pdf||{}}}
+/* ---- guardado: almacenamiento de la página (db) con respaldo en el navegador ---- */
+var DL=null,DB=null,dbState="local",pend={},busy={},timers={};
+function fichaDoc(){return "fichas/"+(low(state.file).replace(/[^a-z0-9._-]+/g,"-").replace(/^[-.]+|-+$/g,"").slice(0,150)||"ficha")}
+function setSaveState(x){dbState=x;var n=document.getElementById("saveState");if(n)n.innerHTML=saveStateHtml()}
+function saveStateHtml(){
+  return {local:"Guardado solo en este navegador.",loading:"Cargando lo que guardaste…",saving:"Guardando…",
+    saved:"<b>Guardado.</b> Queda en la página: lo ves desde cualquier dispositivo y Claude lo puede leer para armar el form-def.",
+    denied:"No tenés permiso para guardar en esta página: tus cambios quedan solo en este navegador.",
+    error:"No se pudo guardar recién. Se reintenta con tu próximo cambio."}[dbState];
+}
+function queueWrite(path,body){
+  if(!DB) return;
+  pend[path]=body;clearTimeout(timers[path]);
+  setSaveState("saving");
+  timers[path]=setTimeout(function(){flush(path)},600);
+}
+function flush(path){
+  if(busy[path]||!pend[path]) return;
+  var body=pend[path];delete pend[path];busy[path]=true;
+  DB.doc(path).set(body).then(function(){busy[path]=false;if(pend[path])flush(path);else if(!Object.keys(pend).length)setSaveState("saved")},
+    function(e){busy[path]=false;setSaveState(e&&e.code==="invalid_argument"?"denied":"error");if(e&&e.code==="invalid_argument")DB=null});
+}
+function loadRemote(){
+  if(!DB||!state.file) return;
+  var file=state.file;setSaveState("loading");
+  Promise.all([DB.doc("config/predeterminados").get(),DB.doc(fichaDoc()).get(),DB.doc(fichaDoc().replace(/^fichas\//,"mains/")).get()]).then(function(r){
+    if(r[2]&&r[2].exists&&!state.main){var md=r[2].data();if(md&&md.fields)state.main={file:md.file,fields:md.fields,sourcePdf:null,fromStore:true}}
+    if(file!==state.file) return;
+    var pd=r[0].exists?r[0].data():null,fd=r[1].exists?r[1].data():null;
+    if(pd){state.predet={w:Object.assign({},pd.w||{}),t:Object.assign({},pd.t||{}),clases:Object.assign({},pd.clases||{})};store("fv2-predet",state.predet)}
+    else if(Object.keys(state.predet.w).length+Object.keys(state.predet.t).length+Object.keys(state.predet.clases).length) savePredet();
+    if(fd&&fd.ov){state.ov=normOv(JSON.parse(JSON.stringify(fd.ov)));store("fv2-ov:"+state.file,state.ov);rebuildFields()}
+    else if(Object.keys(state.ov.w).length+Object.keys(state.ov.t).length+Object.keys(state.ov.c).length) saveOv();
+    setSaveState("saved");render();
+  },function(){setSaveState("error")});
+}
+function saveOv(){store("fv2-ov:"+state.file,state.ov);queueWrite(fichaDoc(),{file:state.file,ov:state.ov,updatedAt:new Date().toISOString()});queueExport()}
+var expTimer=null;state.lastExport=null;
+function queueExport(){
+  clearTimeout(expTimer);
+  expTimer=setTimeout(function(){
+    try{
+      var def=buildFormDef(),body={file:state.file,updatedAt:new Date().toISOString(),formDef:def};
+      var n=JSON.stringify(body).length;
+      if(n>240000){delete def._sourcePdf;body.formDef=def;body.nota="Sin _sourcePdf por tamaño";n=JSON.stringify(body).length}
+      if(n>240000){state.lastExport={err:"El form-def es demasiado grande para guardarlo solo; usá «Exportar form-def»."};return}
+      if(DB){queueWrite(fichaDoc().replace(/^fichas\//,"exports/"),body);state.lastExport={at:new Date()}}
+      var n2=document.getElementById("expState");if(n2)n2.innerHTML=expStateHtml();
+    }catch(e){state.lastExport={err:"No se pudo armar el form-def: "+e.message}}
+  },1500);
+}
+function expStateHtml(){
+  var x=state.lastExport;
+  if(!DB) return "El form-def se arma con «Exportar form-def». El guardado automático necesita abrir la página desde Claude.";
+  if(!x) return "El form-def se guarda solo en la página con cada cambio.";
+  if(x.err) return esc(x.err);
+  return "Form-def guardado solo a las "+("0"+x.at.getHours()).slice(-2)+":"+("0"+x.at.getMinutes()).slice(-2)+". Pedile a Claude que lo lea o descargalo con «Exportar form-def».";
+}
+function savePredet(){queueExport();store("fv2-predet",state.predet);queueWrite("config/predeterminados",{w:state.predet.w,t:state.predet.t,clases:state.predet.clases,updatedAt:new Date().toISOString()})}
+function showErr(m){var e=document.getElementById("error");e.textContent=m;e.hidden=false}
+function readFile(file){
+  if(!window.XLSX){showErr("No se pudo cargar el lector de Excel. Recargá la página.");return}
+  var fr=new FileReader();
+  fr.onload=function(){
+    try{
+      var wb=XLSX.read(new Uint8Array(fr.result),{type:"array",cellDates:true});
+      var sheets=wb.SheetNames.map(function(n){
+        var rows=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:null,raw:true});
+        rows=rows.map(function(r){return r.map(function(v){return v instanceof Date?("0"+v.getDate()).slice(-2)+"/"+("0"+(v.getMonth()+1)).slice(-2)+"/"+v.getFullYear():v})});
+        return {name:n,rows:rows};
+      });
+      loadData({file:file.name,sheets:sheets});
+    }catch(e){showErr("No pude leer el archivo: "+e.message)}
+  };
+  fr.readAsArrayBuffer(file);
+}
+
+/* ============ formulario vivo ============ */
+/* ---- estructura: pasos y secciones ---- */
+var SIS="__sistema",DECL="Declaraciones y Autorización",GENP="Datos Generales";
+var GEN={polizamadre:0,intermediario:1,datosgenerales:2,datosadicionales:3};
+function secKeyOf(x,isField){
+  if(isField&&(x.soloJSON||low(x.paso)==="json"||low(x.seccion)==="json")) return SIS;
+  return x.hoja+"|"+(x.seccion||"(sin sección)");
+}
+function fieldSecKey(f){var k=state.ov.fsec[key(f)];return k||secKeyOf(f,true)}
+function fOrder(f){var o=state.ov.forder[key(f)];return o!=null?o:f.order}
+function allItems(){
+  var items=state.fields.map(function(f){return {kind:"f",f:f,order:fOrder(f),key:fieldSecKey(f),hoja:f.hoja,sec:f.seccion,paso:f.paso}})
+    .concat(state.legends.map(function(l){return {kind:"l",l:l,order:l.order,key:secKeyOf(l,false),hoja:l.hoja,sec:l.seccion,paso:l.paso}}));
+  items.sort(function(a,b){return a.order-b.order});
+  return items;
+}
+function sectionsInfo(){
+  var list=[],m={};
+  allItems().forEach(function(it){
+    var s=m[it.key];
+    if(!s){s=m[it.key]={key:it.key,name:it.key===SIS?"Datos del Sistema (oculto)":(it.sec||"(sin sección)"),hoja:it.hoja,paso:"",order:it.order,items:[]};list.push(s)}
+    if(!s.paso&&it.paso&&low(it.paso)!=="json")s.paso=it.paso;
+    s.items.push(it);
+  });
+  (state.ov.csecs||[]).forEach(function(c){var s=m[c.key];if(!s){s=m[c.key]={key:c.key,name:c.name,hoja:"",paso:c.paso||GENP,order:1e9,items:[],custom:true};list.push(s)}else{s.custom=true;s.name=c.name;s.paso=c.paso||s.paso}});
+  list.forEach(function(s){if(!m[s.key].custom&&/^c:/.test(s.key)){}});
+  return {list:list,map:m};
+}
+function defaultLayout(info){
+  var pasos=[],pm={};
+  function P(n){if(!pm[n]){pm[n]={name:n,secs:[]};pasos.push(pm[n])}return pm[n]}
+  P(GENP);
+  var rank={};
+  info.list.forEach(function(s){
+    var h=low(s.hoja).replace(/\s+/g,"");
+    if(s.custom){P(s.paso||GENP).secs.push(s.key)}
+    else if(s.key===SIS){P(GENP).secs.push(s.key);rank[s.key]=9}
+    else if(/autoriza|declara/i.test(s.name)){P(DECL).secs.push(s.key)}
+    else if(GEN[h]!=null){P(GENP).secs.push(s.key);rank[s.key]=GEN[h]}
+    else P(s.paso&&low(s.paso)!==low(GENP)?s.paso:(s.paso||"Otros")).secs.push(s.key);
+  });
+  pm[GENP].secs.sort(function(a,b){var ra=rank[a]!=null?rank[a]:5,rb=rank[b]!=null?rank[b]:5;return ra-rb||info.map[a].order-info.map[b].order});
+  if(pm[DECL]){pasos.splice(pasos.indexOf(pm[DECL]),1);pasos.push(pm[DECL])}
+  return pasos.filter(function(p){return p.secs.length});
+}
+function currentLayout(){
+  var info=sectionsInfo(),def=defaultLayout(info),ov=state.ov.layout;
+  if(!ov||!ov.length) return {pasos:def,info:info};
+  info.list.forEach(function(s){if(!s.items.length&&!s.custom)delete info.map[s.key]});
+  var seen={},pasos=ov.map(function(p){return {name:p.name,secs:p.secs.filter(function(k){if(!info.map[k]||seen[k])return false;seen[k]=1;return true})}});
+  def.forEach(function(dp){dp.secs.forEach(function(k){if(seen[k])return;var tgt=pasos.filter(function(p){return p.name===dp.name})[0];if(!tgt){tgt={name:dp.name,secs:[]};pasos.push(tgt)}tgt.secs.push(k);seen[k]=1})});
+  return {pasos:pasos,info:info};
+}
+function secName(s){return (state.ov.secNames||{})[s.key]||s.name}
+function allSections(){var out=[];groups().forEach(function(p,pi){p.secs.forEach(function(x){out.push({key:x.key,label:"Paso "+(pi+1)+" · "+x.name})})});return out}
+function moveField(f,dir){
+  var k=fieldSecKey(f),list=allItems().filter(function(i){return i.kind==="f"&&i.key===k}).map(function(i){return i.f});
+  var i=list.indexOf(f),j=i+dir;if(j<0||j>=list.length)return;
+  var t=list[i];list[i]=list[j];list[j]=t;
+  var base=Math.min.apply(null,list.map(function(x){return fOrder(x)}));
+  list.forEach(function(x,n){state.ov.forder[key(x)]=base+n*0.001});
+  saveOv();render();
+}
+function groups(){
+  var L=currentLayout();
+  return L.pasos.map(function(p){return {name:p.name,secs:p.secs.map(function(k){var s=L.info.map[k];return {key:k,name:secName(s),hoja:s.hoja,items:s.items}})}});
+}
+function saveLayout(pasos){state.ov.layout=pasos.map(function(p){return {name:p.name,secs:p.secs.slice()}});saveOv();render()}
+function renderOrden(){
+  var L=currentLayout(),P=L.pasos;
+  var h='<div class="tools"><span>Mové secciones entre pasos, cambiá el orden y los nombres. Se guarda solo. Los pasos vacíos desaparecen.</span>'+
+    '<button class="btn sm" type="button" id="oDone">Listo, ver el formulario</button>'+(state.ov.layout?'<button class="btn sm" type="button" id="oReset">Volver al orden por defecto</button>':"")+"</div>";
+  P.forEach(function(p,pi){
+    h+='<div class="opaso"><div class="oph"><span class="k">Paso '+(pi+1)+'</span><input class="oname" data-pn="'+pi+'" value="'+esc(p.name)+'" aria-label="Nombre del paso">'+
+      '<button class="ob" type="button" data-pu="'+pi+'"'+(pi===0?" disabled":"")+' aria-label="Subir paso">↑</button><button class="ob" type="button" data-pd="'+pi+'"'+(pi===P.length-1?" disabled":"")+' aria-label="Bajar paso">↓</button></div>';
+    p.secs.forEach(function(k,si){
+      var s=L.info.map[k],nf=s.items.filter(function(i){return i.kind==="f"}).length,sis=k===SIS;
+      h+='<div class="osec'+(sis?" sis":"")+'"><input class="oname sm" data-sn="'+esc(k)+'" value="'+esc(secName(s))+'" aria-label="Nombre de la sección"><span class="note">'+nf+" campos"+(sis?" · oculta":"")+(state.secHide[k]?" · la ficha dice que no se presenta":"")+(s.hoja&&!sis?" · hoja "+esc(s.hoja):"")+'</span>'+
+        '<span class="oact"><button class="ob" type="button" data-su="'+pi+','+si+'"'+(si===0?" disabled":"")+' aria-label="Subir sección">↑</button><button class="ob" type="button" data-sd="'+pi+','+si+'"'+(si===p.secs.length-1?" disabled":"")+' aria-label="Bajar sección">↓</button>'+
+        (s.custom&&!nf?'<button class="ob" type="button" data-sx="'+esc(k)+'" aria-label="Borrar sección vacía">×</button>':"")+
+        '<select data-sm="'+pi+','+si+'" aria-label="Mover a otro paso">'+P.map(function(q,qi){return '<option value="'+qi+'"'+(qi===pi?" selected":"")+">Paso "+(qi+1)+": "+esc(q.name)+"</option>"}).join("")+'<option value="new">Paso nuevo…</option></select></span></div>';
+    });
+    h+='<div class="osec add"><button class="btn sm" type="button" data-ns="'+pi+'">+ Nueva sección en este paso</button></div></div>';
+  });
+  return h;
+}
+function bindOrden(v){
+  var L=currentLayout(),P=L.pasos.map(function(p){return {name:p.name,secs:p.secs.slice()}});
+  function sw(a,i,j){var t=a[i];a[i]=a[j];a[j]=t}
+  function done(){
+    P.forEach(function(p){p.secs.forEach(function(k){(state.ov.csecs||[]).forEach(function(c){if(c.key===k)c.paso=p.name})})});
+    saveLayout(P.filter(function(p){return p.secs.length}))}
+  v.querySelectorAll("[data-pu]").forEach(function(b){b.onclick=function(){var i=+b.getAttribute("data-pu");sw(P,i,i-1);done()}});
+  v.querySelectorAll("[data-pd]").forEach(function(b){b.onclick=function(){var i=+b.getAttribute("data-pd");sw(P,i,i+1);done()}});
+  v.querySelectorAll("[data-su]").forEach(function(b){b.onclick=function(){var x=b.getAttribute("data-su").split(",").map(Number);sw(P[x[0]].secs,x[1],x[1]-1);done()}});
+  v.querySelectorAll("[data-sd]").forEach(function(b){b.onclick=function(){var x=b.getAttribute("data-sd").split(",").map(Number);sw(P[x[0]].secs,x[1],x[1]+1);done()}});
+  v.querySelectorAll("[data-sm]").forEach(function(sel){sel.onchange=function(){
+    var x=sel.getAttribute("data-sm").split(",").map(Number),k=P[x[0]].secs.splice(x[1],1)[0];
+    if(sel.value==="new"){var decl=P.length&&P[P.length-1].name===DECL?P.length-1:P.length;P.splice(decl,0,{name:"Paso nuevo",secs:[k]})}
+    else P[+sel.value].secs.push(k);
+    done()}});
+  v.querySelectorAll("[data-pn]").forEach(function(inp){inp.onchange=function(){var n=norm(inp.value);if(n){P[+inp.getAttribute("data-pn")].name=n;done()}}});
+  v.querySelectorAll("[data-sn]").forEach(function(inp){inp.onchange=function(){state.ov.secNames=state.ov.secNames||{};var n=norm(inp.value);if(n)state.ov.secNames[inp.getAttribute("data-sn")]=n;else delete state.ov.secNames[inp.getAttribute("data-sn")];saveOv();render()}});
+  var d=document.getElementById("oDone");if(d)d.onclick=function(){state.ordering=false;render()};
+  var r=document.getElementById("oReset");if(r)r.onclick=function(){state.ov.layout=null;state.ov.secNames={};state.ov.fsec={};state.ov.forder={};state.ov.csecs=[];saveOv();render()};
+  v.querySelectorAll("[data-ns]").forEach(function(b){b.onclick=function(){
+    var pi=+b.getAttribute("data-ns"),k="c:"+Date.now().toString(36);
+    state.ov.csecs.push({key:k,name:"Sección nueva",paso:P[pi].name});P[pi].secs.push(k);done()}});
+  v.querySelectorAll("[data-sx]").forEach(function(b){b.onclick=function(){
+    var k=b.getAttribute("data-sx");state.ov.csecs=state.ov.csecs.filter(function(c){return c.key!==k});
+    P.forEach(function(p){p.secs=p.secs.filter(function(x){return x!==k})});done()}});
+}
+function ctl(f){
+  var w=widgetOf(f),v=valueOf(f),id="in_"+f.id,ro=f.readOnly?" readonly":"";
+  var opts=optsOf(f);
+  switch(w){
+    case "radio":
+      return '<div class="rg'+(opts.some(function(o){return o.length>18})?" v":"")+'">'+opts.map(function(o){return '<label><input type="radio" name="'+id+'" data-v="'+esc(o)+'"'+(v===o?" checked":"")+(f.readOnly?" disabled":"")+'> '+esc(o)+"</label>"}).join("")+"</div>";
+    case "boolean":
+      return '<div class="yn">'+["Sí","No"].map(function(o){return '<button type="button" data-v="'+o+'" aria-pressed="'+(v===o)+'"'+(f.readOnly?" disabled":"")+'>'+o+"</button>"}).join("")+"</div>";
+    case "checkbox":
+      return '<label class="chk"><input type="checkbox" id="'+id+'"'+(v?" checked":"")+(f.readOnly?" disabled":"")+'> <span>'+(f.label.length>70?"Acepto":esc(f.label))+"</span></label>";
+    case "select":
+      return '<select class="in" id="'+id+'"'+(f.readOnly?" disabled":"")+'><option value="">Seleccione…</option>'+opts.map(function(o){return '<option'+(v===o?" selected":"")+'>'+esc(o)+"</option>"}).join("")+"</select>";
+    case "numcombo":
+      var u=f.unidades&&f.unidades.length?f.unidades:["unidad"];
+      return '<div class="pair"><input class="in" type="number" id="'+id+'" value="'+esc(v||"")+'"'+(f.maxLength?' maxlength="'+f.maxLength+'"':"")+'><select class="in" id="'+id+'_u">'+u.map(function(o){return "<option"+(state.vals[f.id+"_u"]===o?" selected":"")+">"+esc(o)+"</option>"}).join("")+"</select></div>";
+    case "date":
+      return '<input class="in" type="date" id="'+id+'" value="'+esc(v||"")+'"'+ro+">";
+    case "number":
+      return '<input class="in" type="number" id="'+id+'" value="'+esc(v||"")+'"'+ro+' placeholder="'+esc(f.ejemploValor||"")+'">';
+    case "textarea":
+      return '<textarea class="in" id="'+id+'"'+(f.maxLength?' maxlength="'+f.maxLength+'"':"")+ro+">"+esc(v||"")+"</textarea>";
+    default:
+      return '<input class="in" type="text" id="'+id+'" value="'+esc(v||"")+'"'+(f.maxLength?' maxlength="'+f.maxLength+'"':"")+ro+' placeholder="'+esc(f.prellenado?"":f.ejemploValor||"")+'">';
+  }
+}
+function badges(f){
+  var b=[];
+  if(f.soloJSON) b.push('<span class="b json">Solo JSON</span>');
+  if(f.excluido) b.push('<span class="b warn">No aplica a este formulario</span>');
+  if(f.oculto) b.push('<span class="b">Oculto</span>');
+  if(state.secHide[f.hoja+"|"+f.seccion]) b.push('<span class="b warn">Sección que no se presenta</span>');
+  if(f.prellenado) b.push('<span class="b acc">Prellenado</span>');
+  if(f.readOnly) b.push('<span class="b">Solo lectura</span>');
+  if(f.catalogo) b.push('<span class="b">Catálogo</span>');
+  if(f.maxLength) b.push('<span class="b">máx '+f.maxLength+'</span>');
+  if(state.main){var mp=pdfMapOf(f),n=(mp.sn?1:0)+Object.keys(mp.opts).filter(function(o){return mp.opts[o]}).length;b.push(n?'<span class="b ok">PDF: '+esc(mp.sn||Object.keys(mp.opts).map(function(o){return mp.opts[o]}).filter(Boolean).join(", "))+(mp.status==="prop"?" (propuesta)":"")+"</span>":'<span class="b">Sin casillero en el PDF</span>')}
+  return b.length?'<div class="badges">'+b.join("")+"</div>":"";
+}
+function whereTxt(f){var m=state.main?pdfMapOf(f):null,sns=m?[m.sn].concat(Object.keys(m.opts).map(function(o){return m.opts[o]})).filter(Boolean):[];
+  return f.hoja+" "+(f.filas||[]).map(function(n){return "fila "+n+" "+f.hoja+" "+n}).join(" ")+" "+sns.join(" ")+" "+sns.map(function(n){var x=mainBySn()[n];return x?"pagina "+x.page+" pag "+x.page:""}).join(" ")}
+function matchQ(f){if(!state.q)return true;return low(f.label+" "+f.ruta+" "+f.seccion+" "+whereTxt(f)).indexOf(low(state.q))>=0}
+function filasTxt(f){var a=f.filas||[];if(!a.length)return "";return a.length===1?"fila "+a[0]:"filas "+a[0]+"–"+a[a.length-1]}
+function pdfPages(f){if(!state.main)return [];var m=pdfMapOf(f),M=mainBySn(),out={};[m.sn].concat(Object.keys(m.opts).map(function(o){return m.opts[o]})).forEach(function(n){if(n&&M[n])out[M[n].page]=1});return Object.keys(out)}
+function cellHtml(it,shownNow){
+        if(it.kind==="l") return '<div class="legend">'+esc(it.l.texto)+"</div>";
+        var f=it.f,w=widthOf(f).w,vis=!staticHidden(f)&&ruleVisible(f);
+        if(vis)shownNow[f.id]=1;
+        var appear=vis&&state.lastVisible[f.id]===false?" appear":"";
+        var c=condOf(f);
+        var cond=c?'<div class="cond"><span class="st '+c.status+'">'+(c.status==="prop"?"PROPUESTA":"CONFIRMADA")+'</span><span class="how">'+(c.required?"Aparece y es obligatoria si ":"Aparece si ")+condText(c)+"</span></div>":
+          "";
+        var gv=governs(f);
+        if(gv.length) cond+='<div class="cond"><span class="how">Según lo que responda, muestra '+gv.length+" pregunta"+(gv.length>1?"s":"")+"</span></div>";
+        else if(!c&&f.reglas.some(function(r){return /\bsi\b|despliega|pintar/i.test(r.regla)&&!/no debe desplegar|contin/i.test(r.regla)})) cond+='<div class="rule">Regla sin traducir: tocá el título para definirla</div>';
+        var chk=state.multi&&!f.inst?'<input type="checkbox" class="mchk" data-m="'+f.id+'"'+(state.msel[f.id]?" checked":"")+' aria-label="Seleccionar">':"";
+        return '<div class="f w-'+w+(vis?"":" ghost")+(state.sel===f.id?" sel":"")+(state.multi&&state.msel[f.id]?" msel":"")+appear+'" data-f="'+f.id+'">'+chk+
+          '<span class="wtag">'+WLABEL[w]+'</span><span class="lab" data-pick="'+f.id+'" tabindex="0">'+esc(widgetOf(f)==="checkbox"&&f.label.length<=70?"":f.label)+((f.required||(c&&c.required))?'<span class="req">*</span>':"")+"</span>"+
+          '<div class="ctl">'+ctl(f)+"</div>"+badges(f)+cond+"</div>";
+}
+function instBlocks(s,shownNow){
+  var out="";
+  s.items.forEach(function(it){
+    if(it.kind!=="f"||!isAdder(it.f))return;
+    var ctrl=it.f,n=instCount(ctrl);if(!n)return;
+    var info=adderInfo(ctrl),tpl=personTemplate(ctrl);
+    for(var i=1;i<=n;i++){
+      var tag=info.code+i;
+      var cells=tpl.map(function(f){var p=proxy(f,tag);if(!state.showAll&&!ruleVisible(p))return "";return cellHtml({kind:"f",f:p},shownNow)}).join("");
+      out+='<section class="sec inst"><div class="sec-h"><h3>'+esc(info.name)+" "+i+'</h3><span class="inst-bar"><span class="meta">se agrega en personas[] con codigoTipo '+info.code+'</span><button class="btn sm" type="button" data-ir="'+ctrl.id+'">Quitar</button></span></div><div class="grid">'+cells+"</div></section>";
+    }
+    out+='<div class="inst-bar"><button class="btn sm" type="button" data-ia="'+ctrl.id+'">+ Agregar otro '+esc(info.name.toLowerCase())+"</button></div>";
+  });
+  return out;
+}
+function multiBar(){
+  if(!state.multi) return "";
+  var ids=Object.keys(state.msel).filter(function(k){return state.msel[k]}),mc=state.mctrl||"",ctrl=mc?state.byRuta["*|"+mc]:null;
+  return '<div class="bulk mbar"><span class="t">'+ids.length+' seleccionados</span><span>Mostrar solo si</span><select class="map-in" id="mCtrl" style="max-width:280px;font-family:var(--f-body)"><option value="">Elegí el campo…</option>'+ctrlOptionsHtml(mc,null)+'</select><span>es</span>'+
+    (ctrl?valueCtlHtml(ctrl,state.mval,'id="mVal" class="map-in" style="max-width:180px;font-family:var(--f-body)"'):'<span class="note">—</span>')+
+    '<label class="note" style="display:flex;gap:5px;align-items:center"><input type="checkbox" id="mReq"'+(state.mreq?" checked":"")+'> y obligatorios cuando aparecen</label>'+
+    '<button class="btn sm primary" type="button" id="mApply"'+(ids.length&&ctrl?"":" disabled")+'>Aplicar a los '+ids.length+'</button>'+
+    '<button class="btn sm" type="button" id="mAlways"'+(ids.length?"":" disabled")+'>Siempre visibles</button><button class="btn sm" type="button" id="mHide"'+(ids.length?"":" disabled")+'>Ocultar siempre</button><button class="btn sm" type="button" id="mNone">Limpiar selección</button>'+
+    '<span class="note" style="flex-basis:100%">Tildá los campos o usá «Seleccionar la sección». El campo que condiciona puede ser cualquiera, también uno oculto o de solo JSON (por ejemplo el tipo de persona que llega prellenado). Para probarlo acá, activá «Mostrar todo» y cargale un valor.</span></div>';
+}
+function bindMulti(v){
+  var bm=document.getElementById("btnMulti");if(bm)bm.onclick=function(){state.multi=!state.multi;render()};
+  if(!state.multi) return;
+  v.querySelectorAll(".mchk").forEach(function(c){c.onchange=function(){state.msel[c.getAttribute("data-m")]=c.checked;render()}});
+  v.querySelectorAll("[data-msec]").forEach(function(b){b.onclick=function(){var k=b.getAttribute("data-msec");allItems().forEach(function(it){if(it.kind==="f"&&it.key===k)state.msel[it.f.id]=true});render()}});
+  var mc=document.getElementById("mCtrl");if(mc)mc.onchange=function(){state.mctrl=mc.value;var c=state.byRuta["*|"+mc.value];state.mval=c&&isCtrl(c)&&optsOf(c).length?optsOf(c)[0]:"";render()};
+  var mv=document.getElementById("mVal");if(mv)mv.onchange=function(){state.mval=mv.value};
+  var mr=document.getElementById("mReq");if(mr)mr.onchange=function(){state.mreq=mr.checked};
+  function sel(){return Object.keys(state.msel).filter(function(k){return state.msel[k]}).map(function(k){return state.byId[k]}).filter(Boolean)}
+  var ap=document.getElementById("mApply");if(ap)ap.onclick=function(){
+    var val=document.getElementById("mVal")?document.getElementById("mVal").value:state.mval;
+    sel().forEach(function(f){if(refOf(f)===state.mctrl)return;state.ov.c[key(f)]={logic:"or",required:!!state.mreq,conditions:[{ruta:state.mctrl,value:val}]}});
+    state.msel={};saveOv();render()};
+  var al=document.getElementById("mAlways");if(al)al.onclick=function(){sel().forEach(function(f){state.ov.c[key(f)]=null;delete state.ov.hide[key(f)]});state.msel={};saveOv();render()};
+  var hd=document.getElementById("mHide");if(hd)hd.onclick=function(){sel().forEach(function(f){state.ov.hide[key(f)]=true});state.msel={};saveOv();render()};
+  var mn=document.getElementById("mNone");if(mn)mn.onclick=function(){state.msel={};render()};
+}
+function renderForm(){
+  if(state.ordering) return renderOrden();
+  var shownNow={};
+  var h='<div class="tools"><label><input type="checkbox" id="chkAll"'+(state.showAll?" checked":"")+'> Mostrar todo (lo oculto, solo JSON y lo que esconden las reglas)</label>'+
+    '<input type="search" id="q" placeholder="Buscar pregunta, ruta, hoja, fila o casillero" value="'+esc(state.q)+'"><button class="btn sm" type="button" id="btnClear">Borrar respuestas</button><button class="btn sm" type="button" id="btnOrden">Ordenar pasos y secciones</button><button class="btn sm'+(state.multi?" primary":"")+'" type="button" id="btnMulti">'+(state.multi?"Terminar selección":"Seleccionar varios")+'</button></div>'+multiBar()+
+    '<div class="bulk"><span class="t">Para todas las fichas</span><span>Preguntas Sí/No como</span><div class="seg">'+
+      [["","Como diga la ficha"],["select","Select"],["radio","Radio"],["boolean","Botones Sí/No"]].map(function(x){return '<button type="button" data-sino="'+x[0]+'" aria-pressed="'+((state.predet.clases.sino||"")===x[0])+'">'+x[1]+"</button>"}).join("")+
+      '</div><span class="note">'+state.fields.filter(isSiNo).length+' preguntas en esta ficha</span></div>'+
+    '<div class="note" style="display:none">'+'</div><div class="note" style="margin:-4px 0 12px">Respondé como lo haría el cliente: las preguntas que dependen de otra aparecen solas. Tocá el título de un campo para cambiarle el tipo, el ancho o la condición.</div>';
+  groups().forEach(function(p,pi){
+    var secs=p.secs.map(function(s){
+      var hideSec=!!state.secHide[s.key];
+      if(hideSec&&!state.showAll) return "";
+      var its=s.items.filter(function(it){
+        if(it.kind==="l") return !state.q;
+        var f=it.f;if(!matchQ(f))return false;
+        if(state.showAll) return true;
+        return !staticHidden(f)&&ruleVisible(f);
+      });
+      if(!its.length) return "";
+      var total=s.items.filter(function(i){return i.kind==="f"}).length;
+      var cells=its.map(function(it){return cellHtml(it,shownNow)      }).join("");
+      return '<section class="sec'+(hideSec?" off":"")+'"><div class="sec-h"><h3>'+esc(s.name)+'</h3>'+(state.multi?'<button class="btn sm" type="button" data-msec="'+esc(s.key)+'">Seleccionar la sección</button>':'<button class="btn sm" type="button" data-addf="'+esc(s.key)+'">+ Agregar campo</button>')+'<span class="meta">'+its.filter(function(i){return i.kind==="f"}).length+" de "+total+" campos</span></div><div class=\"grid\">"+cells+"</div></section>"+instBlocks(s,shownNow);
+    }).join("");
+    if(!secs) return;
+    h+='<div class="paso"><div class="paso-h"><span class="k">Paso '+(pi+1)+'</span><h2>'+esc(p.name)+"</h2></div>"+secs+"</div>";
+  });
+  state.fields.forEach(function(f){state.lastVisible[f.id]=!!shownNow[f.id]||(!staticHidden(f)&&ruleVisible(f))});
+  return h;
+}
+
+/* ============ JSON que sale (en vivo) ============ */
+function outVal(f){
+  var w=widgetOf(f),v=valueOf(f);
+  if(v==null||v==="") return null;
+  if(w==="boolean") return v==="Sí"?"true":"false";
+  if(w==="checkbox") return "true";
+  if(w==="number"||w==="numcombo") return isNaN(Number(v))?'"'+esc(v)+'"':String(Number(v));
+  if(w==="date"){var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(v);return '"'+(m?m[3]+"/"+m[2]+"/"+m[1]:esc(v))+'"'}
+  return '"'+esc(v)+'"';
+}
+function buildTree(){
+  var root={},list=state.fields.filter(function(f){return f.ruta}).map(function(f){return {f:f,ruta:f.ruta}}),k=1;
+  state.fields.filter(isAdder).forEach(function(ctrl){
+    var n=instCount(ctrl),info=adderInfo(ctrl),tpl=personTemplate(ctrl),ct=state.fields.filter(function(x){return x.hoja===ctrl.hoja&&x.leaf==="codigoTipo"})[0];
+    for(var i=1;i<=n;i++,k++){
+      var tag=info.code+i,pre="personas["+k+"]";
+      if(ct){var pc=proxy(ct,tag);state.vals[pc.id]=info.code;list.push({f:pc,ruta:ct.ruta.replace("personas[]",pre)})}
+      tpl.forEach(function(f){list.push({f:proxy(f,tag),ruta:f.ruta.replace("personas[]",pre)})});
+    }
+  });
+  list.forEach(function(e){
+    var f=e.f,parts=e.ruta.replace(/\[(\d*)\]/g,function(m,d){return ".["+(d||"0")+"]"}).split(".").filter(Boolean),node=root;
+    parts.forEach(function(p,i){
+      if(i===parts.length-1){node[p]={__f:f}}
+      else{if(!node[p]||node[p].__f)node[p]={};node=node[p]}
+    });
+  });
+  return root;
+}
+function treeLines(node,ind,out,isLast,key){
+  var pad="  ".repeat(ind),keys=Object.keys(node).filter(function(k){return k!=="__f"});
+  var isArr=keys.length>0&&keys.every(function(k){return /^\[\d+\]$/.test(k)});
+  out.push('<div class="jl"><span>'+pad+(key!=null?'<span class="jk">"'+esc(key)+'"</span>: ':"")+(isArr?"[":"{")+"</span></div>");
+  var kids=isArr?keys.sort(function(a,b){return +a.slice(1,-1)-(+b.slice(1,-1))}).map(function(k){return ["",node[k]]}):keys.map(function(k){return [k,node[k]]});
+  kids.forEach(function(kv,i){
+    var k=kv[0],v=kv[1],last=i===kids.length-1,comma=last?"":",";
+    if(v.__f){
+      var f=v.__f,val=outVal(f),vis=!staticHidden(f)?ruleVisible(f):true,off=!vis;
+      var cls="jl leaf"+(state.sel===f.id?" sel":"")+(val==null?" empty":"")+(off?" off":"");
+      out.push('<div class="'+cls+'" data-f="'+f.id+'"><span>'+"  ".repeat(ind+1)+'<span class="jk">"'+esc(k)+'"</span>: <span class="jv">'+(val==null?"null":val)+"</span>"+comma+'</span><span class="jc">'+esc(f.label)+(f.soloJSON?" · lo manda el sistema":"")+(off?" · no se emite: la pregunta está escondida":"")+"</span></div>");
+    }else if(k===""){treeLines(v,ind+1,out,last,null)}
+    else treeLines(v,ind+1,out,last,k);
+  });
+  out.push('<div class="jl"><span>'+pad+(isArr?"]":"}")+(isLast?"":",")+"</span></div>");
+}
+function hasPath(obj,route){
+  var parts=route.replace(/\[\]/g,"").split(".").filter(Boolean),n=obj;
+  for(var i=0;i<parts.length;i++){if(Array.isArray(n))n=n[0];if(n==null||typeof n!=="object"||!(parts[i] in n))return false;n=n[parts[i]]}
+  return true;
+}
+function renderJson(){
+  var h='<div class="tools"><div class="seg"><button type="button" data-jm="vivo" aria-pressed="'+(state.jsonMode==="vivo")+'">Con tus respuestas</button><button type="button" data-jm="ejemplo" aria-pressed="'+(state.jsonMode==="ejemplo")+'">Ejemplo del INS (hoja JSON Generado)</button></div>'+
+    '<span>'+(state.jsonMode==="vivo"?"Se arma con lo que respondiste en Formulario. Lo tachado es de preguntas que las reglas esconden.":"Tal cual lo manda el INS en la ficha.")+"</span></div>";
+  if(state.jsonMode==="ejemplo"){
+    return h+(state.ejemplo?'<div class="jsonbox"><div class="jl">'+esc(JSON.stringify(state.ejemplo,null,2)).split("\n").join('</div><div class="jl">')+"</div></div>":'<div class="err">Esta ficha no trae la hoja «JSON Generado», o no se pudo leer como JSON.</div>');
+  }
+  if(state.ejemplo){
+    var miss=state.fields.filter(function(f){return !hasPath(state.ejemplo,f.ruta)});
+    if(miss.length){var m={};miss.forEach(function(f){var k=shortRoute(f.ruta).replace(/\.[^.]+$/,"");m[k]=(m[k]||0)+1});
+      h+='<div class="info" style="margin-bottom:10px"><b>'+miss.length+" rutas que la ficha declara y el ejemplo del INS no trae</b>, por nodo: "+Object.keys(m).map(function(k){return "<code>"+esc(k)+"</code> ("+m[k]+")"}).join(", ")+". Consultar con Alejandro si esos nodos aplican a este formulario.</div>"}
+  }
+  var out=[];treeLines(buildTree(),0,out,true,null);
+  return h+'<div class="jsonbox">'+out.join("")+"</div>";
+}
+
+/* ============ reglas ============ */
+function renderReglas(){
+  var rows=[];
+  state.fields.forEach(function(f){f.reglas.forEach(function(r){rows.push({f:f,r:r})})});
+  var prop=0,conf=0,sin=0;
+  var body=rows.map(function(x){
+    var c=condOf(x.f),t=low(x.r.regla),own=/(solo se (visualiza|despliega|habilita)|se (visualiza|despliega) solo|solo es obligatorio)/.test(t);
+    var gov=state.fields.filter(function(d){var dc=condOf(d);return dc&&dc.conditions.some(function(k){return k.ruta===x.f.ruta&&low(k.value)===low(x.r.valor)})}).length;
+    var st,showC=own&&c;
+    if(own&&c&&c.status==="conf"){st='<span class="b ok">Confirmada</span>';conf++}
+    else if(own&&c){st='<span class="b warn">Propuesta</span>';prop++}
+    else if(!own&&gov){st='<span class="b warn">Propuesta</span>';prop++}
+    else if(state.secHide[x.f.hoja+"|"+x.f.seccion]&&/presentar/.test(t)){st='<span class="b warn">Sección oculta</span>';prop++}
+    else if(/no debe desplegar|contin[uú]a/.test(t)){st='<span class="b">Se cumple sola</span>'}
+    else if(/\bsi\b|despliega|pintar/.test(t)){st='<span class="b" style="background:var(--bad-soft);color:var(--bad)">Sin traducir</span>';sin++}
+    else st='<span class="b">Informativa</span>';
+    return '<tr class="click'+(state.sel===x.f.id?" sel":"")+'" data-f="'+x.f.id+'"><td>'+esc(x.f.seccion)+"</td><td>"+esc(x.f.label)+"</td><td>"+esc(x.r.valor||"—")+"</td><td>"+esc(x.r.regla)+"</td><td>"+st+(showC?'<div class="note" style="margin-top:3px">Aparece si '+condText(c)+"</div>":"")+(gov?'<div class="note" style="margin-top:3px">Muestra '+gov+" pregunta"+(gov>1?"s":"")+"</div>":"")+"</td></tr>";
+  }).join("");
+  var h='<div class="tools"><span>'+rows.length+" reglas en la columna G. "+prop+" propuestas automáticas para revisar, "+conf+" confirmadas, "+sin+" sin traducir.</span></div>";
+  return h+'<div class="list"><table><thead><tr><th>Sección</th><th>Pregunta</th><th>Si responde</th><th>Regla de la ficha</th><th>Cómo quedó</th></tr></thead><tbody>'+body+"</tbody></table></div>";
+}
+
+/* ============ tabla ============ */
+function renderTabla(){
+  var h='<div class="tools"><input type="search" id="q" placeholder="Buscar pregunta, ruta, hoja, fila o casillero" value="'+esc(state.q)+'"><span>Todas las hojas de la ficha juntas, un campo por fila.</span></div>';
+  h+='<div class="list"><table><thead><tr><th>Hoja · fila</th><th>Sección</th><th>Pregunta</th><th>Tipo</th><th>Ancho</th><th>Condición</th><th>PDF</th><th>Ruta JSON</th></tr></thead><tbody>';
+  state.fields.forEach(function(f){
+    if(!matchQ(f)) return;
+    var c=condOf(f);
+    var pm=state.main?pdfMapOf(f):null,pdfc=pm?[pm.sn].concat(Object.keys(pm.opts).map(function(o){return pm.opts[o]})).filter(Boolean):[],pg=pdfPages(f);
+    h+='<tr class="click'+(state.sel===f.id?" sel":"")+'" data-f="'+f.id+'"><td>'+esc(f.hoja)+'<div class="note">'+esc(filasTxt(f))+"</div></td><td>"+esc(f.seccion)+"</td><td>"+esc(f.label)+"</td><td>"+esc(TLABEL[widgetOf(f)])+'</td><td class="mono">'+WLABEL[widthOf(f).w]+"</td><td>"+(c?condText(c):staticHidden(f)?"oculto":"—")+'</td><td class="mono">'+(pdfc.length?esc(pdfc.join(", "))+'<div class="note">pág. '+pg.join(", ")+"</div>":"—")+'</td><td class="mono">'+esc(shortRoute(f.ruta))+"</td></tr>";
+  });
+  return h+"</tbody></table></div>";
+}
+
+/* ============ inspector ============ */
+function snippet(f){var ctx=exportCtx();var r=sfFields(f,ctx);return JSON.stringify(r.length===1?r[0]:r,null,2)}
+function rawRowsHtml(f){
+  var H=HEADERS[f.hoja]||[],L="ABCDEFGHIJKLMN";
+  return (f.rawRows||[]).map(function(c,i){return '<table class="rawt"><caption>Fila '+f.filas[i]+'</caption>'+c.map(function(v,j){if(norm(v)==="")return "";return "<tr><th>"+L[j]+" · "+esc(norm(H[j]||""))+"</th><td>"+esc(v)+"</td></tr>"}).join("")+"</table>"}).join("");
+}
+function renderInsp(){
+  if(state.tab==="acro"&&state.acro){renderWidgetInsp();return}
+  var el=document.getElementById("insp"),f=state.byId[state.sel];
+  var nOv=Object.keys(state.ov.w).length+Object.keys(state.ov.t).length+Object.keys(state.ov.c).length+(state.ov.layout?1:0)+Object.keys(state.ov.secNames||{}).length,nPd=Object.keys(state.predet.w).length+Object.keys(state.predet.t).length;
+  var nCl=Object.keys(state.predet.clases).length;
+  var foot='<div class="blk"><div class="note">Tus decisiones: '+nOv+" en esta ficha · "+(nPd+nCl)+' ajustes para todas las fichas.</div><div class="save" id="saveState">'+saveStateHtml()+'</div>'+
+    '<div class="save" id="expState">'+expStateHtml()+'</div>'+
+    '<div class="row"><button class="btn sm" type="button" id="decOut">Bajar mis decisiones (.json)</button><label class="btn sm" for="decIn">Cargar decisiones</label><input id="decIn" type="file" accept=".json" hidden></div>'+
+    '<div class="row">'+(nOv?'<button class="btn sm" type="button" id="btnReset">Deshacer las de esta ficha</button>':"")+"</div>"+
+    '<textarea class="out" id="exportOut" hidden readonly></textarea></div>';
+  if(!f){el.innerHTML='<h3>Campo</h3><p class="empty">Tocá el título de una pregunta para ver qué dice la ficha y cambiarle tipo, ancho o condición.</p>'+foot;bindInsp(null);return}
+  var w=widthOf(f),wt=widgetOf(f),c=condOf(f);
+  var ctrls=state.fields.filter(function(x){return x!==f&&isCtrl(x)});
+  var condEd='';
+  if(c&&c.conditions.length){
+    condEd+='<div class="ce">'+c.conditions.map(function(x,i){
+      var ctrl=state.byRuta["*|"+x.ruta];
+      return '<div class="row"><select data-cc="'+i+'">'+ctrlOptionsHtml(x.ruta,f)+'</select>'+
+        valueCtlHtml(ctrl,x.value,'data-cv="'+i+'" class="map-in" style="flex:1;font-family:var(--f-body)"')+'<button class="x" type="button" data-cx="'+i+'" aria-label="Quitar condición">×</button></div>';
+    }).join("")+
+    '<div class="row">'+(c.conditions.length>1?'<span class="note">Se cumple con</span><div class="seg"><button type="button" data-lg="or" aria-pressed="'+(c.logic!=="and")+'">cualquiera</button><button type="button" data-lg="and" aria-pressed="'+(c.logic==="and")+'">todas</button></div>':"")+
+    '<label class="note" style="display:flex;gap:5px;align-items:center"><input type="checkbox" id="cReq"'+(c.required?" checked":"")+'> obligatoria cuando aparece</label></div></div>';
+  }
+  var rg=f.reglas.length?'<div class="blk"><div class="t">Lo que dice la ficha (col G)</div>'+f.reglas.map(function(r){return '<div class="rtext">'+(r.valor?"<b>"+esc(r.valor)+"</b> → ":"")+esc(r.regla)+"</div>"}).join("")+"</div>":"";
+  var cfEd="";
+  if(f.custom){var cc=(state.ov.cf||[]).filter(function(x){return x.cid===f.cid})[0]||{};
+    cfEd='<div class="blk"><div class="t">Campo agregado por vos</div>'+
+      '<label class="note">Texto de la pregunta</label><input class="map-in" style="font-family:var(--f-body)" id="cfLabel" value="'+esc(cc.label||"")+'">'+
+      '<label class="note">Ruta en el JSON (vacía = no sale en el JSON, solo pinta o ayuda)</label><input class="map-in" id="cfRuta" value="'+esc(cc.ruta||"")+'" placeholder="datosFormulario.personas[].algo">'+
+      '<label class="note">Opciones (para select o radio), separadas por coma</label><input class="map-in" style="font-family:var(--f-body)" id="cfOpts" value="'+esc((cc.options||[]).join(", "))+'" placeholder="Sí, No">'+
+      '<label class="note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="cfReq"'+(cc.required?" checked":"")+'> Obligatorio</label>'+
+      '<div class="row"><button class="btn sm" type="button" id="cfDel">Borrar este campo</button></div></div>'}
+  el.innerHTML='<h3>'+esc(f.label)+'</h3>'+cfEd+rg+
+    acroInspHtml(f)+
+    '<div class="blk"><div class="t">Tipo de campo</div><div class="chips types">'+TYPES.map(function(t){return '<button type="button" data-t="'+t[0]+'" aria-pressed="'+(wt===t[0])+'">'+t[1]+"</button>"}).join("")+
+    '</div><div class="src">'+esc(typeSrc(f))+'</div><div class="row"><button class="btn sm" type="button" id="btnPT">Usar «'+esc(TLABEL[wt])+'» siempre para «'+esc(f.leaf)+'»</button></div></div>'+
+    '<div class="blk"><div class="t">Ancho</div><div class="chips">'+WIDTHS.map(function(x){return '<button type="button" data-w="'+x+'" aria-pressed="'+(w.w===x)+'">'+WLABEL[x]+"</button>"}).join("")+
+    '</div><div class="src">'+esc(w.src)+'</div><div class="row"><button class="btn sm" type="button" id="btnPW">Usar '+WLABEL[w.w]+' siempre para «'+esc(f.leaf)+'»</button></div></div>'+
+    '<div class="blk"><div class="t">Cuándo aparece</div><label class="note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="fHide"'+(state.ov.hide[key(f)]?" checked":"")+'> Ocultar siempre este campo</label>'+(c?'<div class="note">'+(c.status==="prop"?"Propuesta a partir de: "+esc((c.src||[]).join(", ")):"Confirmada por vos")+"</div>":'<div class="note">Siempre visible.</div>')+condEd+
+    '<div class="row">'+(c&&c.status==="prop"?'<button class="btn sm primary" type="button" id="cOk">Confirmar</button>':"")+'<button class="btn sm" type="button" id="cAdd">Agregar condición</button>'+(c?'<button class="btn sm" type="button" id="cDel">Siempre visible</button>':"")+"</div></div>"+
+    '<div class="blk"><div class="t">Dónde está</div><div class="where"><span>Ficha: hoja <b>'+esc(f.hoja)+"</b>, "+esc(filasTxt(f))+"</span>"+(state.main?"<span>PDF: "+(pdfPages(f).length?"pág. <b>"+pdfPages(f).join(", ")+"</b>":"sin casillero")+"</span>":"<span>PDF: cargá el main para verlo</span>")+'</div>'+
+      (function(){var ws=widgetsFor(f);return ws.length?'<div class="where"><span>PDF crudo: '+ws.map(function(w){return "<b>#"+w.idx+"</b> "+esc(w.name)+" → "+esc(finalNames()[w.key]||"")+" (pág. "+w.page+")"}).join("<br>")+"</span></div>":""})()+
+    '<details class="raw"><summary>Ver las filas tal cual están en la ficha</summary><div class="rawwrap">'+rawRowsHtml(f)+'</div></details></div>'+
+    '<div class="blk"><div class="t">Sección</div><div class="row"><select class="map-in" id="fSec" style="flex:1;font-family:var(--f-body)">'+allSections().map(function(x){return '<option value="'+esc(x.key)+'"'+(x.key===fieldSecKey(f)?" selected":"")+">"+esc(x.label)+"</option>"}).join("")+'</select><button class="ob" type="button" id="fUp" aria-label="Subir campo">↑</button><button class="ob" type="button" id="fDn" aria-label="Bajar campo">↓</button></div></div>'+
+    (state.main?'<div class="blk"><div class="t">Casillero del PDF</div>'+pdfEditor(f)+"</div>":"")+
+    '<div class="blk"><div class="t">Así iría en Signframe</div><pre class="snip">'+esc(snippet(f))+'</pre>'+(wt==="radio"?'<div class="note">En Signframe cada opción del radio es un campo, unidos por radioGroupFields.</div>':"")+"</div>"+
+    '<dl class="kv"><dt>Hoja</dt><dd>'+esc(f.hoja)+'</dd><dt>Paso</dt><dd>'+esc(f.paso)+'</dd><dt>Sección</dt><dd>'+esc(f.seccion)+'</dd><dt>En el PDF</dt><dd>'+esc(f.pdf||"—")+
+    '</dd><dt>Tipo (col E)</dt><dd>'+esc(f.tipo||"—")+'</dd><dt>Valores</dt><dd>'+esc(f.valores.filter(Boolean).join(" · ")||"—")+'</dd><dt>Obligatorio</dt><dd>'+esc(f.oblig||"—")+
+    '</dd><dt>Visualización</dt><dd>'+esc(f.visual||"—")+'</dd><dt>Observ.</dt><dd>'+esc(f.obs||"—")+'</dd><dt>Ruta JSON</dt><dd class="mono">'+esc(f.ruta)+'</dd><dt>Nombre PDF</dt><dd class="mono">'+esc(f.sourceNames.join(", ")||"— (col N vacía)")+"</dd></dl>"+foot;
+  bindInsp(f);
+}
+function editCond(f,fn){
+  var c=condOf(f),base=c?{logic:c.logic,required:!!c.required,conditions:c.conditions.map(function(x){return {ruta:x.ruta,value:x.value}})}:{logic:"or",required:false,conditions:[]};
+  fn(base);
+  state.ov.c[key(f)]=base.conditions.length?base:null;saveOv();render();
+}
+function bindInsp(f){
+  var el=document.getElementById("insp");
+  function q(s){return el.querySelector(s)}
+  if(f){
+    el.querySelectorAll("[data-w]").forEach(function(b){b.onclick=function(){state.ov.w[key(f)]=b.getAttribute("data-w");saveOv();render()}});
+    el.querySelectorAll("[data-t]").forEach(function(b){b.onclick=function(){state.ov.t[key(f)]=b.getAttribute("data-t");saveOv();render()}});
+    q("#btnPW").onclick=function(){state.predet.w[f.leaf]=widthOf(f).w;delete state.ov.w[key(f)];savePredet();saveOv();render()};
+    q("#btnPT").onclick=function(){state.predet.t[f.leaf]=widgetOf(f);delete state.ov.t[key(f)];savePredet();saveOv();render()};
+    var ok=q("#cOk");if(ok)ok.onclick=function(){editCond(f,function(){})};
+    var del=q("#cDel");if(del)del.onclick=function(){state.ov.c[key(f)]=null;saveOv();render()};
+    el.querySelectorAll("[data-arm]").forEach(function(b){b.onclick=function(){state.armed={fk:key(f),opt:b.getAttribute("data-arm")};state.tab="acro";state.split=true;state._scrollArmed=true;render()}});
+    el.querySelectorAll("[data-addw]").forEach(function(inp){inp.onchange=function(){var k=norm(inp.value),w=state.acro&&state.acro.widgets.filter(function(x){return x.key===k})[0];
+      if(!w){inp.setCustomValidity("Ese casillero no está en el PDF cargado");inp.reportValidity();return}assignWidget(k,key(f),inp.getAttribute("data-addw"),false)}});
+    el.querySelectorAll("[data-un]").forEach(function(x){x.onclick=function(){state.ov.acro[x.getAttribute("data-un")]={fk:null};state._autoAcro=null;saveOv();render()}});
+    if(f.custom){
+      var upd=function(fn){var cc=state.ov.cf.filter(function(x){return x.cid===f.cid})[0];if(!cc)return;fn(cc);rebuildFields();state.sel=f.id;saveOv();render()};
+      q("#cfLabel").onchange=function(){var v=norm(this.value);upd(function(c){c.label=v||"Campo nuevo"})};
+      q("#cfRuta").onchange=function(){var v=norm(this.value).replace(/\s+/g,"");upd(function(c){c.ruta=v})};
+      q("#cfOpts").onchange=function(){var v=this.value.split(",").map(norm).filter(Boolean);upd(function(c){c.options=v;if(v.length&&c.type==="text")c.type="select"})};
+      q("#cfReq").onchange=function(){var v=this.checked;upd(function(c){c.required=v})};
+      q("#cfDel").onclick=function(){state.ov.cf=state.ov.cf.filter(function(x){return x.cid!==f.cid});delete state.ov.fsec["manual|"+f.cid];state.sel=null;rebuildFields();saveOv();render()};
+    }
+    var hb=q("#fHide");if(hb)hb.onchange=function(){if(hb.checked)state.ov.hide[key(f)]=true;else delete state.ov.hide[key(f)];saveOv();render()};
+    q("#cAdd").onclick=function(){editCond(f,function(b){var prev=state.fields.filter(function(x){return x.order<f.order&&isCtrl(x)}).pop()||state.fields.filter(isCtrl)[0];if(prev)b.conditions.push({ruta:refOf(prev),value:optsOf(prev)[0]||""})})};
+    el.querySelectorAll("[data-cc]").forEach(function(s){s.onchange=function(){var i=+s.getAttribute("data-cc");editCond(f,function(b){var ctrl=state.byRuta["*|"+s.value];b.conditions[i]={ruta:s.value,value:ctrl&&isCtrl(ctrl)&&optsOf(ctrl).length?optsOf(ctrl)[0]:""}})}});
+    el.querySelectorAll("[data-cv]").forEach(function(s){s.onchange=function(){var i=+s.getAttribute("data-cv");editCond(f,function(b){b.conditions[i].value=s.value})}});
+    el.querySelectorAll("[data-cx]").forEach(function(s){s.onclick=function(){var i=+s.getAttribute("data-cx");editCond(f,function(b){b.conditions.splice(i,1)})}});
+    el.querySelectorAll("[data-lg]").forEach(function(s){s.onclick=function(){editCond(f,function(b){b.logic=s.getAttribute("data-lg")})}});
+    var fs=q("#fSec");if(fs)fs.onchange=function(){var k=fs.value;if(k===secKeyOf(f,true))delete state.ov.fsec[key(f)];else state.ov.fsec[key(f)]=k;delete state.ov.forder[key(f)];saveOv();render()};
+    q("#fUp").onclick=function(){moveField(f,-1)};q("#fDn").onclick=function(){moveField(f,1)};
+    bindPdfInputs(el);
+    var rq=q("#cReq");if(rq)rq.onchange=function(){editCond(f,function(b){b.required=rq.checked})};
+  }
+  var dOut=q("#decOut");if(dOut)dOut.onclick=function(){
+    var txt=JSON.stringify({tipo:"decisiones-visor-fichas",ficha:state.file,ov:state.ov,predeterminados:state.predet,guardado:new Date().toISOString()},null,2),name="decisiones_"+state.file.replace(/\.xlsx?$/i,"")+".json";
+    if(DL)DL.save({filename:name,data:txt}).catch(function(){});else plainDownload(name,txt,"application/json")};
+  var dIn=q("#decIn");if(dIn)dIn.onchange=function(){var fl=dIn.files[0];if(!fl)return;var fr=new FileReader();fr.onload=function(){
+    try{var d=JSON.parse(fr.result);if(d.tipo!=="decisiones-visor-fichas")throw new Error("No es un archivo de decisiones del visor");
+      state.ov=normOv(d.ov);if(d.predeterminados){state.predet={w:d.predeterminados.w||{},t:d.predeterminados.t||{},clases:d.predeterminados.clases||{}};savePredet()}
+      rebuildFields();saveOv();render()}catch(e){showErr("No pude cargar las decisiones: "+e.message)}};fr.readAsText(fl)};
+  var r=q("#btnReset");if(r)r.onclick=function(){state.ov=normOv(null);saveOv();render()};
+  var e=q("#btnExport");
+  if(e)e.onclick=function(){
+    var data={ficha:state.file,predeterminados:state.predet,estructura:groups().map(function(p){return {paso:p.name,secciones:p.secs.map(function(x){return {nombre:x.name,oculta:x.key===SIS||!!state.secHide[x.key],campos:x.items.filter(function(i){return i.kind==="f"}).map(function(i){return sfId(i.f)})}})}}),campos:state.fields.map(function(x){return JSON.parse(snippet(x))})};
+    var txt=JSON.stringify(data,null,2),out=q("#exportOut");
+    out.value=txt;out.hidden=false;
+    function sel(){out.focus();out.select();e.textContent="Seleccionado: copialo con Ctrl+C"}
+    try{navigator.clipboard.writeText(txt).then(function(){e.textContent="Copiado"},sel)}catch(err){sel()}
+  };
+}
+
+/* ============ main de Signframe: carga y cruce ============ */
+function toks(s){return String(s||"").replace(/([a-z])([A-Z])/g,"$1 $2").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").split(/[^a-z0-9ñ]+/).filter(function(w){return w.length>=2&&!/^\d+$/.test(w)})}
+var GENERIC={codigo:1,indicador:1,descripcion:1,de:1,la:1,el:1,del:1,los:1,las:1,en:1,su:1};
+function stems(list){var o={};list.forEach(function(w){o[w.slice(0,5)]=1});return o}
+function normSn(sn){return String(sn||"").toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"")}
+function parseMain(obj,file){
+  var root=obj&&obj.generatedDefinition?obj.generatedDefinition:obj,out=[],seen={};
+  function walkF(fl){(fl||[]).forEach(function(x){
+    if(x&&x.sourceMeta&&x.sourceMeta.sourceName&&!seen[x.sourceMeta.sourceName]){seen[x.sourceMeta.sourceName]=1;
+      out.push({sn:x.sourceMeta.sourceName,id:x.id,type:x.type,label:x.label,page:x.sourceMeta.page||1,raw:x})}
+    if(x&&x.repeaterConfig){walkF(x.repeaterConfig.fields);if(x.repeaterConfig.child)walkF(x.repeaterConfig.child.fields)}
+  })}
+  function walkS(ss){(ss||[]).forEach(function(sec){walkF(sec.fields);walkS(sec.subsections)})}
+  walkS(root&&root.sections);
+  if(!out.length) throw new Error("No encontré campos con sourceMeta.sourceName. ¿Es el JSON que baja Signframe después de importar el PDF?");
+  out.sort(function(a,b){var ra=a.raw.sourceMeta.rect||{},rb=b.raw.sourceMeta.rect||{};return (a.page-b.page)||((rb.Y||rb.y||0)-(ra.Y||ra.y||0))||((ra.X||ra.x||0)-(rb.X||rb.x||0))});
+  return {file:file,fields:out,sourcePdf:root._sourcePdf||null};
+}
+function mainBySn(){var m={};(state.main?state.main.fields:[]).forEach(function(x){m[x.sn]=x});return m}
+function autoPdf(){
+  if(!state.main) return {};
+  if(state._autoPdfFor===state.main&&state._autoPdfOv===state.fields) return state._autoPdf;
+  var res={},used={},M=state.main.fields;
+  var st=M.map(function(x){return {x:x,s:stems(toks(x.sn))}});
+  function cands(base,extra){return st.filter(function(e){return base.every(function(w){return e.s[w.slice(0,5)]})&&(!extra||e.s[extra.slice(0,5)])})}
+  state.fields.forEach(function(f){
+    var r={sn:null,opts:{},status:null},an=acroNamesFor(f),inM=function(n){return M.some(function(x){return x.sn===n})};
+    var col=f.sourceNames.concat(an.whole).filter(inM);
+    Object.keys(an.opts).forEach(function(o){if(inM(an.opts[o])){r.opts[o]=an.opts[o];r.status="colN"}});
+    if(col.length){r.sn=col[0];r.status="colN"}
+    if(r.status){res[key(f)]=r;return}
+    if(f.soloJSON) return;
+    var base=toks(f.leaf).filter(function(w){return !GENERIC[w]});
+    if(!base.length) return;
+    var opts=isCtrl(f)&&widgetOf(f)!=="checkbox"?optsOf(f):[];
+    if(opts.length&&!f.catalogo){
+      opts.forEach(function(o){var ot=toks(o)[0];if(!ot)return;var c=cands(base,ot);if(c.length===1){r.opts[o]=c[0].x.sn;r.status="prop"}});
+    }else{
+      var c=cands(base).filter(function(e){return !opts.length});
+      if(c.length===1){r.sn=c[0].x.sn;r.status="prop"}
+    }
+    if(r.status) res[key(f)]=r;
+  });
+  state._autoPdf=res;state._autoPdfFor=state.main;state._autoPdfOv=state.fields;
+  return res;
+}
+function pdfMapOf(f){
+  var o=state.ov.pdf[key(f)];
+  if(o) return {sn:o.sn||null,opts:Object.assign({},o.opts||{}),status:"conf"};
+  var a=autoPdf()[key(f)];
+  return a?{sn:a.sn,opts:Object.assign({},a.opts),status:a.status}:{sn:null,opts:{},status:null};
+}
+function setPdf(f,fn){var m=pdfMapOf(f),b={sn:m.sn,opts:m.opts};fn(b);state.ov.pdf[key(f)]=b;saveOv();render()}
+function usedSns(){var u={};state.fields.forEach(function(f){var m=pdfMapOf(f);if(m.sn)u[m.sn]=f;Object.keys(m.opts).forEach(function(o){if(m.opts[o])u[m.opts[o]]=f})});return u}
+function pdfEditor(f){
+  var m=pdfMapOf(f),opts=slotsOf(f,true),cls=m.status==="prop"?" prop":m.sn||Object.keys(m.opts).length?" ok":"";
+  var h='<div class="note">'+(m.status==="colN"?"Sale de la columna N de la ficha.":m.status==="prop"?"Propuesta por nombre: confirmala o cambiala.":m.status==="conf"?"Asignado por vos.":"Escribí o elegí el nombre del casillero.")+"</div>";
+  h+='<input class="map-in'+cls+'" list="snList" data-pm="'+f.id+'" data-po="" value="'+esc(m.sn||"")+'" placeholder="Casillero para todo el campo">';
+  if(opts.length){h+='<div class="note">o un casillero por opción o parte:</div>'+opts.map(function(o){return '<div class="row"><span class="note" style="width:90px">'+esc(slotLabel(o))+'</span><input class="map-in'+cls+'" style="flex:1" list="snList" data-pm="'+f.id+'" data-po="'+esc(o)+'" value="'+esc(m.opts[o]||"")+'"></div>'}).join("")}
+  if(m.status==="prop")h+='<div class="row"><button class="btn sm primary" type="button" data-pok="'+f.id+'">Confirmar</button></div>';
+  return h;
+}
+function bindPdfInputs(root){
+  root.querySelectorAll("[data-pm]").forEach(function(inp){inp.onchange=function(){
+    var f=state.byId[inp.getAttribute("data-pm")],o=inp.getAttribute("data-po"),v=norm(inp.value),M=mainBySn();
+    if(v&&!M[v]){inp.setCustomValidity("Ese nombre no está en el main");inp.reportValidity();return}
+    setPdf(f,function(b){if(o)b.opts[o]=v||null;else b.sn=v||null})}});
+  root.querySelectorAll("[data-pok]").forEach(function(b){b.onclick=function(){setPdf(state.byId[b.getAttribute("data-pok")],function(){})}});
+}
+function snDatalist(){return '<datalist id="snList">'+(state.main?state.main.fields:[]).map(function(x){return '<option value="'+esc(x.sn)+'">'+esc("pág. "+x.page+" · "+(x.type||""))+"</option>"}).join("")+"</datalist>"}
+function renderPdf(){
+  var h='<div class="tools"><label class="btn sm primary" for="mainIn">Cargar main (.json)</label><input id="mainIn" type="file" accept=".json,application/json" hidden>'+
+    (state.main?'<span>Main: <code>'+esc(state.main.file)+"</code> · "+state.main.fields.length+" casilleros"+(state.main.fromStore?" (recuperado de lo guardado)":"")+"</span>":"<span>Cargá el JSON que baja Signframe después de importar el PDF renombrado.</span>")+"</div>";
+  if(!state.main) return h+'<div class="info">Cada pregunta de la ficha se cruza con un casillero del PDF: primero por la columna N, después por nombre (solo cuando hay un único candidato claro). Lo que no se puede asignar con seguridad queda vacío para que lo elijas vos: un campo sin asignar es mejor que uno mal asignado.</div>';
+  var used=usedSns(),M=state.main.fields,props=0,asig=0,sin=0;
+  var rows=state.fields.filter(function(f){return !f.soloJSON}).map(function(f){
+    var m=pdfMapOf(f),opts=slotsOf(f,!!m.opts["@copia"]),has=m.sn||Object.keys(m.opts).some(function(o){return m.opts[o]});
+    if(m.status==="prop")props++;if(has)asig++;else sin++;
+    var st=m.status==="colN"?'<span class="b ok">Col N</span>':m.status==="prop"?'<span class="b warn">Propuesta</span>':m.status==="conf"?'<span class="b ok">Confirmado</span>':'<span class="b">—</span>';
+    var cls=m.status==="prop"?" prop":has?" ok":"";
+    var r='<tr class="click'+(state.sel===f.id?" sel":"")+'" data-f="'+f.id+'"><td>'+esc(f.label)+'<div class="note">'+esc(f.seccion)+'</div></td><td><input class="map-in'+cls+'" list="snList" data-pm="'+f.id+'" data-po="" value="'+esc(m.sn||"")+'" placeholder="'+(opts.length?"(o por opción abajo)":"— sin casillero —")+'"></td><td>'+st+(m.status==="prop"?' <button class="btn sm" type="button" data-pok="'+f.id+'">Confirmar</button>':"")+"</td></tr>";
+    opts.forEach(function(o){r+='<tr class="opt"><td>↳ '+esc(slotLabel(o))+'</td><td><input class="map-in'+cls+'" list="snList" data-pm="'+f.id+'" data-po="'+esc(o)+'" value="'+esc(m.opts[o]||"")+'"></td><td></td></tr>'});
+    return r;
+  }).join("");
+  var libres=M.filter(function(x){return !used[x.sn]});
+  h+='<div class="stats" style="margin-bottom:10px"><div class="stat"><b>'+asig+'</b><span>preguntas con casillero</span></div><div class="stat"><b>'+props+'</b><span>propuestas por confirmar</span></div><div class="stat"><b>'+sin+'</b><span>sin casillero</span></div><div class="stat"><b>'+libres.length+'</b><span>casilleros del PDF sin usar</span></div></div>';
+  if(props)h+='<div class="tools"><button class="btn sm primary" type="button" id="pAll">Confirmar las '+props+' propuestas</button></div>';
+  h+=snDatalist()+'<div class="list"><table><thead><tr><th>Pregunta de la ficha</th><th>Casillero del PDF (sourceName)</th><th>Estado</th></tr></thead><tbody>'+rows+"</tbody></table></div>";
+  h+='<h3 style="margin:18px 0 8px">Casilleros del PDF sin usar</h3><div class="note" style="margin-bottom:8px">Van al form-def ocultos, con su id y sourceMeta intactos, así no se pierde nada del PDF.</div><div class="list"><table><thead><tr><th>sourceName</th><th>Tipo</th><th>Pág.</th></tr></thead><tbody>'+
+    libres.map(function(x){return '<tr><td class="mono">'+esc(x.sn)+"</td><td>"+esc(x.type||"")+"</td><td>"+x.page+"</td></tr>"}).join("")+"</tbody></table></div>";
+  return h;
+}
+function bindPdf(v){
+  var mi=document.getElementById("mainIn");
+  if(mi)mi.onchange=function(){var file=mi.files[0];if(!file)return;var fr=new FileReader();fr.onload=function(){
+    try{state.main=parseMain(JSON.parse(fr.result),file.name);state._autoPdf=null;document.getElementById("error").hidden=true;
+      if(DB){var body={file:file.name,fields:state.main.fields.map(function(x){return {sn:x.sn,id:x.id,type:x.type,label:x.label,page:x.page,raw:x.raw}}),updatedAt:new Date().toISOString()};
+        if(JSON.stringify(body).length<240000)queueWrite(fichaDoc().replace(/^fichas\//,"mains/"),body)}
+      render()}catch(e){showErr("No pude leer el main: "+e.message)}};fr.readAsText(file)};
+  bindPdfInputs(v);
+  var pa=document.getElementById("pAll");if(pa)pa.onclick=function(){state.fields.forEach(function(f){var m=pdfMapOf(f);if(m.status==="prop")state.ov.pdf[key(f)]={sn:m.sn,opts:m.opts}});saveOv();render()};
+}
+
+/* ============ AcroForms del PDF crudo ============ */
+var PREF={personas:"asegurado",datosgenerales:"solicitud",polizamadre:"poliza",intermediario:"intermediario",direccion:"direccion",mediosnotificacion:"notificacion",encabezado:"sistema",datosadicionales:"adicional"};
+function snake(x){return String(x||"").replace(/([a-z0-9])([A-Z])/g,"$1_$2").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"")}
+function prefixFor(f){var h=low(f.hoja).replace(/\s+/g,"");return PREF[h]||(h==="riesgo"?snake(f.seccion):snake(f.hoja))}
+function proposeName(f,opt){var leaf=f.leaf.replace(/^(codigo|indicador|descripcion)(?=[A-Z])/,"");return [prefixFor(f),snake(leaf)||snake(f.leaf),opt?snake(opt):""].filter(Boolean).join("_")}
+function fieldByKey(k){if(!state._fk||state._fkFor!==state.fields){state._fk={};state.fields.forEach(function(f){state._fk[key(f)]=f});state._fkFor=state.fields}return state._fk[k]}
+function nearText(r,texts){
+  var x1=Math.min(r[0],r[2]),x2=Math.max(r[0],r[2]),y1=Math.min(r[1],r[3]),y2=Math.max(r[1],r[3]),mid=(y1+y2)/2,tol=Math.max(7,(y2-y1)*0.8);
+  var line=texts.filter(function(t){return Math.abs(t.y+t.h/2-mid)<tol});
+  var left=line.filter(function(t){return t.x+t.w<=x1+3&&x1-(t.x+t.w)<200}).sort(function(a,b){return (b.x+b.w)-(a.x+a.w)});
+  var right=line.filter(function(t){return t.x>=x2-3&&t.x-x2<60}).sort(function(a,b){return a.x-b.x});
+  var above=texts.filter(function(t){return t.y>y2-1&&t.y-y2<28&&t.x<x2&&t.x+t.w>x1-30}).sort(function(a,b){return a.y-b.y});
+  var label=(left[0]||right[0]||above[0]||{s:""}).s;
+  var q=left.filter(function(t){return t.s.length>8})[0]||texts.filter(function(t){return t.y>y2-1&&t.y-y2<70&&t.s.length>8&&t.x<x2}).sort(function(a,b){return a.y-b.y})[0];
+  return {label:label,question:q?q.s:""};
+}
+function loadPdf(file){
+  if(!window.pdfjsLib){showErr("No se pudo cargar el lector de PDF. Recargá la página.");return}
+  var fr=new FileReader();
+  fr.onload=function(){
+    pdfjsLib.getDocument({data:new Uint8Array(fr.result),isEvalSupported:false}).promise.then(function(doc){
+      var pages=[],widgets=[],cnt={},seq=Promise.resolve();
+      for(var n=1;n<=doc.numPages;n++)(function(n){seq=seq.then(function(){return doc.getPage(n).then(function(pg){
+        var vp=pg.getViewport({scale:1.6}),cv=document.createElement("canvas");cv.width=vp.width;cv.height=vp.height;cv.className="pdfcv";
+        var v=pg.view;pages.push({n:n,W:v[2]-v[0],H:v[3]-v[1],x0:v[0],y0:v[1],canvas:cv});
+        return Promise.all([pg.render({canvasContext:cv.getContext("2d"),viewport:vp}).promise,pg.getAnnotations(),pg.getTextContent()]).then(function(r){
+          var texts=r[2].items.filter(function(t){return norm(t.str)}).map(function(t){return {s:norm(t.str),x:t.transform[4],y:t.transform[5],w:t.width,h:t.height||8}});
+          r[1].forEach(function(a){
+            if(a.subtype!=="Widget"||!a.fieldName)return;
+            var nm=a.fieldName;cnt[nm]=(cnt[nm]||0)+1;
+            var type=a.fieldType==="Btn"?(a.radioButton?"radio":a.pushButton?"botón":"casilla"):a.fieldType==="Tx"?"texto":a.fieldType==="Ch"?"lista":a.fieldType==="Sig"?"firma":(a.fieldType||"?");
+            var nt=nearText(a.rect,texts);
+            widgets.push({key:cnt[nm]>1?nm+"#"+cnt[nm]:nm,name:nm,type:type,page:n,rect:a.rect,opt:a.exportValue||a.buttonValue||"",near:nt.label,question:nt.question});
+          });
+        });
+      })})})(n);
+      return seq.then(function(){
+        widgets.forEach(function(w,i){w.idx=i+1});
+        state.acro={file:file.name,pages:pages,widgets:widgets};state._autoAcro=null;state._names=null;state.selW=null;
+        document.getElementById("error").hidden=true;render();
+      });
+    }).catch(function(e){showErr("No pude leer el PDF: "+e.message)});
+  };
+  fr.readAsArrayBuffer(file);
+}
+function autoAcro(){
+  if(!state.acro)return {};
+  if(state._autoAcro)return state._autoAcro;
+  var res={},taken={},cand=state.fields.filter(function(f){return !f.soloJSON});
+  state.acro.widgets.forEach(function(w){
+    if(state.ov.acro[w.key])return;
+    var check=w.type==="casilla"||w.type==="radio",best=null,bs=0,second=0,opt="";
+    if(check){
+      var nl=low(w.near).replace(/[^a-z]/g,"");
+      cand.filter(function(f){return isCtrl(f)&&!f.catalogo}).forEach(function(f){
+        var o=optsOf(f).filter(function(x){return low(x).replace(/[^a-z]/g,"")===nl})[0];if(!o)return;
+        var fw=words(f.pdf||f.label);if(!fw.length)return;var sc=overlap(fw,words(w.question))/fw.length;
+        if(sc>bs){second=bs;bs=sc;best=f;opt=o}else if(sc>second)second=sc});
+    }else{
+      cand.filter(function(f){return !(isCtrl(f)&&optsOf(f).length&&widgetOf(f)!=="select")}).forEach(function(f){
+        var fw=words(f.pdf||f.label);if(!fw.length)return;var sc=overlap(fw,words(w.near))/fw.length;
+        if(sc>bs){second=bs;bs=sc;best=f}else if(sc>second)second=sc});
+    }
+    if(best&&bs>=0.99&&second<bs){var tk=key(best)+"|"+opt;if(taken[tk]){taken[tk].dup=true;return}res[w.key]={fk:key(best),opt:opt,status:"prop"};taken[tk]=res[w.key]}
+  });
+  Object.keys(res).forEach(function(k){if(res[k].dup)delete res[k]});
+  Object.keys(taken).forEach(function(t){if(taken[t].dup){Object.keys(res).forEach(function(k){if(res[k]===taken[t])delete res[k]})}});
+  state._autoAcro=res;return res;
+}
+function acroOf(w){var o=state.ov.acro[w.key];if(o)return o.fk?Object.assign({status:"conf"},o):null;return autoAcro()[w.key]||null}
+function finalNames(){
+  if(!state.acro)return {};
+  var out={},used={};
+  state.acro.widgets.forEach(function(w){var m=acroOf(w);if(!m)return;var f=fieldByKey(m.fk);if(!f)return;
+    var n=m.nuevo||proposeName(f,m.opt),b=n,i=2;while(used[n])n=b+"_"+(i++);used[n]=1;out[w.key]=n});
+  return out;
+}
+function widgetsFor(f){if(!state.acro)return [];var k=key(f);return state.acro.widgets.filter(function(w){var m=acroOf(w);return m&&m.fk===k})}
+function acroNamesFor(f){var r={whole:[],opts:{}},N=finalNames();widgetsFor(f).forEach(function(w){var m=acroOf(w);if(m.opt)r.opts[m.opt]=N[w.key];else r.whole.push(N[w.key])});return r}
+function fichaOptLabel(f){return f.label+" · "+f.hoja+" "+filasTxt(f)}
+function renderAcro(){
+  var h='<div class="tools"><label class="btn sm primary" for="pdfIn">Cargar PDF (.pdf)</label><input id="pdfIn" type="file" accept=".pdf,application/pdf" hidden>';
+  if(!state.acro)return h+'<span>El PDF crudo del INS o uno ya renombrado.</span></div><div class="info">Se leen todos los AcroForms (también los jerárquicos, tipo Text3.0.0) con su página, posición y el texto impreso al lado. Tocás un casillero y le asignás su pregunta de la ficha; el nombre nuevo se propone solo. Se descarga la ficha con la columna N llena y el paquete de campos para tu programa de renombrado. Las propuestas automáticas solo aparecen cuando el texto del PDF coincide sin dudas con la columna C («Nombre en PDF»).</div>';
+  var W=state.acro.widgets,N=finalNames(),conf=0,prop=0,none=0;
+  W.forEach(function(w){var m=acroOf(w);if(!m)none++;else if(m.status==="prop")prop++;else conf++});
+  var fichaSin=state.fields.filter(function(f){return !f.soloJSON&&!staticHidden(f)&&!widgetsFor(f).length}).length;
+  h+='<span>'+esc(state.acro.file)+" · "+state.acro.pages.length+" págs.</span>"+(prop?'<button class="btn sm primary" type="button" id="aAll">Confirmar las '+prop+" propuestas</button>":"")+
+    '<button class="btn sm" type="button" id="aFicha">Descargar ficha con col N (.xlsx)</button><button class="btn sm" type="button" id="aPack">Descargar paquete de campos (.xlsx)</button></div>'+
+    '<div class="stats" style="margin-bottom:10px"><div class="stat"><b>'+W.length+'</b><span>casilleros en el PDF</span></div><div class="stat"><b>'+conf+'</b><span>asignados</span></div><div class="stat"><b>'+prop+'</b><span>propuestas</span></div><div class="stat"><b>'+none+'</b><span>sin asignar</span></div><div class="stat"><b>'+fichaSin+'</b><span>preguntas visibles sin casillero</span></div></div>'+
+    '<div class="tools"><button class="btn sm'+(state.split?" primary":"")+'" type="button" id="aSplit">'+(state.split?"Ver solo el PDF":"Ver con las preguntas al lado")+'</button><span>'+(state.split?"Arrastrá un casillero del PDF sobre su pregunta (o al revés), o elegí una pregunta y tocá su casillero. Con ↑ ↓ pasás a la siguiente; después de asignar avanza sola.":"Verde: asignado · Amarillo: propuesta · Gris: sin asignar. Tocá un casillero.")+"</span></div>";
+  var ph="";
+  state.acro.pages.forEach(function(pg){
+    ph+='<div class="pdfwrap"><div class="note">Página '+pg.n+'</div><div class="pdfpage" data-pg="'+pg.n+'" style="aspect-ratio:'+pg.W+" / "+pg.H+'">'+
+      W.filter(function(w){return w.page===pg.n}).map(function(w){
+        var r=w.rect,x1=Math.min(r[0],r[2])-pg.x0,x2=Math.max(r[0],r[2])-pg.x0,y1=Math.min(r[1],r[3])-pg.y0,y2=Math.max(r[1],r[3])-pg.y0,m=acroOf(w);
+        var st=!m?"none":m.status==="prop"?"prop":"conf";
+        return '<button type="button" draggable="'+(state.split?"true":"false")+'" class="wbox st-'+st+(state.selW===w.key?" sel":"")+(state.armed&&m&&m.fk===state.armed.fk&&(m.opt||"")===state.armed.opt?" armedw":"")+'" data-w="'+esc(w.key)+'" title="'+esc("#"+w.idx+" "+w.name+(N[w.key]?" → "+N[w.key]:""))+'" style="left:'+(x1/pg.W*100)+"%;top:"+((pg.H-y2)/pg.H*100)+"%;width:"+((x2-x1)/pg.W*100)+"%;height:"+((y2-y1)/pg.H*100)+'%"><span>'+w.idx+"</span></button>";
+      }).join("")+"</div></div>";
+  });
+  h+=state.split?'<div class="split"><div class="tlist" id="tlist">'+targetsHtml()+'</div><div class="pages" style="min-width:0">'+ph+"</div></div>":ph;
+  h+='<div class="list" style="margin-top:14px"><table><thead><tr><th>#</th><th>Pág.</th><th>AcroForm actual</th><th>Tipo</th><th>Texto al lado</th><th>Pregunta de la ficha</th><th>Nombre nuevo</th></tr></thead><tbody>'+
+    W.map(function(w){var m=acroOf(w),f=m?fieldByKey(m.fk):null;return '<tr class="click'+(state.selW===w.key?" sel":"")+'" data-wsel="'+esc(w.key)+'"><td>'+w.idx+"</td><td>"+w.page+'</td><td class="mono">'+esc(w.name)+"</td><td>"+esc(w.type)+"</td><td>"+esc(w.near)+"</td><td>"+(f?esc(f.label)+(m.opt?" → <b>"+esc(slotLabel(m.opt))+"</b>":"")+(m.status==="prop"?' <span class="b warn">propuesta</span>':""):'<span class="note">—</span>')+'</td><td class="mono">'+esc(N[w.key]||"")+"</td></tr>"}).join("")+"</tbody></table></div>";
+  return h;
+}
+function bindAcro(v){
+  var pi=document.getElementById("pdfIn");if(pi)pi.onchange=function(){if(pi.files[0])loadPdf(pi.files[0])};
+  if(!state.acro)return;
+  v.querySelectorAll(".pdfpage").forEach(function(el){var pg=state.acro.pages.filter(function(p){return p.n===+el.getAttribute("data-pg")})[0];if(pg)el.insertBefore(pg.canvas,el.firstChild)});
+  v.querySelectorAll("[data-wsel]").forEach(function(b){b.onclick=function(){state.selW=b.getAttribute("data-wsel");render()}});
+  v.querySelectorAll("[data-w]").forEach(function(b){
+    b.onclick=function(){var k=b.getAttribute("data-w");if(state.split&&state.armed){assignWidget(k,state.armed.fk,state.armed.opt,true)}else{state.selW=k;render()}};
+    b.ondragstart=function(e){e.dataTransfer.setData("text/plain","W\u0001"+b.getAttribute("data-w"));e.dataTransfer.effectAllowed="link"};
+    b.ondragover=function(e){e.preventDefault();b.classList.add("dropok")};b.ondragleave=function(){b.classList.remove("dropok")};
+    b.ondrop=function(e){e.preventDefault();var d=(e.dataTransfer.getData("text/plain")||"").split("\u0001");if(d[0]&&d[0]!=="W")assignWidget(b.getAttribute("data-w"),d[0],d[1]||"",true)};
+  });
+  var sp=document.getElementById("aSplit");if(sp)sp.onclick=function(){state.split=!state.split;render()};
+  v.querySelectorAll("[data-tk]").forEach(function(r){
+    r.onclick=function(e){if(e.target.closest("[data-un]"))return;state.armed={fk:r.getAttribute("data-tk"),opt:r.getAttribute("data-to")};render()};
+    r.ondragstart=function(e){e.dataTransfer.setData("text/plain",r.getAttribute("data-tk")+"\u0001"+r.getAttribute("data-to"));e.dataTransfer.effectAllowed="link"};
+    r.ondragover=function(e){e.preventDefault();r.classList.add("dropok")};r.ondragleave=function(){r.classList.remove("dropok")};
+    r.ondrop=function(e){e.preventDefault();r.classList.remove("dropok");var d=(e.dataTransfer.getData("text/plain")||"").split("\u0001");if(d[0]==="W"&&d[1])assignWidget(d[1],r.getAttribute("data-tk"),r.getAttribute("data-to"),false)};
+  });
+  v.querySelectorAll("[data-un]").forEach(function(x){x.onclick=function(){state.ov.acro[x.getAttribute("data-un")]={fk:null};state._autoAcro=null;saveOv();render()}});
+  var ar=v.querySelector(".trow.armed");if(ar&&state._scrollArmed){ar.scrollIntoView({block:"nearest"});state._scrollArmed=false}
+  var aa=document.getElementById("aAll");if(aa)aa.onclick=function(){state.acro.widgets.forEach(function(w){var m=acroOf(w);if(m&&m.status==="prop")state.ov.acro[w.key]={fk:m.fk,opt:m.opt||""}});state._autoAcro=null;saveOv();render()};
+  document.getElementById("aFicha").onclick=function(){exportFichaN(this)};
+  document.getElementById("aPack").onclick=function(){exportPack(this)};
+}
+/* ---- preguntas como destinos de casilleros ---- */
+var PART_LABEL={"@dia":"Día","@mes":"Mes","@anio":"Año","@copia":"Copia del valor"};
+var PART_CUT={"@dia":[0,2],"@mes":[3,5],"@anio":[6,10]};
+function slotLabel(o){return PART_LABEL[o]||o}
+/* casilleros posibles de un campo: el entero, cada opción, las partes de una fecha y copias */
+function slotsOf(f,withCopy){
+  var t=[];
+  if(isCtrl(f)&&!f.catalogo&&widgetOf(f)!=="checkbox")optsOf(f).forEach(function(o){t.push(o)});
+  if(widgetOf(f)==="date")t.push("@dia","@mes","@anio");
+  if(withCopy||assignedTo(key(f),"@copia").length)t.push("@copia");
+  return t;
+}
+function targetsOf(f){return [{opt:""}].concat(slotsOf(f,false).map(function(o){return {opt:o}}))}
+function flatTargets(){var out=[];groups().forEach(function(p){p.secs.forEach(function(x){x.items.forEach(function(it){if(it.kind!=="f"||it.f.soloJSON)return;targetsOf(it.f).forEach(function(t){out.push({fk:key(it.f),opt:t.opt,f:it.f})})})})});return out}
+function assignedTo(fk,opt){return state.acro?state.acro.widgets.filter(function(w){var m=acroOf(w);return m&&m.fk===fk&&(m.opt||"")===(opt||"")}):[]}
+function assignWidget(wkey,fk,opt,advance){
+  state.ov.acro[wkey]={fk:fk,opt:opt||"",nuevo:null};state._autoAcro=null;state.selW=wkey;
+  if(advance){var T=flatTargets(),i=T.findIndex(function(t){return t.fk===fk&&t.opt===(opt||"")});
+    for(var j=i+1;j<T.length;j++){if(!assignedTo(T[j].fk,T[j].opt).length&&!(T[j].opt===""&&targetsOf(T[j].f).length>1)){state.armed={fk:T[j].fk,opt:T[j].opt};state._scrollArmed=true;break}}}
+  saveOv();render();
+}
+function chipsFor(fk,opt){return assignedTo(fk,opt).map(function(w){var m=acroOf(w);return '<span class="wchip'+(m.status==="prop"?" prop":"")+'">#'+w.idx+" "+esc(w.name)+'<button type="button" data-un="'+esc(w.key)+'" aria-label="Quitar">×</button></span>'}).join("")}
+function targetsHtml(){
+  var h="",last="";
+  flatTargets().forEach(function(t){
+    var sec=t.f.seccion;if(sec!==last){h+='<div class="tsec">'+esc(sec)+"</div>";last=sec}
+    var armed=state.armed&&state.armed.fk===t.fk&&state.armed.opt===t.opt,has=assignedTo(t.fk,t.opt).length;
+    h+='<div class="trow'+(t.opt?" topt":"")+(armed?" armed":"")+(has?" has":"")+'" draggable="true" data-tk="'+esc(t.fk)+'" data-to="'+esc(t.opt)+'" tabindex="0"><span class="tl">'+(t.opt?"↳ "+esc(slotLabel(t.opt)):esc(t.f.label))+'</span><span class="tc">'+chipsFor(t.fk,t.opt)+"</span></div>";
+  });
+  return h;
+}
+document.addEventListener("keydown",function(e){
+  if(state.tab!=="acro"||!state.split||!state.armed||/INPUT|SELECT|TEXTAREA/.test((e.target.tagName||"")))return;
+  if(e.key!=="ArrowDown"&&e.key!=="ArrowUp")return;
+  e.preventDefault();var T=flatTargets(),i=T.findIndex(function(t){return t.fk===state.armed.fk&&t.opt===state.armed.opt}),j=i+(e.key==="ArrowDown"?1:-1);
+  if(T[j]){state.armed={fk:T[j].fk,opt:T[j].opt};state._scrollArmed=true;render()}
+});
+function acroInspHtml(f){
+  if(!state.acro) return '<div class="blk"><div class="t">Casilleros del PDF (AcroForms)</div><div class="note">Cargá el PDF en «AcroForms del PDF» para asignarle casilleros a esta pregunta desde acá.</div></div>';
+  var dl='<datalist id="acroList">'+state.acro.widgets.map(function(w){return '<option value="'+esc(w.key)+'">'+esc("#"+w.idx+" · pág. "+w.page+" · "+w.type+(w.near?" · "+w.near:""))+"</option>"}).join("")+"</datalist>";
+  return '<div class="blk"><div class="t">Casilleros del PDF (AcroForms)</div>'+dl+[{opt:""}].concat(slotsOf(f,true).map(function(o){return {opt:o}})).map(function(t){
+    return '<div class="ce"><div class="row"><b style="font-size:12.5px">'+(t.opt?(t.opt.charAt(0)==="@"?"Parte «"+esc(slotLabel(t.opt))+"»":"Opción «"+esc(t.opt)+"»"):(targetsOf(f).length>1?"Campo entero (si el PDF tiene un solo casillero)":"Casillero"))+'</b><button class="btn sm" type="button" data-arm="'+esc(t.opt)+'" style="margin-left:auto">Marcar en el PDF</button></div>'+
+      '<div class="tc">'+chipsFor(key(f),t.opt)+'</div><input class="map-in" list="acroList" data-addw="'+esc(t.opt)+'" placeholder="Agregar casillero: escribí el nombre (Text3.0.0…)"></div>'}).join("")+"</div>";
+}
+function renderWidgetInsp(){
+  var el=document.getElementById("insp"),w=state.acro.widgets.filter(function(x){return x.key===state.selW})[0];
+  if(!w){el.innerHTML='<h3>Casillero</h3><p class="empty">Tocá un casillero sobre el PDF o una fila de la tabla para asignarle su pregunta de la ficha.</p>';return}
+  var m=acroOf(w),f=m?fieldByKey(m.fk):null,N=finalNames(),opts=f?slotsOf(f,true):[];
+  var dl='<datalist id="fichaList">'+state.fields.filter(function(x){return !x.soloJSON}).map(function(x){return '<option value="'+esc(fichaOptLabel(x))+'"></option>'}).join("")+"</datalist>";
+  el.innerHTML='<h3>Casillero #'+w.idx+'</h3>'+dl+
+    '<dl class="kv"><dt>AcroForm</dt><dd class="mono">'+esc(w.name)+'</dd><dt>Tipo</dt><dd>'+esc(w.type)+(w.opt?" · valor "+esc(w.opt):"")+'</dd><dt>Página</dt><dd>'+w.page+'</dd><dt>Texto al lado</dt><dd>'+esc(w.near||"—")+'</dd><dt>Pregunta cerca</dt><dd>'+esc(w.question||"—")+"</dd></dl>"+
+    '<div class="blk"><div class="t">Pregunta de la ficha</div><input class="map-in" style="font-family:var(--f-body)" list="fichaList" id="wF" value="'+esc(f?fichaOptLabel(f):"")+'" placeholder="Escribí para buscar la pregunta…">'+
+    (m?'<div class="note">'+(m.status==="prop"?"Propuesta por el texto impreso: confirmala o cambiala.":"Asignado por vos.")+"</div>":"")+
+    (opts.length?'<div class="row"><span class="note">Qué parte pinta este casillero</span><select class="map-in" id="wO" style="flex:1;font-family:var(--f-body)"><option value="">(el campo entero)</option>'+opts.map(function(o){return '<option value="'+esc(o)+'"'+(m&&m.opt===o?" selected":"")+">"+esc(slotLabel(o))+"</option>"}).join("")+"</select></div>":"")+"</div>"+
+    (f?'<div class="blk"><div class="t">Nombre nuevo del AcroForm</div><input class="map-in" id="wN" value="'+esc(N[w.key]||"")+'"><div class="note">Sin tildes, espacios ni puntos: Signframe arma el id del campo con este nombre.</div></div>':"")+
+    '<div class="row">'+(m&&m.status==="prop"?'<button class="btn sm primary" type="button" id="wOk">Confirmar</button>':"")+(m?'<button class="btn sm" type="button" id="wDel">Quitar asignación</button>':"")+(f?'<button class="btn sm" type="button" id="wGo">Ver la pregunta en el formulario</button>':"")+"</div>";
+  function cur(){var o=state.ov.acro[w.key];return o&&o.fk?Object.assign({},o):m?{fk:m.fk,opt:m.opt||"",nuevo:m.nuevo||null}:{fk:null,opt:"",nuevo:null}}
+  function put(o){state.ov.acro[w.key]=o;state._autoAcro=null;saveOv();render()}
+  var wf=document.getElementById("wF");wf.onchange=function(){var val=wf.value,nf=state.fields.filter(function(x){return fichaOptLabel(x)===val})[0];
+    if(!nf){wf.setCustomValidity("Elegí una pregunta de la lista");wf.reportValidity();return}
+    var op=isCtrl(nf)&&!nf.catalogo?optsOf(nf).filter(function(o){return low(o).replace(/[^a-z]/g,"")===low(w.near).replace(/[^a-z]/g,"")})[0]||"":"";
+    put({fk:key(nf),opt:op,nuevo:null})};
+  var wo=document.getElementById("wO");if(wo)wo.onchange=function(){var o=cur();o.opt=wo.value;o.nuevo=null;put(o)};
+  var wn=document.getElementById("wN");if(wn)wn.onchange=function(){var o=cur();o.nuevo=snake(wn.value)||null;put(o)};
+  var ok=document.getElementById("wOk");if(ok)ok.onclick=function(){put(cur())};
+  var del=document.getElementById("wDel");if(del)del.onclick=function(){put({fk:null})};
+  var go=document.getElementById("wGo");if(go)go.onclick=function(){state.tab="form";state.sel=f.id;state.q="";render()};
+}
+function plainDownload(name,data,mime){
+  try{var blob=data instanceof Blob?data:new Blob([data],{type:mime||"application/octet-stream"}),u=URL.createObjectURL(blob),a=document.createElement("a");
+    a.href=u;a.download=name;document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(u);a.remove()},1500);return true}catch(e){return false}
+}
+function canPlainDownload(){return !(window.claude&&window.claude.use)}
+function xlsxSave(wb,name,btn,label){
+  if(!window.XLSX){showErr("No se pudo cargar el generador de Excel. Recargá la página.");return}
+  var data=XLSX.write(wb,{bookType:"xlsx",type:"array"});
+  if(!DL){if(canPlainDownload()&&plainDownload(name,new Uint8Array(data),"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))return;showErr("La descarga no está disponible en esta vista.");return}
+  DL.save({filename:name,data:new Uint8Array(data)}).then(function(){btn.textContent="Descargado";setTimeout(function(){btn.textContent=label},2500)},function(e){if(e&&e.code!=="declined")showErr("No se pudo descargar: "+(e.message||e.code))});
+}
+function exportFichaN(btn){
+  var N=finalNames(),map={};
+  state.acro.widgets.forEach(function(w){var m=acroOf(w);if(!m||!N[w.key])return;var o=map[m.fk]=map[m.fk]||{whole:[],opts:{}};if(m.opt)o.opts[low(m.opt)]=N[w.key];else o.whole.push(N[w.key])});
+  var sheets=state.sheets.map(function(sh){return {name:sh.name,rows:(sh.rows||[]).map(function(r){return (r||[]).slice()})}}),byName={};
+  sheets.forEach(function(sh){byName[norm(sh.name)]=sh});
+  state.fields.forEach(function(f){var o=map[key(f)];if(!o)return;var sh=byName[f.hoja];if(!sh)return;
+    (f.filas||[]).forEach(function(fila,i){var row=sh.rows[fila-1];if(!row)return;while(row.length<14)row.push(null);
+      var v=o.opts[low(f.reglaRows[i].valor)]||o.whole.join(", ")||Object.keys(o.opts).map(function(k){return o.opts[k]}).join(", ");row[13]=v||row[13]})});
+  var wb=XLSX.utils.book_new();sheets.forEach(function(sh){XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sh.rows),sh.name.slice(0,31))});
+  xlsxSave(wb,state.file.replace(/\.xlsx?$/i,"")+"_colN.xlsx",btn,"Descargar ficha con col N (.xlsx)");
+}
+function exportPack(btn){
+  var N=finalNames(),rows=[["pagina","acroform_actual","tipo","texto_al_lado","pregunta_cercana","nombre_nuevo","hoja","filas","pregunta_ficha","opcion","ruta_json","estado"]];
+  state.acro.widgets.forEach(function(w){var m=acroOf(w),f=m?fieldByKey(m.fk):null;
+    rows.push([w.page,w.name,w.type,w.near,w.question,N[w.key]||"",f?f.hoja:"",f?(f.filas||[]).join(","):"",f?f.label:"",m?m.opt||"":"",f?f.ruta:"",!m?"sin asignar":m.status==="prop"?"propuesta":"asignado"])});
+  var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),"paquete_campos");
+  xlsxSave(wb,"paquete_campos_"+state.acro.file.replace(/\.pdf$/i,"")+".xlsx",btn,"Descargar paquete de campos (.xlsx)");
+}
+
+/* ============ exportar form-def de Signframe ============ */
+function exportCtx(){return {M:mainBySn(),ids:{}}}
+function dateFmt(f){var t=low(f.reglas.map(function(r){return r.regla}).join(" ")+" "+f.valores.join(" "));if(/aaaa-mm-dd/.test(t))return "YYYY-MM-DD";if(/dd\/mm\/aaaa/.test(t))return "DD/MM/YYYY";return null}
+function memberId(f,o,ctx){var m=pdfMapOf(f),sn=m.opts[o];return sn&&ctx.M[sn]?ctx.M[sn].raw.id:sfId(f)+"_"+slug(o)}
+function baseId(f,ctx){var m=pdfMapOf(f);return m.sn&&ctx.M[m.sn]?ctx.M[m.sn].raw.id:sfId(f)}
+function condFor(f,ctx){
+  var c=condOf(f);if(!c||!c.conditions.length)return null;
+  var conds=c.conditions.map(function(x){var ctrl=state.byRuta["*|"+x.ruta];if(!ctrl)return null;var w=widgetOf(ctrl);
+    if(w==="radio")return {fieldId:memberId(ctrl,x.value,ctx),operator:"equals",value:"true"};
+    if(w==="boolean")return {fieldId:baseId(ctrl,ctx),operator:"equals",value:low(x.value)==="si"?"true":"false"};
+    if(w==="checkbox")return {fieldId:baseId(ctrl,ctx),operator:"equals",value:"true"};
+    return {fieldId:baseId(ctrl,ctx),operator:"equals",value:x.value};
+  }).filter(Boolean);
+  return conds.length?{str:JSON.stringify({logic:c.logic||"or",conditions:conds}),required:!!c.required}:null;
+}
+function sfFields(f,ctx){
+  var w=widgetOf(f),m=pdfMapOf(f),out=[],cd=condFor(f,ctx),path=f.ruta?f.ruta.replace(/\[\]/g,"[0]"):null;
+  function common(o){
+    o.required=!!f.required&&!cd;o.readOnly=!!f.readOnly;o.width=widthOf(f).w;
+    if(staticHidden(f))o.hidden=true;
+    if(f.maxLength&&/text|textarea|number/.test(o.type))o.maxLength=f.maxLength;
+    if(path&&(f.prellenado||f.soloJSON)){o.prefillKey=path;o.prefillMode="optional"}
+    if(cd){o.conditionalVisibility=cd.str;if(cd.required)o.conditionalRequired=cd.str}
+    return o;
+  }
+  function withPdf(o,sn){if(sn&&ctx.M[sn]){o.id=ctx.M[sn].raw.id;o.sourceMeta=ctx.M[sn].raw.sourceMeta}return o}
+  var opts=optsOf(f);
+  if(w==="radio"){
+    var ids=opts.map(function(o){return memberId(f,o,ctx)});
+    opts.forEach(function(o,i){
+      var r=common({id:ids[i],type:"radio",label:o,radioGroupLabel:f.label,radioGroupFields:ids.filter(function(x,j){return j!==i}),jsonOutputPath:path||undefined,excludeFromJson:path?undefined:true,checkedJsonValue:o,optionsLayout:"horizontal"});
+      if(i>0)r.required=false;
+      out.push(withPdf(r,m.opts[o]));
+    });
+    return out;
+  }
+  var o={id:sfId(f),type:w==="numcombo"?"number":w,label:f.label};
+  if(w==="select"){o.options=opts.map(function(x){return {label:x,pdfValue:x,jsonValue:x}});if(f.catalogo){o.options=[];o._pendiente="Catálogo INS: cargar la lista"}}
+  if(w==="date"){var df=dateFmt(f);if(df)o.jsonDateFormat=df;o.pdfDateFormat="DD/MM/YYYY"}
+  if(path)o.jsonOutputPath=path;else o.excludeFromJson=true;
+  common(o);withPdf(o,m.sn);out.push(o);
+  if(w==="numcombo"){out.push(common({id:sfId(f)+"_unidad",type:"select",label:"Unidad",options:(f.unidades||[]).map(function(x){return {label:x,pdfValue:x,jsonValue:x}}),excludeFromJson:true,_pendiente:"La ficha declara número y unidad en la misma ruta: definir cómo se arma el valor"}))}
+  var an=acroNamesFor(f),parts={};
+  Object.keys(m.opts).forEach(function(op){if(op.charAt(0)==="@"&&m.opts[op])parts[op]={sn:m.opts[op]}});
+  Object.keys(an.opts).forEach(function(op){if(op.charAt(0)==="@"&&!parts[op])parts[op]={nuevo:an.opts[op]}});
+  var srcId=w==="radio"?null:o.id;
+  Object.keys(parts).forEach(function(op){
+    if(!srcId)return;var pt=parts[op],hid=pt.sn&&ctx.M[pt.sn]?ctx.M[pt.sn].raw.id:(pt.nuevo?"field_"+normSn(pt.nuevo):sfId(f)+"_"+op.slice(1));
+    var tok={kind:"field",fieldId:srcId};if(PART_CUT[op])tok.transforms=[{kind:"substring",start:PART_CUT[op][0],end:PART_CUT[op][1]}];
+    var hlp={id:hid,type:"text",label:f.label+" · "+slotLabel(op),hidden:true,readOnly:true,excludeFromJson:true,width:"quarter",autoFillConcat:{sourceFieldIds:[srcId],separator:"",parts:[tok]}};
+    if(pt.sn&&ctx.M[pt.sn])hlp.sourceMeta=ctx.M[pt.sn].raw.sourceMeta;else hlp._pendiente="Helper sin sourceMeta hasta cargar el main";
+    out.push(hlp);
+  });
+  Object.keys(m.opts).forEach(function(op){var sn=m.opts[op];if(op.charAt(0)==="@"||!sn||!ctx.M[sn]||w==="radio")return;
+    out.push({id:ctx.M[sn].raw.id,type:"checkbox",label:f.label+" · "+op,hidden:true,excludeFromJson:true,sourceMeta:ctx.M[sn].raw.sourceMeta,
+      autoFillConcat:{sourceFieldIds:[o.id],separator:"",parts:[{kind:"text",value:"X",condition:{fieldId:o.id,op:"equals",values:op}}]}})});
+  return out;
+}
+function buildFormDef(){
+  var ctx=exportCtx(),G=groups(),pend=[],usedIds={};
+  var sections=G.map(function(p,pi){
+    return {id:"section_"+(pi+1),title:p.name,order:pi+1,fields:[],subsections:p.secs.map(function(x,si){
+      var fl=[];x.items.forEach(function(it){if(it.kind!=="f")return;sfFields(it.f,ctx).forEach(function(o){usedIds[o.id]=1;if(o._pendiente)pend.push(o.label+": "+o._pendiente);fl.push(o)})});
+      var sub={id:"sub_"+(pi+1)+"_"+(si+1),title:x.name,order:si+1,fields:fl};
+      if(x.key===SIS||state.secHide[x.key])sub.hidden=true;
+      return sub;
+    }).filter(function(sb){return sb.fields.length})};
+  });
+  if(state.main){
+    var libres=state.main.fields.filter(function(x){return !usedIds[x.raw.id]}).map(function(x){var r=JSON.parse(JSON.stringify(x.raw));r.hidden=true;return r});
+    if(libres.length&&sections.length)sections[0].subsections.push({id:"sub_pdf_sin_usar",title:"Campos del PDF sin usar",order:99,hidden:true,fields:libres});
+  }
+  state.fields.filter(isAdder).forEach(function(c){pend.push("«"+c.label+"»: las personas agregables van como subsecciones fijas con botones agregar/quitar y codigoTipo "+adderInfo(c).code+" por autoFillConcat (nunca repeater sobre personas[])")});
+  var props=state.fields.filter(function(f){var c=condOf(f);return c&&c.status==="prop"}).length;
+  if(props)pend.push(props+" condiciones siguen como propuesta (no confirmadas)");
+  var def={version:(state.file.replace(/\.xlsx?$/i,"")||"form")+"_v1",sections:sections};
+  if(state.main&&state.main.sourcePdf)def._sourcePdf=state.main.sourcePdf;
+  def._generadoPor={herramienta:"Visor de Fichas INS",ficha:state.file,main:state.main?state.main.file:null,fecha:new Date().toISOString(),pendientes:pend,
+    nota:state.main?"Los campos con casillero usan el id y el sourceMeta del main, sin tocar.":"Sin main cargado: ids provisorios field_ficha_* y sin sourceMeta. Cargá el main para fundirlos."};
+  return def;
+}
+function exportFormDef(btn){
+  var def=buildFormDef(),txt=JSON.stringify(def,null,2),name="form-definition-"+def.version.replace(/[^\w.-]+/g,"_")+".json";
+  function fallback(){state.tab="tabla";render();var el=document.getElementById("insp");el.insertAdjacentHTML("afterbegin",'<div class="blk"><div class="t">form-def</div><div class="note">No se pudo descargar desde acá: copialo.</div><textarea class="out" id="fdOut" readonly></textarea></div>');var t=document.getElementById("fdOut");t.value=txt;t.focus();t.select()}
+  if(DL){DL.save({filename:name,data:txt}).then(function(){btn.textContent="Descargado";setTimeout(function(){btn.textContent="Exportar form-def"},2500)},function(e){if(e&&e.code!=="declined")fallback()})}
+  else if(canPlainDownload()&&plainDownload(name,txt,"application/json")){}
+  else fallback();
+}
+
+/* ============ render general ============ */
+function renderStats(){
+  var F=state.fields,c=function(fn){return F.filter(fn).length};
+  var reg=F.reduce(function(a,f){return a+f.reglas.length},0);
+  var nc=c(function(f){return !!condOf(f)});
+  var visNow=c(function(f){return !staticHidden(f)&&ruleVisible(f)});
+  var items=[[F.length,"campos"],[visNow,"visibles ahora"],[c(function(f){return f.soloJSON}),"solo JSON"],[c(function(f){return staticHidden(f)&&!f.soloJSON}),"ocultos"],[nc,"con condición"],[c(function(f){var x=condOf(f);return x&&x.status==="prop"}),"condiciones por confirmar"]];
+  document.getElementById("stats").innerHTML=items.map(function(x){return '<div class="stat"><b>'+x[0]+"</b><span>"+x[1]+"</span></div>"}).join("");
+  document.getElementById("t-reglas").innerHTML='Reglas<span class="n">'+reg+"</span>";
+}
+function pick(fid){
+  state.sel=fid;
+  document.querySelectorAll("#view .sel").forEach(function(n){n.classList.remove("sel")});
+  document.querySelectorAll('#view [data-f="'+fid+'"]').forEach(function(n){n.classList.add("sel")});
+  renderInsp();
+}
+function render(){
+  var y=window.scrollY;
+  renderStats();
+  document.querySelectorAll(".tab").forEach(function(t){t.setAttribute("aria-selected",String(t.getAttribute("data-tab")===state.tab))});
+  var v=document.getElementById("view");
+  if(!state.baseFields||!state.baseFields.length){v.innerHTML='<div class="info" style="max-width:640px"><b>Cargá una ficha del INS</b> con «Cargar ficha (.xlsx)» o soltándola en la página. Se leen todas las hojas del formato nuevo (una por nodo, 14 columnas) y armás el formulario, las reglas, el cruce con el PDF y el form-def desde acá.</div>';renderInsp();return}
+  v.innerHTML=state.tab==="form"?renderForm():state.tab==="json"?renderJson():state.tab==="reglas"?renderReglas():state.tab==="pdf"?renderPdf():state.tab==="acro"?renderAcro():renderTabla();
+  if(state.tab==="pdf") bindPdf(v);
+  if(state.tab==="acro") bindAcro(v);
+  if(state.tab==="form"&&state.ordering){bindOrden(v)}
+  else if(state.tab==="form"){
+    var bo=document.getElementById("btnOrden");if(bo)bo.onclick=function(){state.ordering=true;render()};
+    bindMulti(v);
+    v.querySelectorAll("[data-addf]").forEach(function(b){b.onclick=function(){
+      var sk=b.getAttribute("data-addf"),cid=Date.now().toString(36),c={cid:cid,label:"Campo nuevo",type:"text",ruta:"",options:[],required:false};
+      state.ov.cf.push(c);state.ov.fsec["manual|"+cid]=sk;rebuildFields();state.sel="cf_"+cid;saveOv();render();
+      var inp=document.getElementById("cfLabel");if(inp){inp.focus();inp.select()}}});
+    v.querySelectorAll("[data-pick]").forEach(function(n){n.onclick=function(){pick(n.getAttribute("data-pick"))};n.onkeydown=function(e){if(e.key==="Enter"){e.preventDefault();n.click()}}});
+    v.querySelectorAll(".f").forEach(function(box){
+      var f=state.byId[box.getAttribute("data-f")],w=widgetOf(f);
+      box.addEventListener("focusin",function(){if(state.sel!==f.id)pick(f.id)});
+      if(w==="radio") box.querySelectorAll("input[type=radio]").forEach(function(r){r.onchange=function(){state.vals[f.id]=r.getAttribute("data-v");render()}});
+      else if(w==="boolean") box.querySelectorAll(".yn button").forEach(function(b){b.onclick=function(){var nv=b.getAttribute("data-v");state.vals[f.id]=state.vals[f.id]===nv?"":nv;render()}});
+      else if(w==="checkbox"){var cb=box.querySelector("input[type=checkbox]");cb.onchange=function(){state.vals[f.id]=cb.checked?"true":"";render()}}
+      else if(w==="select"){var s=box.querySelector("select");s.onchange=function(){state.vals[f.id]=s.value;render()}}
+      else{
+        var i=box.querySelector(".in");if(i)i.oninput=function(){state.vals[f.id]=i.value};
+        var u=box.querySelector('select[id$="_u"]');if(u)u.onchange=function(){state.vals[f.id+"_u"]=u.value};
+      }
+    });
+    v.querySelectorAll("[data-sino]").forEach(function(b){b.onclick=function(){var x=b.getAttribute("data-sino");if(x)state.predet.clases.sino=x;else delete state.predet.clases.sino;savePredet();render()}});
+    v.querySelectorAll("[data-ia]").forEach(function(b){b.onclick=function(){var id=b.getAttribute("data-ia");state.inst[id]=instCount(state.byId[id])+1;render()}});
+    v.querySelectorAll("[data-ir]").forEach(function(b){b.onclick=function(){var id=b.getAttribute("data-ir"),n=instCount(state.byId[id])-1;state.inst[id]=n;if(n<=0){state.vals[id]="No";state.inst[id]=1}render()}});
+    var ca=document.getElementById("chkAll");if(ca)ca.onchange=function(){state.showAll=ca.checked;render()};
+    var bc=document.getElementById("btnClear");if(bc)bc.onclick=function(){state.vals={};state.fields.forEach(function(f){if(f.prellenado&&f.ejemploValor&&!/getdate|ver cat/i.test(f.ejemploValor))state.vals[f.id]=f.ejemploValor});render()};
+  }else{
+    v.querySelectorAll("[data-f]").forEach(function(n){n.onclick=function(e){if(e.target.closest("input,select,button"))return;pick(n.getAttribute("data-f"))}});
+  }
+  v.querySelectorAll("[data-jm]").forEach(function(b){b.onclick=function(){state.jsonMode=b.getAttribute("data-jm");render()}});
+  var q=document.getElementById("q");
+  if(q){q.oninput=function(){state.q=q.value;var pos=q.selectionStart;render();var q2=document.getElementById("q");if(q2){q2.focus();try{q2.setSelectionRange(pos,pos)}catch(e){}}}}
+  renderInsp();
+  window.scrollTo(0,y);
+  try{localStorage.setItem("fv2-tab",state.tab)}catch(e){}
+}
+
+document.querySelectorAll(".tab").forEach(function(t){t.onclick=function(){state.tab=t.getAttribute("data-tab");render()}});
+document.getElementById("fileIn").onchange=function(e){if(e.target.files[0])readFile(e.target.files[0]);e.target.value=""};
+var drop=document.getElementById("drop");
+["dragenter","dragover"].forEach(function(ev){document.addEventListener(ev,function(e){e.preventDefault();drop.classList.add("over")})});
+["dragleave","drop"].forEach(function(ev){document.addEventListener(ev,function(e){e.preventDefault();if(ev==="drop"||e.target===document.documentElement)drop.classList.remove("over")})});
+document.addEventListener("drop",function(e){var f=e.dataTransfer&&e.dataTransfer.files[0];if(f)readFile(f)});
+var SAMPLE=null;try{SAMPLE=JSON.parse(document.getElementById("sample").textContent);if(SAMPLE)SAMPLE.sample=true}catch(e){SAMPLE=null}
+document.getElementById("btnSample").onclick=function(){if(SAMPLE)loadData(SAMPLE)};
+document.getElementById("btnFormDef").onclick=function(){exportFormDef(this)};
+try{var t=localStorage.getItem("fv2-tab");if(t)state.tab=t}catch(e){}
+if(SAMPLE)loadData(SAMPLE);else{state.fields=[];state.baseFields=[];state.legends=[];state.ov=normOv(null);state.predet={w:{},t:{},clases:{}};
+  var ps=store("fv2-predet");if(ps)state.predet={w:ps.w||{},t:ps.t||{},clases:ps.clases||{}};
+  document.getElementById("btnSample").hidden=true;document.getElementById("fileName").textContent="Sin ficha cargada";render()}
+try{
+  var u=window.claude&&window.claude.use?window.claude.use("db"):null;
+  if(u&&u.then)u.then(function(db){if(db){DB=db;loadRemote()}},function(){});
+  var dl=window.claude&&window.claude.use?window.claude.use("downloads"):null;
+  if(dl&&dl.then)dl.then(function(d){DL=d},function(){});
+}catch(e){}
+})();
+</script>
+
+</body>
+</html>

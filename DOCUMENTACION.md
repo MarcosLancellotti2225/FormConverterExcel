@@ -53,14 +53,63 @@ la ficha y el PDF se contradicen seguido y hay que decidir.
 
 ## Las herramientas
 
-### 2.0 — el hub
-La puerta de entrada. Tiene el circuito completo escrito como instrucción
-(qué necesitás · qué hacés · qué te queda), un paso 0 que te pregunta por dónde
-entrás y te deja parado en tu paso, y el handoff con la skill y el prompt para
-seguir con Claude.
+### 2.0 — el Visor de Fichas
+`visor/index.html` · se abre desde la tarjeta **2.0** o desde `#v2`
 
-La elección del paso 0 se guarda en `localStorage`. Si no está disponible, la
-pantalla abre con todo desplegado.
+De la ficha del INS al form-def, en una sola pantalla. Cargás la ficha (xlsx,
+formato nuevo) y opcionalmente el PDF y el main de Signframe. Seis pestañas:
+
+- **Formulario** — el formulario vivo, con las reglas de la columna G traducidas
+  a condiciones (propuestas y confirmadas). Tipo y ancho por campo,
+  predeterminados, ajuste en bloque de los Sí/No, pasos y secciones
+  reordenables, campos agregados, personas agregables, y selección múltiple
+  para poner una condición a varios de una.
+- **JSON que sale** — el JSON armándose en vivo con lo que vas respondiendo.
+- **Reglas** — las de la columna G y en qué quedó cada una.
+- **AcroForms del PDF** — el PDF con los casilleros dibujados encima (pdf.js).
+  Asignás casillero ↔ pregunta, opción o parte de fecha, arrastrando en los dos
+  sentidos, con el nombre nuevo propuesto. Bajás la ficha con la columna N
+  completa y el paquete de campos en Excel.
+- **Main de Signframe** — cruce contra el main: primero por columna N, después
+  por nombre.
+- **Todo en una tabla** — hoja y fila de la ficha, PDF y ruta, de corrido.
+
+**Exportar form-def** saca el JSON de Signframe con secciones y subsecciones,
+los radios desdoblados, los helpers de fecha cortando 0-2 / 3-5 / 6-10 sobre
+`pdfDateFormat "DD/MM/YYYY"`, el `id` y el `sourceMeta` del main intactos, y los
+casilleros sin usar ocultos en vez de borrados.
+
+**Es una página aparte, no un modo del hub.** Redefine las mismas variables de
+tema que Form Tools (`--bg`, `--accent`, `--line`) y estiliza `body`, `button` e
+`input`; adentro de `index.html` se pisarían los estilos en los dos sentidos.
+Por eso vive en `visor/` y la tarjeta navega ahí, con dos links de vuelta en el
+encabezado.
+
+**Guarda en `localStorage`** (claves con prefijo `fv2-`) y ofrece *Bajar / Cargar
+mis decisiones (.json)*. El mismo archivo corre adentro de claude.ai, donde en
+vez de eso usa el guardado de la plataforma.
+
+**Necesita red**: `xlsx` y `pdf.js` los trae de cdnjs. Es lo único del repo que
+no arranca sin internet. Tus archivos siguen sin salir del browser — del CDN
+viene código, no van datos.
+
+### Circuito 2.0
+`#v2-circuito`
+
+Lo que antes estaba en la tarjeta 2.0. El circuito de punta a punta en 6 pasos
+escritos como instrucción (qué necesitás · qué hacés · qué te queda), con el
+paso 0 que te pregunta por dónde entrás, y el handoff con la skill descargable y
+el prompt copiable. Sigue completo y con su propia tarjeta en el home; los links
+viejos a `#v2` redirigen al Visor.
+
+### Estructura
+`#estructura`
+
+Lee la ficha del INS y la aplana en una sola tabla, hoja por hoja, con el
+destino de cada campo y export a Excel. **Ojo: su lector de ficha y el del Visor
+son dos implementaciones del mismo formato y van a divergir.** El que se probó
+contra fichas reales es el del Visor; cuando se unifiquen, ese es el de
+referencia.
 
 ### Detector de Campos
 Analiza un PDF y lista todos los AcroForms con tipo, página y posición.
@@ -201,7 +250,7 @@ umbrales se ajustan desde la UI sin tocar código.
 
 ## La skill para Claude
 
-`public/skill-signframe-form-def.zip` — 13 archivos, 178 KB, v1.0.0.
+`public/skill-signframe-form-def.zip` — 13 archivos, 178 KB, v1.1.0.
 
 Trae las reglas de plataforma de Signframe y las convenciones del INS: el
 `SKILL.md` es el índice, y lo que evita los errores caros está en `references/`
@@ -231,6 +280,8 @@ el cache-bust.
 ```
 /                       UI estática — se sirve desde acá
   index.html            todas las pantallas, uno por modo
+/visor
+  index.html            el Visor de Fichas (2.0) — página autónoma, sin build
   app.js                routing, estado y render (vanilla, sin framework)
   styles.css
   bundle.js             generado por esbuild desde src/browser.js
@@ -246,6 +297,7 @@ el cache-bust.
   pdf-converter/        renombrar y reescribir AcroForms
   pdf-converter-v2/     el convertidor nuevo
   signframe-generator/  matriz canónica y form-definition
+  estructura/           lector de ficha del INS + vista única
   json-mapper/          Mapa JSON
     revisor/            el motor de 26 reglas
   quoter/               cotización, reporte HTML y docx
@@ -262,7 +314,7 @@ Sin framework, sin runtime.
 `index.html`, `app.js` y `styles.css` se cargan directo con `?v=NN` para
 cache-busting — **si tocás alguno de los tres, subí el número**.
 
-**Tests:** `npm test` — 109 pasando, 0 fallando, en 13 suites.
+**Tests:** `npm test` — 131 + 9 pasando, 0 fallando. El del Visor no prueba su lógica (vive en un IIFE): verifica que el archivo esté, que su script compile y que el hub lo enlace.
 
 ---
 
