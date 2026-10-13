@@ -2002,3 +2002,23 @@ footer {
 .est-d-readOnly .est-destino { background:rgba(210,153,34,0.15); color:var(--accent-amber); }
 .est-d-excluido .est-destino { background:rgba(248,81,73,0.13); color:var(--accent-red); }
 .est-d-label    .est-destino { background:rgba(163,113,247,0.14); color:var(--accent); }
+
+/* ── Mover / redimensionar casilleros sobre el preview ───────────────────── */
+/* Los overlays ya son clickeables (sincronizan con la tabla); acá solo se
+   suma el cursor y el resalte del modo mover. */
+#convPreview.move-mode .detect-field-overlay { cursor: move; }
+#convPreview.move-mode .detect-field-overlay:hover { background: rgba(163,113,247,0.12); }
+#convPreview.move-mode .detect-field-overlay.move-sel {
+    outline: 2px solid var(--accent); outline-offset: 0; background: rgba(163,113,247,0.18); z-index: 5;
+}
+.move-h { position: absolute; width: 9px; height: 9px; background: var(--accent);
+    border: 1px solid #0d1117; border-radius: 2px; display: none; z-index: 6; }
+#convPreview.move-mode .detect-field-overlay.move-sel .move-h { display: block; }
+.move-h-nw { left: -5px; top: -5px; cursor: nwse-resize; }
+.move-h-n  { left: calc(50% - 4px); top: -5px; cursor: ns-resize; }
+.move-h-ne { right: -5px; top: -5px; cursor: nesw-resize; }
+.move-h-e  { right: -5px; top: calc(50% - 4px); cursor: ew-resize; }
+.move-h-se { right: -5px; bottom: -5px; cursor: nwse-resize; }
+.move-h-s  { left: calc(50% - 4px); bottom: -5px; cursor: ns-resize; }
+.move-h-sw { left: -5px; bottom: -5px; cursor: nesw-resize; }
+.move-h-w  { left: -5px; top: calc(50% - 4px); cursor: ew-resize; }

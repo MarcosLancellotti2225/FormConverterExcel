@@ -394,8 +394,16 @@
         $('#btnBulkApply').addEventListener('click', bulkApplyText);
         $('#btnBulkClose').addEventListener('click', closeBulkEditor);
         $('#btnTogglePositions').addEventListener('click', togglePositions);
+        $('#btnToggleMove').addEventListener('click', function() {
+            if (convState.moveMode) { exitMoveMode(); return; }
+            // Mover sin las columnas numéricas a la vista esconde el resultado
+            // del arrastre, así que se abren solas.
+            if (!convState.showPositions) togglePositions();
+            enterMoveMode();
+        });
         $('#btnToggleProps').addEventListener('click', toggleProps);
         initDrawHandlers();
+        initMoveHandlers();
     }
 
     function onConvModeChange() {
@@ -930,6 +938,14 @@
             new Uint8Array(renamedPdfBytes), container, detectResult.fields
         );
         wireConvPreviewClicks(detectResult.fields);
+        // El preview se rehace entero, así que los tiradores se vuelven a
+        // pintar y la selección anterior ya no existe.
+        if (convState.moveMode) {
+            container.classList.add('move-mode');
+            pintarTiradores();
+            moveState.ov = null;
+            moveState.entryIdx = null;
+        }
     }
 
     // Two fields are the same widget if same page and overlapping position.
@@ -954,7 +970,7 @@
             var tableIdx = findTableIdxByField(previewFields[idx]);
             if (tableIdx < 0) return;
 
-            highlightConvPair(tableIdx, idx);
+            highlightConvPair(tableIdx, idx, convState.moveMode);
             var row = $('#convRenameTableBody tr[data-table-idx="' + tableIdx + '"]');
             if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
@@ -973,7 +989,7 @@
         return -1;
     }
 
-    function highlightConvPair(tableIdx, overlayIdx) {
+    function highlightConvPair(tableIdx, overlayIdx, sinFoco) {
         $$('#convRenameTableBody tr').forEach(function(tr) { tr.classList.remove('detect-row-active'); });
         $$('.detect-field-overlay', $('#convPreview')).forEach(function(el) { el.classList.remove('detect-field-highlight'); });
 
@@ -981,8 +997,12 @@
         if (row) {
             row.classList.add('detect-row-active');
             row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            var input = row.querySelector('.conv-edit-name');
-            if (input) input.focus();
+            // En modo mover no se roba el foco: si el input del nombre queda
+            // enfocado, las flechas escriben en vez de empujar la caja.
+            if (!sinFoco) {
+                var input = row.querySelector('.conv-edit-name');
+                if (input) input.focus();
+            }
         }
 
         if (overlayIdx != null) {
@@ -1490,6 +1510,7 @@
     var drawState = { active: false, startX: 0, startY: 0, rect: null, pageDiv: null };
 
     function enterDrawMode() {
+        if (convState.moveMode) exitMoveMode();
         convState.drawMode = true;
         $('#btnAddField').hidden = true;
         $('#btnCancelAddField').hidden = false;
@@ -1508,6 +1529,218 @@
         }
         drawState.active = false;
         $('#convStatus').textContent = '';
+    }
+
+    // ==================== MOVER / REDIMENSIONAR CAJAS ====================
+    //
+    // El preview ya dibuja cada casillero en su lugar real; esto los hace
+    // agarrables. El motor no cambia: todo termina en el mismo `moveMap` que
+    // hasta ahora se llenaba escribiendo números en la tabla, y `rewritePdf`
+    // reescribe el /Rect por widget y borra el /AP para que la apariencia se
+    // regenere al tamaño nuevo.
+    //
+    // Mover y dibujar son el mismo gesto —arrastrar sobre el preview— así que
+    // son modos excluyentes: entrar en uno apaga el otro.
+
+    var moveState = { active: false, mode: null, ov: null, entryIdx: null,
+        startX: 0, startY: 0, box: null, pageDiv: null };
+
+    /** Inverso de findOverlayIdxForEntry: del casillero del preview a su fila. */
+    function findEntryIdxForOverlay(overlayIdx) {
+        var pf = (convState.previewFields || [])[overlayIdx];
+        if (!pf) return null;
+        var all = convState.allFieldEntries || [];
+        for (var i = 0; i < all.length; i++) {
+            if (samePos(pf, all[i])) return i;
+        }
+        for (var i = 0; i < all.length; i++) {
+            if ((all[i].newName || all[i].oldName) === pf.name) return i;
+        }
+        return null;
+    }
+
+    function enterMoveMode() {
+        if (convState.drawMode) exitDrawMode();
+        convState.moveMode = true;
+        $('#btnToggleMove').classList.add('active');
+        $('#convPreview').classList.add('move-mode');
+        pintarTiradores();
+        $('#convStatus').textContent = 'Arrastrá una caja para moverla, los tiradores para redimensionarla. Flechas: 1pt · Shift+flechas: 10pt.';
+    }
+
+    function exitMoveMode() {
+        convState.moveMode = false;
+        $('#btnToggleMove').classList.remove('active');
+        var c = $('#convPreview');
+        c.classList.remove('move-mode');
+        $$('.detect-field-overlay', c).forEach(function(ov) {
+            ov.classList.remove('move-sel');
+            $$('.move-h', ov).forEach(function(h) { h.remove(); });
+        });
+        moveState.active = false;
+        moveState.ov = null;
+        $('#convStatus').textContent = '';
+    }
+
+    var TIRADORES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+
+    function pintarTiradores() {
+        $$('.detect-field-overlay', $('#convPreview')).forEach(function(ov) {
+            if ($('.move-h', ov)) return;
+            TIRADORES.forEach(function(d) {
+                var h = document.createElement('div');
+                h.className = 'move-h move-h-' + d;
+                h.dataset.dir = d;
+                ov.appendChild(h);
+            });
+        });
+    }
+
+    /** Lee el rectángulo del overlay en píxeles de pantalla. */
+    function cajaDe(ov) {
+        return {
+            left: parseFloat(ov.style.left) || 0,
+            top: parseFloat(ov.style.top) || 0,
+            width: parseFloat(ov.style.width) || 0,
+            height: parseFloat(ov.style.height) || 0,
+        };
+    }
+
+    function aplicarCaja(ov, b) {
+        ov.style.left = b.left + 'px';
+        ov.style.top = b.top + 'px';
+        ov.style.width = b.width + 'px';
+        ov.style.height = b.height + 'px';
+    }
+
+    /**
+     * Píxeles de pantalla → coordenadas del PDF. Es la misma cuenta que usa el
+     * dibujo de campos nuevos: el PDF mide desde abajo y la pantalla desde
+     * arriba, así que la Y se da vuelta contra el alto de la página.
+     */
+    function cajaAPdf(pageDiv, b) {
+        var scale = parseFloat(pageDiv.dataset.pdfScale) || 1;
+        var pageHeight = parseFloat(pageDiv.dataset.pdfPageHeight) || 0;
+        var w = b.width / scale;
+        var h = b.height / scale;
+        return {
+            x: round2(b.left / scale),
+            y: round2(pageHeight - (b.top / scale) - h),
+            width: round2(w),
+            height: round2(h),
+        };
+    }
+
+    function round2(n) { return Math.round(n * 100) / 100; }
+
+    /** Guarda la posición nueva en la fila y refresca los inputs numéricos. */
+    function guardarPos(entryIdx, pdf) {
+        var e = convState.allFieldEntries[entryIdx];
+        if (!e) return;
+        e.x = pdf.x; e.y = pdf.y; e.width = pdf.width; e.height = pdf.height;
+        e._posEdited = true;
+        ['x', 'y', 'width', 'height'].forEach(function(campo) {
+            var input = $('.conv-pos-input[data-idx="' + entryIdx + '"][data-field="' + campo + '"]');
+            if (input) input.value = pdf[campo];
+        });
+    }
+
+    function seleccionar(ov) {
+        $$('.detect-field-overlay.move-sel', $('#convPreview')).forEach(function(x) { x.classList.remove('move-sel'); });
+        moveState.ov = ov;
+        if (!ov) { moveState.entryIdx = null; return; }
+        ov.classList.add('move-sel');
+        moveState.entryIdx = findEntryIdxForOverlay(parseInt(ov.dataset.fieldIdx, 10));
+        if (moveState.entryIdx != null) {
+            highlightConvPair(moveState.entryIdx, parseInt(ov.dataset.fieldIdx, 10), true);
+            ov.classList.add('move-sel');
+            // El preview se queda el foco del teclado para las flechas.
+            var c = $('#convPreview');
+            if (!c.hasAttribute('tabindex')) c.setAttribute('tabindex', '-1');
+            c.focus({ preventScroll: true });
+        }
+    }
+
+    function initMoveHandlers() {
+        var container = $('#convPreview');
+
+        container.addEventListener('mousedown', function(e) {
+            if (!convState.moveMode) return;
+            var ov = e.target.closest('.detect-field-overlay');
+            if (!ov) { seleccionar(null); return; }
+            e.preventDefault();
+            seleccionar(ov);
+
+            var tirador = e.target.closest('.move-h');
+            moveState.mode = tirador ? 'resize' : 'move';
+            moveState.dir = tirador ? tirador.dataset.dir : null;
+            moveState.active = true;
+            moveState.startX = e.clientX;
+            moveState.startY = e.clientY;
+            moveState.box = cajaDe(ov);
+            moveState.pageDiv = ov.closest('.detect-page');
+        });
+
+        window.addEventListener('mousemove', function(e) {
+            if (!moveState.active || !moveState.ov) return;
+            var dx = e.clientX - moveState.startX;
+            var dy = e.clientY - moveState.startY;
+            var b = moveState.box, n;
+
+            if (moveState.mode === 'move') {
+                n = { left: b.left + dx, top: b.top + dy, width: b.width, height: b.height };
+            } else {
+                n = redimensionar(b, moveState.dir, dx, dy);
+            }
+            // Nada de cajas invertidas ni de ancho cero.
+            if (n.width < 3 || n.height < 3) return;
+            aplicarCaja(moveState.ov, n);
+        });
+
+        window.addEventListener('mouseup', function() {
+            if (!moveState.active) return;
+            moveState.active = false;
+            confirmarMovimiento();
+        });
+
+        // Teclado: empujar la selección sin tocar el mouse.
+        window.addEventListener('keydown', function(e) {
+            if (!convState.moveMode || !moveState.ov) return;
+            if (document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+            var d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+            if (!d) return;
+            e.preventDefault();
+            var paso = e.shiftKey ? 10 : 1;
+            var scale = parseFloat(moveState.ov.closest('.detect-page').dataset.pdfScale) || 1;
+            var b = cajaDe(moveState.ov);
+            aplicarCaja(moveState.ov, {
+                left: b.left + d[0] * paso * scale,
+                top: b.top + d[1] * paso * scale,
+                width: b.width, height: b.height,
+            });
+            moveState.pageDiv = moveState.ov.closest('.detect-page');
+            confirmarMovimiento();
+        });
+    }
+
+    /** Un tirador mueve solo los bordes que le tocan. */
+    function redimensionar(b, dir, dx, dy) {
+        var left = b.left, top = b.top, w = b.width, h = b.height;
+        if (dir.indexOf('w') >= 0) { left = b.left + dx; w = b.width - dx; }
+        if (dir.indexOf('e') >= 0) { w = b.width + dx; }
+        if (dir.indexOf('n') >= 0) { top = b.top + dy; h = b.height - dy; }
+        if (dir.indexOf('s') >= 0) { h = b.height + dy; }
+        return { left: left, top: top, width: w, height: h };
+    }
+
+    function confirmarMovimiento() {
+        if (!moveState.ov || moveState.entryIdx == null || !moveState.pageDiv) return;
+        var pdf = cajaAPdf(moveState.pageDiv, cajaDe(moveState.ov));
+        guardarPos(moveState.entryIdx, pdf);
+        var e = convState.allFieldEntries[moveState.entryIdx];
+        $('#convStatus').textContent = '↔ ' + (e.newName || e.oldName) +
+            ' → x ' + pdf.x + ' · y ' + pdf.y + ' · ' + pdf.width + '×' + pdf.height +
+            ' — "Aplicar cambios" para escribirlo en el PDF.';
     }
 
     function initDrawHandlers() {
