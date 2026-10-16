@@ -3,15 +3,22 @@
 const { PDFDocument, PDFName, PDFHexString, PDFString, PDFArray, PDFNumber, PDFBool } = require('pdf-lib');
 
 const FF_MULTILINE = 1 << 12; // bit 13 of the Tx field flags
+const FF_COMB = 1 << 23;      // bit 24: one glyph per cell, fixed by /MaxLen
 
 /**
  * Apply per-field visual properties (font size + multiline) to a field/widget dict.
  * - fontSize 0 means "auto-size" (the viewer shrinks/grows text to fit the box).
  * - multiline toggles bit 13 of the Tx field flags so text wraps inside the box.
  * Returns true if anything changed (so the caller can flag NeedAppearances).
+ *
+ * Setting a size also clears the Comb flag. A comb field spreads one glyph per
+ * cell and computes its own size from /MaxLen, ignoring whatever /DA says — so
+ * picking a size (or Auto) on a comb field looked like it did nothing at all.
+ * Every text field of the real INS forms ships with Comb on.
  */
 function applyFieldProps(dict, prop) {
     let touched = false;
+    let combCleared = false;
 
     if (prop.fontSize !== undefined && prop.fontSize !== null && prop.fontSize !== '') {
         const size = Number(prop.fontSize);
@@ -26,6 +33,9 @@ function applyFieldProps(dict, prop) {
             }
             dict.set(PDFName.of('DA'), PDFString.of(da));
             touched = true;
+
+            // Sin esto el tamaño recién puesto no se ve.
+            if (clearComb(dict)) combCleared = true;
         }
     }
 
@@ -41,7 +51,18 @@ function applyFieldProps(dict, prop) {
     }
 
     if (touched) dict.delete(PDFName.of('AP'));
-    return touched;
+    return touched ? { touched: true, combCleared } : false;
+}
+
+/** Baja el bit Comb si está puesto. Devuelve si hubo que tocarlo. */
+function clearComb(dict) {
+    const ffVal = dict.get(PDFName.of('Ff'));
+    let ff = 0;
+    if (ffVal && typeof ffVal.asNumber === 'function') ff = ffVal.asNumber();
+    else if (typeof ffVal === 'number') ff = ffVal;
+    if (!(ff & FF_COMB)) return false;
+    dict.set(PDFName.of('Ff'), PDFNumber.of(ff & ~FF_COMB));
+    return true;
 }
 
 const FIELD_TYPE_MAP = {
@@ -102,6 +123,9 @@ async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap, typeChanges
     const context = pdfDoc.context;
     const warnings = [];
     let needAppearances = false;
+    // Cuántos campos perdieron el Comb al fijarles un tamaño de fuente: se
+    // reporta para que la UI lo diga, porque les cambia el aspecto.
+    let combCleared = 0;
 
     const nameMap = new Map();
     for (const { oldName, newName } of renameMap) {
@@ -223,7 +247,10 @@ async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap, typeChanges
                 }
 
                 const propEntry = propMap.get(widgetKey) || propMap.get(fullName);
-                if (propEntry && applyFieldProps(kidDict, propEntry)) needAppearances = true;
+                if (propEntry) {
+                    const r = applyFieldProps(kidDict, propEntry);
+                    if (r) { needAppearances = true; if (r.combCleared) combCleared++; }
+                }
 
                 kidDict.delete(PDFName.of('Parent'));
                 ensureFieldType(kidDict, context);
@@ -271,7 +298,10 @@ async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap, typeChanges
         }
 
         const propEntry = propMap.get(uniqueKey) || propMap.get(fullName);
-        if (propEntry && applyFieldProps(leaf.dict, propEntry)) needAppearances = true;
+        if (propEntry) {
+            const r = applyFieldProps(leaf.dict, propEntry);
+            if (r) { needAppearances = true; if (r.combCleared) combCleared++; }
+        }
 
         leaf.dict.delete(PDFName.of('Parent'));
         ensureFieldType(leaf.dict, context);
@@ -288,7 +318,7 @@ async function rewritePdf(pdfBytes, renameMap, deleteNames, moveMap, typeChanges
     }
 
     const newBytes = await pdfDoc.save({ updateFieldAppearances: false });
-    return { pdfBytes: newBytes, warnings, renamedCount, renamedFields, deletedCount, deletedFields };
+    return { pdfBytes: newBytes, warnings, renamedCount, renamedFields, deletedCount, deletedFields, combCleared };
 }
 
 function removeWidgetFromPages(fieldDict, context, pdfDoc) {

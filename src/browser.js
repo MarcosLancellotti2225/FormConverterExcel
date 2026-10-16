@@ -191,6 +191,7 @@ async function runConvertManual(inputs) {
         renamedCount: result.renamedCount || 0,
         renamedFields: result.renamedFields || [],
         deletedCount: result.deletedCount || 0,
+        combCleared: result.combCleared || 0,
         excelRows: entries.length
     };
 }
@@ -1073,6 +1074,123 @@ async function writePdfMetadata(input, meta) {
     return new Uint8Array(saved);
 }
 
+// ── Rellenar con datos de prueba ────────────────────────────────────────────
+//
+// Para ver cómo queda el PDF lleno antes de que lo llene Signframe: dónde se
+// corta el texto, qué casilla pinta fuera de lugar, qué caja quedó chica.
+//
+// Los valores salen del NOMBRE del campo, que después del renombrado es
+// legible (`tom_fecha_nacimiento`, `asg_identificacion`). Se mira de lo más
+// específico a lo más general y gana la primera que coincide.
+var DUMMY_REGLAS = [
+    // Las partes sueltas de una fecha van PRIMERO: `solicitud_fecha_mes`
+    // contiene "fecha" y si no, se llevaba la fecha entera.
+    [/_dia$|_dia_/, '28'],
+    [/_mes$|_mes_/, '09'],
+    [/_ano$|_anio$|_year$/, '2026'],
+    [/fecha|nacimiento|constitucion|vigencia|desde|hasta/, '28/09/2026'],
+    [/hora/, '14:30'],
+    [/correo|email|mail/, 'correo.prueba@ejemplo.cr'],
+    [/telefono|celular|movil|fax/, '8888-8888'],
+    [/cedula_juridica|juridica/, '3-101-123456'],
+    [/identificacion|cedula|documento|_id$/, '1-2345-6789'],
+    [/porcentaje|_pct/, '50'],
+    [/monto|salario|sueldo|ingreso|prima|suma|valor|comision|precio/, '1.250.000,00'],
+    [/edad/, '35'],
+    [/peso/, '72'],
+    [/estatura|altura/, '1,75'],
+    [/cantidad|numero_de|cant_/, '3'],
+    [/poliza|solicitud_numero|_numero$/, '0123456789'],
+    [/primer_apellido/, 'RODRÍGUEZ'],
+    [/segundo_apellido/, 'JIMÉNEZ'],
+    [/primer_nombre|^.*_nombre$/, 'MARÍA FERNANDA'],
+    [/nombre_completo|razon_social|nombre/, 'MARÍA FERNANDA RODRÍGUEZ JIMÉNEZ'],
+    [/provincia/, 'San José'],
+    [/canton/, 'Escazú'],
+    [/distrito/, 'San Rafael'],
+    [/pais|nacionalidad/, 'Costa Rica'],
+    [/direccion|domicilio|senas/, 'Del parque central 200 metros norte, casa esquinera color blanco'],
+    [/ocupacion|profesion|puesto|actividad|negocio/, 'Ingeniera industrial'],
+    [/patrono|empleador|empresa|agencia/, 'Industrias del Valle S.A.'],
+    [/parentesco|relacion/, 'Cónyuge'],
+    [/observacion|detalle|motivo|causa|descripcion/, 'Detalle de prueba para verificar cómo entra el texto en la caja.'],
+    [/lugar/, 'San José, Costa Rica'],
+    [/firma/, 'María F. Rodríguez J.'],
+];
+
+var DUMMY_LARGO = 'TEXTO LARGO DE PRUEBA PARA VERIFICAR HASTA DÓNDE ENTRA ANTES DE CORTARSE';
+
+function dummyPara(nombre, textoLargo) {
+    if (textoLargo) return DUMMY_LARGO;
+    var n = String(nombre || '').toLowerCase();
+    for (var i = 0; i < DUMMY_REGLAS.length; i++) {
+        if (DUMMY_REGLAS[i][0].test(n)) return DUMMY_REGLAS[i][1];
+    }
+    return 'Dato de prueba';
+}
+
+/**
+ * Llena todos los campos y devuelve el PDF resultante.
+ *
+ * No toca ninguna bandera: la idea es ver el PDF TAL COMO ESTÁ configurado. Si
+ * quedan campos con Comb se avisa, porque pdf-lib no los dibuja repartiendo una
+ * letra por celda como haría Acrobat — el preview de esos no es fiel.
+ */
+async function fillPdfWithDummy(input, opts) {
+    const { PDFDocument, StandardFonts, PDFName, PDFTextField, PDFCheckBox,
+        PDFDropdown, PDFOptionList, PDFRadioGroup } = require('pdf-lib');
+    const o = opts || {};
+    const COMB = 1 << 23;
+    const bytes = input instanceof Uint8Array ? input : await fileToUint8Array(input);
+    const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const form = doc.getForm();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+
+    let texto = 0, casillas = 0, listas = 0, radios = 0, saltados = 0, comb = 0;
+    const fallos = [];
+
+    form.getFields().forEach(function (f) {
+        const nombre = f.getName();
+        try {
+            if (f instanceof PDFTextField) {
+                const ffObj = f.acroField.dict.get(PDFName.of('Ff'));
+                const ff = ffObj && ffObj.asNumber ? ffObj.asNumber() : 0;
+                if (ff & COMB) comb++;
+                let valor = dummyPara(nombre, o.textoLargo);
+                // Un comb recorta por /MaxLen; pasarse tira error en pdf-lib.
+                const maxLen = f.getMaxLength && f.getMaxLength();
+                if (maxLen && valor.length > maxLen) valor = valor.slice(0, maxLen);
+                f.setText(valor);
+                texto++;
+            } else if (f instanceof PDFCheckBox) {
+                f.check();
+                casillas++;
+            } else if (f instanceof PDFRadioGroup) {
+                const ops = f.getOptions();
+                if (ops.length) { f.select(ops[0]); radios++; } else saltados++;
+            } else if (f instanceof PDFDropdown || f instanceof PDFOptionList) {
+                const ops = f.getOptions();
+                if (ops.length) { f.select(ops[0]); listas++; } else saltados++;
+            } else {
+                saltados++;
+            }
+        } catch (e) {
+            saltados++;
+            fallos.push({ field: nombre, reason: e.message });
+        }
+    });
+
+    try { form.updateFieldAppearances(font); }
+    catch (e) { fallos.push({ field: '(apariencias)', reason: e.message }); }
+
+    return {
+        pdfBytes: await doc.save(),
+        texto: texto, casillas: casillas, listas: listas, radios: radios,
+        saltados: saltados, comb: comb, fallos: fallos,
+        total: texto + casillas + listas + radios,
+    };
+}
+
 async function generateLabeledPdf(pdfBytes) {
     const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
     const { detectFields: detect } = require('./pdf-detect/index');
@@ -1132,7 +1250,7 @@ async function generateLabeledPdf(pdfBytes) {
 }
 
 if (typeof window !== 'undefined') {
-    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, calibrateQuote, buildQuoteReport, buildQuoteDocx, runJsonMap, runJsonCompare, runEstructura, estructuraToXlsx, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
+    window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, fillPdfWithDummy, runQuoteZip, requote, calibrateQuote, buildQuoteReport, buildQuoteDocx, runJsonMap, runJsonCompare, runEstructura, estructuraToXlsx, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
 }
 
-module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, calibrateQuote, buildQuoteReport, buildQuoteDocx, runJsonMap, runJsonCompare, runEstructura, estructuraToXlsx, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
+module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, fillPdfWithDummy, runQuoteZip, requote, calibrateQuote, buildQuoteReport, buildQuoteDocx, runJsonMap, runJsonCompare, runEstructura, estructuraToXlsx, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };

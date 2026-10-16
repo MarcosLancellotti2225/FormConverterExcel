@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Form Tools</title>
-    <link rel="stylesheet" href="styles.css?v=79">
+    <link rel="stylesheet" href="styles.css?v=80">
     <link rel="stylesheet" href="src/pdf-converter-v2/ui/styles.css">
 </head>
 <body>
@@ -232,6 +232,10 @@
                 <div class="actions">
                     <button id="btnConvertDirect" class="primary" disabled>Convertir PDF</button>
                     <button id="btnDownloadConverted" class="primary" hidden>Descargar PDF renombrado</button>
+                    <button id="btnDownloadDummy" class="secondary" hidden title="Llena todos los campos con datos de ejemplo para ver cómo queda impreso">Descargar con datos de prueba</button>
+                    <label class="conv-dummy-largo" id="convDummyLargoWrap" hidden>
+                        <input type="checkbox" id="convDummyLargo"> texto largo
+                    </label>
                     <button id="btnExportLabeledPdf" class="secondary btn-sm" hidden>Descargar PDF con labels</button>
                     <button id="btnExportImage" class="secondary btn-sm" hidden>Exportar como imagen</button>
                     <button id="btnExportMapExcel" class="secondary btn-sm" hidden>Exportar mapeo Excel</button>
@@ -971,7 +975,7 @@
         <span>Pipeline 100% client-side — ningun archivo sale de tu browser.</span>
     </footer>
 
-    <script src="bundle.js?v=79"></script>
-    <script src="app.js?v=79"></script>
+    <script src="bundle.js?v=80"></script>
+    <script src="app.js?v=80"></script>
 </body>
 </html>

@@ -2022,3 +2022,7 @@ footer {
 .move-h-s  { left: calc(50% - 4px); bottom: -5px; cursor: ns-resize; }
 .move-h-sw { left: -5px; bottom: -5px; cursor: nesw-resize; }
 .move-h-w  { left: -5px; top: calc(50% - 4px); cursor: ew-resize; }
+
+/* Toggle de texto largo del relleno de prueba. */
+.conv-dummy-largo { display: inline-flex; align-items: center; gap: 0.35rem;
+    font-size: 0.8rem; color: var(--text-muted); margin-left: 0.2rem; }

@@ -382,6 +382,7 @@
         });
         $('#btnConvertDirect').addEventListener('click', runConvertDirect);
         $('#btnDownloadConverted').addEventListener('click', downloadConverted);
+        $('#btnDownloadDummy').addEventListener('click', downloadDummy);
         $('#btnExportImage').addEventListener('click', exportConvImage);
         $('#btnExportLabeledPdf').addEventListener('click', exportLabeledPdf);
         $('#btnExportMapExcel').addEventListener('click', exportMapExcel);
@@ -752,6 +753,8 @@
             renderConvWarnings(result.warnings);
             $('#convResultPanel').hidden = false;
             $('#btnDownloadConverted').hidden = false;
+        $('#btnDownloadDummy').hidden = false;
+        $('#convDummyLargoWrap').hidden = false;
             $('#convFontRow').hidden = false;
             $('#btnExportLabeledPdf').hidden = false;
             $('#btnExportImage').hidden = false;
@@ -774,6 +777,8 @@
         renderConvWarnings(result.warnings);
         $('#convResultPanel').hidden = false;
         $('#btnDownloadConverted').hidden = false;
+        $('#btnDownloadDummy').hidden = false;
+        $('#convDummyLargoWrap').hidden = false;
             $('#convFontRow').hidden = false;
         $('#btnExportLabeledPdf').hidden = false;
         $('#btnExportImage').hidden = false;
@@ -787,6 +792,48 @@
         await renderConvPreview(result.pdfBytes);
         statusEl.textContent = '✓ PDF convertido en ' + Math.round(t1 - t0) + 'ms — ' +
             result.renamedCount + ' campos renombrados. Listo.';
+    }
+
+    // Llena todos los campos con datos de ejemplo y lo baja. Es para mirar el
+    // PDF impreso antes de que lo llene Signframe: dónde se corta el texto,
+    // qué casilla pinta corrida, qué caja quedó chica.
+    async function downloadDummy() {
+        if (!convState.resultPdfBytes) {
+            $('#convStatus').textContent = '✗ No hay PDF para rellenar. Convertí primero.';
+            return;
+        }
+        var statusEl = $('#convStatus');
+        statusEl.className = 'status active';
+        statusEl.textContent = '⟳ Rellenando con datos de prueba...';
+        try {
+            var largo = $('#convDummyLargo') && $('#convDummyLargo').checked;
+            var bytes = convState.resultPdfBytes instanceof Uint8Array
+                ? convState.resultPdfBytes
+                : new Uint8Array(convState.resultPdfBytes);
+            var r = await InsPipelineBundle.fillPdfWithDummy(bytes, { textoLargo: largo });
+
+            var base = (convState.pdf && convState.pdf.name || 'formulario').replace(/\.pdf$/i, '');
+            InsPipelineBundle.downloadBlob(
+                new Blob([r.pdfBytes], { type: 'application/pdf' }),
+                base + '_prueba' + (largo ? '_largo' : '') + '.pdf'
+            );
+
+            var msg = '✓ ' + r.total + ' campos rellenos (' + r.texto + ' de texto, ' +
+                r.casillas + ' casillas' + (r.listas ? ', ' + r.listas + ' listas' : '') + ').';
+            // pdf-lib no reparte una letra por celda como haría Acrobat, así
+            // que en los campos con Comb lo que se ve no es lo que va a salir.
+            if (r.comb) {
+                msg += ' Ojo: ' + r.comb + ' campos siguen con Comb y no se ven fieles — ' +
+                    'ponelos en Auto desde "Propiedades" para verlos de verdad.';
+            }
+            if (r.fallos.length) msg += ' ' + r.fallos.length + ' no se pudieron llenar.';
+            statusEl.className = 'status active' + (r.comb ? '' : ' success');
+            statusEl.textContent = msg;
+        } catch (err) {
+            console.error(err);
+            statusEl.className = 'status active error';
+            statusEl.textContent = '✗ No se pudo rellenar: ' + err.message;
+        }
     }
 
     async function downloadConverted() {

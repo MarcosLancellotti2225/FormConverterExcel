@@ -88313,8 +88313,10 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
       "use strict";
       var { PDFDocument, PDFName, PDFHexString, PDFString, PDFArray, PDFNumber, PDFBool } = require_cjs();
       var FF_MULTILINE = 1 << 12;
+      var FF_COMB = 1 << 23;
       function applyFieldProps(dict, prop) {
         let touched = false;
+        let combCleared = false;
         if (prop.fontSize !== void 0 && prop.fontSize !== null && prop.fontSize !== "") {
           const size = Number(prop.fontSize);
           if (!isNaN(size)) {
@@ -88328,6 +88330,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             }
             dict.set(PDFName.of("DA"), PDFString.of(da));
             touched = true;
+            if (clearComb(dict)) combCleared = true;
           }
         }
         if (prop.multiline !== void 0) {
@@ -88341,7 +88344,16 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           touched = true;
         }
         if (touched) dict.delete(PDFName.of("AP"));
-        return touched;
+        return touched ? { touched: true, combCleared } : false;
+      }
+      function clearComb(dict) {
+        const ffVal = dict.get(PDFName.of("Ff"));
+        let ff = 0;
+        if (ffVal && typeof ffVal.asNumber === "function") ff = ffVal.asNumber();
+        else if (typeof ffVal === "number") ff = ffVal;
+        if (!(ff & FF_COMB)) return false;
+        dict.set(PDFName.of("Ff"), PDFNumber.of(ff & ~FF_COMB));
+        return true;
       }
       function readStringValue(val) {
         if (!val) return "";
@@ -88385,6 +88397,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
         const context = pdfDoc.context;
         const warnings = [];
         let needAppearances = false;
+        let combCleared = 0;
         const nameMap = /* @__PURE__ */ new Map();
         for (const { oldName, newName } of renameMap) {
           nameMap.set(oldName, newName);
@@ -88486,7 +88499,13 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
                 kidDict.set(PDFName.of("FT"), PDFName.of(typeEntry2));
               }
               const propEntry2 = propMap.get(widgetKey) || propMap.get(fullName);
-              if (propEntry2 && applyFieldProps(kidDict, propEntry2)) needAppearances = true;
+              if (propEntry2) {
+                const r = applyFieldProps(kidDict, propEntry2);
+                if (r) {
+                  needAppearances = true;
+                  if (r.combCleared) combCleared++;
+                }
+              }
               kidDict.delete(PDFName.of("Parent"));
               ensureFieldType(kidDict, context);
               let kRef = context.getObjectRef(kidDict);
@@ -88525,7 +88544,13 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
             leaf.dict.set(PDFName.of("FT"), PDFName.of(typeEntry));
           }
           const propEntry = propMap.get(uniqueKey) || propMap.get(fullName);
-          if (propEntry && applyFieldProps(leaf.dict, propEntry)) needAppearances = true;
+          if (propEntry) {
+            const r = applyFieldProps(leaf.dict, propEntry);
+            if (r) {
+              needAppearances = true;
+              if (r.combCleared) combCleared++;
+            }
+          }
           leaf.dict.delete(PDFName.of("Parent"));
           ensureFieldType(leaf.dict, context);
           let ref = context.getObjectRef(leaf.dict);
@@ -88537,7 +88562,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           acroForm.set(PDFName.of("NeedAppearances"), PDFBool.True);
         }
         const newBytes = await pdfDoc.save({ updateFieldAppearances: false });
-        return { pdfBytes: newBytes, warnings, renamedCount, renamedFields, deletedCount, deletedFields };
+        return { pdfBytes: newBytes, warnings, renamedCount, renamedFields, deletedCount, deletedFields, combCleared };
       }
       function removeWidgetFromPages(fieldDict, context, pdfDoc) {
         const fieldRef = context.getObjectRef(fieldDict);
@@ -102366,6 +102391,7 @@ fn fs_main(in : VertexOutput) -> @location(0) vec4<f32> {
           renamedCount: result.renamedCount || 0,
           renamedFields: result.renamedFields || [],
           deletedCount: result.deletedCount || 0,
+          combCleared: result.combCleared || 0,
           excelRows: entries.length
         };
       }
@@ -103162,6 +103188,121 @@ ${pagesHtml}</body>
         const saved = await doc.save({ updateFieldAppearances: false });
         return new Uint8Array(saved);
       }
+      var DUMMY_REGLAS = [
+        // Las partes sueltas de una fecha van PRIMERO: `solicitud_fecha_mes`
+        // contiene "fecha" y si no, se llevaba la fecha entera.
+        [/_dia$|_dia_/, "28"],
+        [/_mes$|_mes_/, "09"],
+        [/_ano$|_anio$|_year$/, "2026"],
+        [/fecha|nacimiento|constitucion|vigencia|desde|hasta/, "28/09/2026"],
+        [/hora/, "14:30"],
+        [/correo|email|mail/, "correo.prueba@ejemplo.cr"],
+        [/telefono|celular|movil|fax/, "8888-8888"],
+        [/cedula_juridica|juridica/, "3-101-123456"],
+        [/identificacion|cedula|documento|_id$/, "1-2345-6789"],
+        [/porcentaje|_pct/, "50"],
+        [/monto|salario|sueldo|ingreso|prima|suma|valor|comision|precio/, "1.250.000,00"],
+        [/edad/, "35"],
+        [/peso/, "72"],
+        [/estatura|altura/, "1,75"],
+        [/cantidad|numero_de|cant_/, "3"],
+        [/poliza|solicitud_numero|_numero$/, "0123456789"],
+        [/primer_apellido/, "RODR\xCDGUEZ"],
+        [/segundo_apellido/, "JIM\xC9NEZ"],
+        [/primer_nombre|^.*_nombre$/, "MAR\xCDA FERNANDA"],
+        [/nombre_completo|razon_social|nombre/, "MAR\xCDA FERNANDA RODR\xCDGUEZ JIM\xC9NEZ"],
+        [/provincia/, "San Jos\xE9"],
+        [/canton/, "Escaz\xFA"],
+        [/distrito/, "San Rafael"],
+        [/pais|nacionalidad/, "Costa Rica"],
+        [/direccion|domicilio|senas/, "Del parque central 200 metros norte, casa esquinera color blanco"],
+        [/ocupacion|profesion|puesto|actividad|negocio/, "Ingeniera industrial"],
+        [/patrono|empleador|empresa|agencia/, "Industrias del Valle S.A."],
+        [/parentesco|relacion/, "C\xF3nyuge"],
+        [/observacion|detalle|motivo|causa|descripcion/, "Detalle de prueba para verificar c\xF3mo entra el texto en la caja."],
+        [/lugar/, "San Jos\xE9, Costa Rica"],
+        [/firma/, "Mar\xEDa F. Rodr\xEDguez J."]
+      ];
+      var DUMMY_LARGO = "TEXTO LARGO DE PRUEBA PARA VERIFICAR HASTA D\xD3NDE ENTRA ANTES DE CORTARSE";
+      function dummyPara(nombre, textoLargo) {
+        if (textoLargo) return DUMMY_LARGO;
+        var n = String(nombre || "").toLowerCase();
+        for (var i = 0; i < DUMMY_REGLAS.length; i++) {
+          if (DUMMY_REGLAS[i][0].test(n)) return DUMMY_REGLAS[i][1];
+        }
+        return "Dato de prueba";
+      }
+      async function fillPdfWithDummy(input, opts) {
+        const {
+          PDFDocument,
+          StandardFonts,
+          PDFName,
+          PDFTextField,
+          PDFCheckBox,
+          PDFDropdown,
+          PDFOptionList,
+          PDFRadioGroup
+        } = require_cjs();
+        const o = opts || {};
+        const COMB = 1 << 23;
+        const bytes = input instanceof Uint8Array ? input : await fileToUint8Array(input);
+        const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+        const form = doc.getForm();
+        const font = await doc.embedFont(StandardFonts.Helvetica);
+        let texto = 0, casillas = 0, listas = 0, radios = 0, saltados = 0, comb = 0;
+        const fallos = [];
+        form.getFields().forEach(function(f) {
+          const nombre = f.getName();
+          try {
+            if (f instanceof PDFTextField) {
+              const ffObj = f.acroField.dict.get(PDFName.of("Ff"));
+              const ff = ffObj && ffObj.asNumber ? ffObj.asNumber() : 0;
+              if (ff & COMB) comb++;
+              let valor = dummyPara(nombre, o.textoLargo);
+              const maxLen = f.getMaxLength && f.getMaxLength();
+              if (maxLen && valor.length > maxLen) valor = valor.slice(0, maxLen);
+              f.setText(valor);
+              texto++;
+            } else if (f instanceof PDFCheckBox) {
+              f.check();
+              casillas++;
+            } else if (f instanceof PDFRadioGroup) {
+              const ops = f.getOptions();
+              if (ops.length) {
+                f.select(ops[0]);
+                radios++;
+              } else saltados++;
+            } else if (f instanceof PDFDropdown || f instanceof PDFOptionList) {
+              const ops = f.getOptions();
+              if (ops.length) {
+                f.select(ops[0]);
+                listas++;
+              } else saltados++;
+            } else {
+              saltados++;
+            }
+          } catch (e) {
+            saltados++;
+            fallos.push({ field: nombre, reason: e.message });
+          }
+        });
+        try {
+          form.updateFieldAppearances(font);
+        } catch (e) {
+          fallos.push({ field: "(apariencias)", reason: e.message });
+        }
+        return {
+          pdfBytes: await doc.save(),
+          texto,
+          casillas,
+          listas,
+          radios,
+          saltados,
+          comb,
+          fallos,
+          total: texto + casillas + listas + radios
+        };
+      }
       async function generateLabeledPdf(pdfBytes) {
         const { PDFDocument, rgb, StandardFonts } = require_cjs();
         const { detectFields: detect } = require_pdf_detect();
@@ -103217,9 +103358,9 @@ ${pagesHtml}</body>
         return new Uint8Array(savedBytes);
       }
       if (typeof window !== "undefined") {
-        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, calibrateQuote, buildQuoteReport, buildQuoteDocx, runJsonMap, runJsonCompare, runEstructura, estructuraToXlsx, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
+        window.InsPipeline = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, fillPdfWithDummy, runQuoteZip, requote, calibrateQuote, buildQuoteReport, buildQuoteDocx, runJsonMap, runJsonCompare, runEstructura, estructuraToXlsx, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
       }
-      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, runQuoteZip, requote, calibrateQuote, buildQuoteReport, buildQuoteDocx, runJsonMap, runJsonCompare, runEstructura, estructuraToXlsx, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
+      module.exports = { runAll, jsonToBlob, downloadBlob, runConvertAnalysis, runConvertGenerate, runConvertDirect, runConvertCustom, runConvertManual, parseExcelHeaders, parseExcel22Col, renderPreview, generateHtml, runEnrichJson, runMatrixAnalysis, matrixSplitAll, matrixDerivePdfNames, matrixNormalizeObligatorio, matrixDeriveFormulario, matrixExport, matrixExportPerFormularioZip, matrixParseCatalogos, matrixCrossWithPdfs, runProcessFormulario, runConvertPdfV2, renderPdfPreviewV2, runDetectFields, detectFieldsToXlsx, renameMapToXlsx, renderDetectPreview, runGenerateMatrices, runAddFields, generateLabeledPdf, mergePdfs, readPdfMetadata, writePdfMetadata, capPdfFieldFontSize, readPdfFieldFontSizes, fillPdfWithDummy, runQuoteZip, requote, calibrateQuote, buildQuoteReport, buildQuoteDocx, runJsonMap, runJsonCompare, runEstructura, estructuraToXlsx, runSignframeGenerator, runSignframeCombine, runSignframePrepare, runSignframeGenerateFromMapping, runSignframePrepareGroups, runSignframeGenerateGroups, runCanonicalMatrix };
     }
   });
   return require_browser();
