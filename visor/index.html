@@ -60,6 +60,29 @@ code{font-family:var(--f-mono);font-size:.92em}
 .err{background:var(--bad-soft);color:var(--bad);border-radius:var(--r);padding:8px 12px}
 .info{background:var(--warn-soft);color:var(--warn);border-radius:var(--r);padding:8px 12px}
 
+/* ---- vista Ficha (etapa 1) ---- */
+.fx-avisos{margin:4px 0 0;padding-left:18px;font-size:12.5px;line-height:1.6}
+.fx-avisos code{background:var(--panel-2);padding:0 4px;border-radius:3px}
+.fx-ir{border:0;background:var(--accent-soft);color:var(--accent);border-radius:4px;padding:1px 6px;font-size:11.5px;font-family:var(--f-mono)}
+.fx-ir:hover{text-decoration:underline}
+.fx-g{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);margin-bottom:8px}
+.fx-g>summary{padding:7px 11px;cursor:pointer;font-weight:600;font-size:13px}
+.fx-g.fx-salto{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.fx-n{color:var(--muted);font-weight:400;font-size:11.5px}
+.fx-inst{color:var(--accent);font-weight:600;font-size:12px}
+.fx-t{width:100%;border-collapse:collapse;font-size:12.5px}
+.fx-t th{text-align:left;padding:5px 9px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--line);white-space:nowrap}
+.fx-t td{padding:5px 9px;border-bottom:1px solid var(--line);vertical-align:top}
+.fx-t tr:last-child td{border-bottom:0}
+.fx-t code{font-size:11.5px;word-break:break-all}
+.fx-fila{color:var(--muted);white-space:nowrap;font-family:var(--f-mono);font-size:11px}
+.fx-tipo{font-size:11px;padding:1px 6px;border-radius:99px;background:var(--panel-2);color:var(--muted);white-space:nowrap}
+.fx-op{display:inline-block;font-size:11px;padding:1px 6px;margin:1px 2px 1px 0;border-radius:99px;background:var(--accent-soft);color:var(--accent)}
+.fx-extra{display:block;font-size:11px;color:var(--warn)}
+.fx-vacio{color:var(--muted)}
+.fx-d{font-size:11px;padding:1px 7px;border-radius:99px;background:var(--panel-2);color:var(--muted);white-space:nowrap}
+.fx-d.fx-json{background:var(--json-soft);color:var(--json)}
+
 .stats{display:flex;flex-wrap:wrap;gap:8px}
 .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:6px 12px;display:flex;gap:8px;align-items:baseline}
 .stat b{font-family:var(--f-display);font-size:19px;font-variant-numeric:tabular-nums}
@@ -262,6 +285,7 @@ textarea.out{width:100%;min-height:120px;font-family:var(--f-mono);font-size:11p
   <div class="stats" id="stats"></div>
 
   <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" id="t-ficha" data-tab="ficha" aria-selected="false">Ficha</button>
     <button class="tab" role="tab" id="t-form" data-tab="form" aria-selected="true">Formulario</button>
     <button class="tab" role="tab" id="t-json" data-tab="json" aria-selected="false">JSON que sale</button>
     <button class="tab" role="tab" id="t-reglas" data-tab="reglas" aria-selected="false">Reglas</button>
@@ -298,10 +322,69 @@ function sfId(f){return "field_ficha_"+slug(f.ruta)}
 
 /* ============ lectura de la ficha (por posición de columna) ============ */
 var HEADERS={};
+/* ============ Etapa 1 · ficha limpia ============ */
+
+/* Instancias de persona. La ficha declara el bloque `personas` una sola vez y
+   la hoja "Estructura base JSON" dice que se instancia varias veces; lo que
+   distingue una instancia de otra, fila por fila, es la COLUMNA B. La col A no
+   sirve: dice "Datos de la persona asegurada" para todo el bloque.
+
+   Sin esto, Tomador y Beneficiario colapsan en el mismo campo y todo escribe
+   en personas[0]. */
+var INSTANCIAS=[
+  [/persona\s*jur/i,            {cod:"BNFPJ",idx:3,nombre:"Beneficiario jurídico"}],
+  [/datos\s*beneficiario/i,     {cod:"BNF",  idx:2,nombre:"Beneficiario"}],
+  [/datos\s*tomador|tomador/i,  {cod:"TOM",  idx:1,nombre:"Tomador"}],
+  [/datos\s*persona|asegurad/i, {cod:"ASG",  idx:0,nombre:"Asegurado"}]
+];
+
+function instanciaDe(seccion){
+  var t=norm(seccion); if(!t) return null;
+  for(var i=0;i<INSTANCIAS.length;i++){ if(INSTANCIAS[i][0].test(t)) return INSTANCIAS[i][1]; }
+  return null;
+}
+
+/* Filas marcadas en rojo: el cliente las tacha así cuando no aplican. No se
+   descartan en silencio — se listan aparte. Se mira el relleno y la fuente. */
+function filasRojas(ws){
+  var out={};
+  if(!ws) return out;
+  for(var ref in ws){
+    if(ref.charAt(0)==="!") continue;
+    var st=ws[ref]&&ws[ref].s; if(!st) continue;
+    var rgb=(st.fgColor&&st.fgColor.rgb)||(st.color&&st.color.rgb)||"";
+    if(!esRojo(rgb)&&!st.strike) continue;
+    var m=/^[A-Z]+(\d+)$/.exec(ref); if(m) out[+m[1]]=1;
+  }
+  return out;
+}
+
+function esRojo(rgb){
+  var h=String(rgb||"").replace(/^#/,"").slice(-6);
+  if(h.length!==6) return false;
+  var r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);
+  return r>140 && r-g>60 && r-b>60;   // rojo dominante, no un gris ni un naranja claro
+}
+
+/* Una ruta por campo. La ficha a veces trae dos pegadas con coma, y alguna
+   cortada a la mitad ("...codigoGenero, datosFormulario"). */
+function partirRutas(cruda){
+  var partes=String(cruda||"").split(",").map(norm).filter(Boolean);
+  var buenas=[],malas=[];
+  partes.forEach(function(x){
+    if(/\s/.test(x)||!/^[A-Za-z0-9_.\[\]]+$/.test(x)||!/\./.test(x)) malas.push(x);
+    else buenas.push(x);
+  });
+  return {ruta:buenas[0]||"",extra:buenas.slice(1),malas:malas,partes:partes};
+}
+
 function parseSheets(sheets){
-  var fields=[],byKey={},legends=[],ejemplo=null,order=0;
+  var fields=[],byKey={},legends=[],ejemplo=null,order=0,avisos=[],excluidas=[];
+  function avisar(tipo,hoja,fila,col,detalle,extra){
+    avisos.push(Object.assign({tipo:tipo,hoja:hoja,fila:fila,col:col,detalle:detalle},extra||{}));
+  }
   sheets.forEach(function(sh){
-    var name=norm(sh.name),rows=sh.rows||[];
+    var name=norm(sh.name),rows=sh.rows||[],rojas=sh.rojas||{},ultimaInst=null;
     if(/json generado/i.test(name)){
       var txt=rows.map(function(r){return r&&r[0]!=null?String(r[0]):""}).join("\n");
       try{ejemplo=JSON.parse(txt)}catch(e){ejemplo=null}
@@ -313,32 +396,95 @@ function parseSheets(sheets){
     HEADERS[name]=rows[0]||[];
     rows.slice(1).forEach(function(r,ri){
       if(!r) return;
+      var fila=ri+2;
       var c=[];for(var i=0;i<14;i++)c[i]=r[i]==null?"":r[i];
       if(!c.some(function(x){return norm(x)!==""})) return;
-      var ruta=norm(c[12]);
-      if(!ruta){
-        var t=norm(c[2])||norm(c[3])||norm(c[1]);
-        if(t&&norm(c[1])&&!/^no aplica/i.test(t)&&!/no posee campos/i.test(t)) legends.push({hoja:name,paso:norm(c[0]),seccion:norm(c[1]),texto:t,order:order++,fila:ri+2});
+
+      // Marcada en rojo: no entra al formulario, pero queda listada.
+      if(rojas[fila]){
+        excluidas.push({hoja:name,fila:fila,label:norm(c[3])||norm(c[2]),ruta:norm(c[12])});
         return;
       }
-      var key=name+"|"+ruta,f=byKey[key];
+
+      var cruda=norm(c[12]);
+      var R=partirRutas(cruda);
+      if(R.malas.length){
+        avisar("ruta-mal-formada",name,fila,"M",
+          "La ruta no es una ruta: "+R.malas.map(function(x){return '"'+x+'"'}).join(" · ")+
+          (R.ruta?' — se usa "'+R.ruta+'"':" — el campo queda sin ruta"),{valor:cruda});
+      } else if(R.extra.length){
+        avisar("ruta-doble",name,fila,"M",
+          "Dos rutas en la misma celda. Se usa \""+R.ruta+"\" y queda pendiente \""+R.extra.join('", "')+"\".",{valor:cruda});
+      }
+      var ruta=R.ruta;
+      if(!ruta){
+        var t=norm(c[2])||norm(c[3])||norm(c[1]);
+        if(t&&norm(c[1])&&!/^no aplica/i.test(t)&&!/no posee campos/i.test(t)) legends.push({hoja:name,paso:norm(c[0]),seccion:norm(c[1]),texto:t,order:order++,fila:fila});
+        return;
+      }
+
+      // La instancia separa Tomador de Beneficiario: sin ella son el mismo campo.
+      // Las filas de solo-JSON (descripcionGenero, descripcionEstadoCivil...)
+      // traen "JSON" en la col B pero viven DENTRO del bloque de arriba, así
+      // que heredan su instancia. Sin esto la descripción del Tomador y la del
+      // Beneficiario vuelven a ser el mismo campo.
+      var inst=instanciaDe(c[1]);
+      if(inst) ultimaInst=inst;
+      else if(ultimaInst&&/personas/.test(ruta)) inst=ultimaInst;
+      var key=name+"|"+(inst?inst.cod:"-")+"|"+ruta,f=byKey[key];
       if(!f){
         f=byKey[key]={id:"f"+fields.length,hoja:name,order:order++,
           paso:norm(c[0]),seccion:norm(c[1]),pdf:norm(c[2]),label:norm(c[3])||norm(c[2])||leafOf(ruta),
           tipo:norm(c[4]),valores:[],reglaRows:[],oblig:norm(c[7]),formI:norm(c[8]),visual:norm(c[9]),
-          obs:norm(c[10]),ruta:ruta,sourceNames:[]};
+          obs:norm(c[10]),ruta:ruta,rutasExtra:R.extra.slice(),sourceNames:[],
+          inst:inst||null,instCod:inst?inst.cod:"",instIdx:inst?inst.idx:null};
         fields.push(f);
       }
       var v=c[5]===""?"":norm(c[5]);
-      f.valores.push(v);
+      // Una opción repetida dentro del MISMO campo es un error de la ficha.
+      // (Las que salían por colapsar instancias ya no llegan hasta acá.)
+      if(v&&f.valores.some(function(x){return low(x)===low(v)})){
+        avisar("opcion-duplicada",name,fila,"F",
+          'La opción "'+v+'" ya estaba en «'+f.label+'».',{campo:f.label,valor:v});
+      } else {
+        f.valores.push(v);
+      }
       f.reglaRows.push({valor:v,regla:norm(c[6])});
-      (f.filas=f.filas||[]).push(ri+2);(f.rawRows=f.rawRows||[]).push(c);
+      (f.filas=f.filas||[]).push(fila);(f.rawRows=f.rawRows||[]).push(c);
       if(!f.obs&&norm(c[10]))f.obs=norm(c[10]);
       var sn=norm(c[13]);if(sn&&!/^no aplica$/i.test(sn)&&f.sourceNames.indexOf(sn)<0)f.sourceNames.push(sn);
     });
   });
   fields.forEach(classify);
-  return {fields:fields,legends:legends,ejemplo:ejemplo};
+  avisos=avisos.concat(revisarTipos(fields),revisarClaves(fields));
+  return {fields:fields,legends:legends,ejemplo:ejemplo,avisos:avisos,excluidas:excluidas};
+}
+
+/* Un "Mes" o un "Año" sueltos no son una fecha: son dos dígitos y cuatro. */
+function revisarTipos(fields){
+  var out=[];
+  fields.forEach(function(f){
+    if(low(f.tipo)!=="fecha") return;
+    if(!/(^|_|\s)(mes|a[nñ]o|dia)(\s|_|$)/i.test(f.label+" "+leafOf(f.ruta))) return;
+    out.push({tipo:"tipo-incoherente",hoja:f.hoja,fila:(f.filas||[])[0],col:"E",
+      detalle:'«'+f.label+'» está declarada como Fecha pero es una parte suelta. Debería ser Texto o Número.',
+      campo:f.label});
+  });
+  return out;
+}
+
+/* Dos campos distintos que terminarían siendo el mismo. */
+function revisarClaves(fields){
+  var vistos={},out=[];
+  fields.forEach(function(f){
+    var k=(f.instCod||"-")+"|"+slug(f.ruta);
+    if(vistos[k]){
+      out.push({tipo:"clave-repetida",hoja:f.hoja,fila:(f.filas||[])[0],col:"M",
+        detalle:'«'+f.label+'» y «'+vistos[k].label+'» ('+vistos[k].hoja+' fila '+(vistos[k].filas||[])[0]+') dan la misma clave '+k+'.',
+        campo:f.label});
+    } else vistos[k]=f;
+  });
+  return out;
 }
 
 function classify(f){
@@ -476,8 +622,8 @@ var CONV=[
   {test:function(f){return widgetOf(f)==="textarea"||(f.maxLength&&f.maxLength>=60)||f.label.length>70},w:"full",txt:"texto largo o pregunta larga: full"},
   {test:function(f){return widgetOf(f)==="numcombo"},w:"half",txt:"número + unidad: 1/2"}
 ];
-function key(f){return f.custom?"manual|"+f.cid:f.hoja+"|"+f.ruta}
-function refOf(f){return f.ruta||("@"+f.cid)}
+function key(f){return f.custom?"manual|"+f.cid:f.hoja+"|"+(f.instCod||"-")+"|"+f.ruta}
+function refOf(f){return f.custom?("@"+f.cid):((f.instCod?f.instCod+":":"")+f.ruta)}
 function makeCustom(c,n){
   return {id:"cf_"+c.cid,cid:c.cid,custom:true,hoja:"(agregado)",order:1e6+n,paso:"",seccion:c.seccion||"",pdf:"",label:c.label||"Campo nuevo",tipo:"Agregado por vos",
     valores:[],reglaRows:[],reglas:[],oblig:c.required?"Both":"",formI:"",visual:"",obs:"",ruta:c.ruta||"",sourceNames:[],soloJSON:false,oculto:false,readOnly:false,
@@ -554,7 +700,7 @@ function condText(c){
 /* ============ carga ============ */
 function loadData(obj){
   var r=parseSheets(obj.sheets);
-  state.ordering=false;state.file=obj.file;state.sheets=obj.sheets;state.selW=null;state._autoAcro=null;state.fields=r.fields;state.legends=r.legends;state.ejemplo=r.ejemplo;state.sel=null;state.vals={};state.inst={};state.lastVisible={};
+  state.ordering=false;state.file=obj.file;state.sheets=obj.sheets;state.selW=null;state._autoAcro=null;state.fields=r.fields;state.legends=r.legends;state.ejemplo=r.ejemplo;state.avisos=r.avisos||[];state.excluidas=r.excluidas||[];state.sel=null;state.vals={};state.inst={};state.lastVisible={};
   state.baseFields=r.fields;
   state.ov=normOv(store("fv2-ov:"+obj.file));state.main=null;rebuildFields();
   var pd=store("fv2-predet")||{};state.predet={w:pd.w||{},t:pd.t||{},clases:pd.clases||{}};
@@ -633,11 +779,11 @@ function readFile(file){
   var fr=new FileReader();
   fr.onload=function(){
     try{
-      var wb=XLSX.read(new Uint8Array(fr.result),{type:"array",cellDates:true});
+      var wb=XLSX.read(new Uint8Array(fr.result),{type:"array",cellDates:true,cellStyles:true});
       var sheets=wb.SheetNames.map(function(n){
         var rows=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:null,raw:true});
         rows=rows.map(function(r){return r.map(function(v){return v instanceof Date?("0"+v.getDate()).slice(-2)+"/"+("0"+(v.getMonth()+1)).slice(-2)+"/"+v.getFullYear():v})});
-        return {name:n,rows:rows};
+        return {name:n,rows:rows,rojas:filasRojas(wb.Sheets[n])};
       });
       loadData({file:file.name,sheets:sheets});
     }catch(e){showErr("No pude leer el archivo: "+e.message)}
@@ -977,6 +1123,128 @@ function renderReglas(){
 }
 
 /* ============ tabla ============ */
+/* ============ vista Ficha (etapa 1) ============ */
+
+var AVISO_TITULO={
+  "ruta-mal-formada":"Ruta mal formada",
+  "ruta-doble":"Dos rutas en una celda",
+  "opcion-duplicada":"Opción repetida",
+  "clave-repetida":"Dos campos con la misma clave",
+  "tipo-incoherente":"Tipo que no corresponde"
+};
+
+function renderFicha(){
+  var F=state.fields,A=state.avisos||[],X=state.excluidas||[];
+  if(!F.length) return '<div class="note">Cargá una ficha del INS para revisarla.</div>';
+
+  // Agrupado hoja → instancia → campos, en el orden de la ficha.
+  var grupos=[],porClave={};
+  F.forEach(function(f){
+    var k=f.hoja+"|"+(f.instCod||"");
+    if(!porClave[k]){porClave[k]={hoja:f.hoja,inst:f.inst,campos:[]};grupos.push(porClave[k])}
+    porClave[k].campos.push(f);
+  });
+
+  var porTipo={};A.forEach(function(a){(porTipo[a.tipo]=porTipo[a.tipo]||[]).push(a)});
+
+  var h='<div class="blk"><div class="t">Etapa 1 · la ficha limpia</div>'+
+    '<div class="note">Una fila por campo, con las opciones ya juntadas. Las instancias de persona salen de la columna B: sin eso, Tomador y Beneficiario son el mismo campo y todo escribe en <code>personas[0]</code>.</div>'+
+    '<div class="row" style="margin-top:8px">'+
+      '<button class="btn sm" type="button" id="fichaJson">Bajar ficha normalizada (.json)</button>'+
+      '<button class="btn sm" type="button" id="fichaDudas">Dudas para Alejandro (.xlsx)</button>'+
+    '</div></div>';
+
+  h+='<div class="stats" style="margin:10px 0">'+
+    stat(F.length,"campos")+stat(grupos.length,"bloques")+
+    stat(F.filter(function(f){return f.inst}).length,"en instancias")+
+    stat(A.length,"avisos")+stat(X.length,"filas en rojo")+'</div>';
+
+  if(A.length){
+    h+='<div class="blk"><div class="t">Lo que hay que revisar</div>';
+    Object.keys(porTipo).forEach(function(t){
+      h+='<div class="note" style="margin-top:6px"><b>'+esc(AVISO_TITULO[t]||t)+'</b> · '+porTipo[t].length+'</div><ul class="fx-avisos">';
+      porTipo[t].forEach(function(a){
+        h+='<li><button type="button" class="fx-ir" data-hoja="'+esc(a.hoja)+'" data-fila="'+(a.fila||"")+'">'+
+          esc(a.hoja)+' fila '+(a.fila||"?")+(a.col?' · col '+a.col:"")+'</button> '+esc(a.detalle)+'</li>';
+      });
+      h+='</ul>';
+    });
+    h+='</div>';
+  } else {
+    h+='<div class="blk"><div class="t">Sin avisos</div><div class="note">Ninguna ruta pegada, ninguna opción repetida y ninguna clave en conflicto.</div></div>';
+  }
+
+  if(X.length){
+    h+='<div class="blk"><div class="t">Filas marcadas en rojo ('+X.length+')</div>'+
+      '<div class="note">No entran al formulario. Se listan para que nadie las pierda de vista.</div><ul class="fx-avisos">';
+    X.forEach(function(x){h+='<li>'+esc(x.hoja)+' fila '+x.fila+' · '+esc(x.label||"(sin label)")+(x.ruta?' · <code>'+esc(shortRoute(x.ruta))+'</code>':"")+'</li>'});
+    h+='</ul></div>';
+  }
+
+  grupos.forEach(function(g){
+    var tit=esc(g.hoja)+(g.inst?' · <span class="fx-inst">'+esc(g.inst.nombre)+' — personas['+g.inst.idx+'] · '+g.inst.cod+'</span>':"");
+    h+='<details class="fx-g" open><summary>'+tit+' <span class="fx-n">'+g.campos.length+'</span></summary>'+
+      '<table class="fx-t"><thead><tr><th>fila</th><th>Campo</th><th>Tipo</th><th>Opciones</th><th>Ruta</th><th>sourceName</th><th>Destino</th></tr></thead><tbody>';
+    g.campos.forEach(function(f){
+      h+='<tr><td class="fx-fila">'+esc(filasTxt(f).replace(/^filas? /,""))+'</td>'+
+        '<td>'+esc(f.label)+'</td>'+
+        '<td><span class="fx-tipo">'+esc(f.tipo||"—")+'</span></td>'+
+        '<td>'+f.valores.filter(Boolean).map(function(v){return '<span class="fx-op">'+esc(v)+'</span>'}).join("")+'</td>'+
+        '<td><code>'+esc(shortRoute(rutaConIndice(f)||f.ruta))+'</code>'+
+          (f.rutasExtra&&f.rutasExtra.length?'<span class="fx-extra">+ '+esc(f.rutasExtra.join(", "))+'</span>':"")+'</td>'+
+        '<td>'+(f.sourceNames.length?f.sourceNames.map(function(x){return '<code>'+esc(x)+'</code>'}).join(" "):'<span class="fx-vacio">—</span>')+'</td>'+
+        '<td>'+(f.soloJSON?'<span class="fx-d fx-json">solo JSON</span>':f.oculto?'<span class="fx-d">oculto</span>':'<span class="fx-d">normal</span>')+'</td></tr>';
+    });
+    h+='</tbody></table></details>';
+  });
+  return h;
+}
+
+function stat(n,t){return '<div class="stat"><b>'+n+'</b><span>'+esc(t)+'</span></div>'}
+
+/* La ficha ya normalizada, para que el paso siguiente no vuelva a leer el xlsx. */
+function fichaNormalizada(){
+  return {
+    ficha:state.file,
+    generado:new Date().toISOString(),
+    instancias:INSTANCIAS.map(function(x){return x[1]}),
+    campos:state.fields.map(function(f){
+      return {hoja:f.hoja,filas:f.filas||[],instancia:f.instCod||null,
+        indicePersona:f.instIdx==null?null:f.instIdx,
+        paso:f.paso,seccion:f.seccion,label:f.label,tipoFicha:f.tipo,
+        opciones:f.valores.filter(Boolean),reglas:f.reglaRows.filter(function(r){return r.regla}),
+        obligatorio:f.oblig,visualizacion:f.visual,observaciones:f.obs,
+        ruta:f.ruta,rutaFinal:rutaConIndice(f),rutasExtra:f.rutasExtra||[],
+        sourceNames:f.sourceNames,soloJSON:!!f.soloJSON,oculto:!!f.oculto};
+    }),
+    avisos:state.avisos||[],
+    excluidas:state.excluidas||[]
+  };
+}
+
+function exportFichaJson(btn){
+  var txt=JSON.stringify(fichaNormalizada(),null,2);
+  var name="ficha-normalizada-"+state.file.replace(/\.xlsx?$/i,"")+".json";
+  if(canPlainDownload()&&plainDownload(name,txt,"application/json")){btn.textContent="Descargado";setTimeout(function(){btn.textContent="Bajar ficha normalizada (.json)"},2200);return}
+  if(DL)DL.save({filename:name,data:txt});
+}
+
+function exportDudas(btn){
+  var rows=[["hoja","fila","columna","problema","detalle","campo","valor"]];
+  (state.avisos||[]).forEach(function(a){
+    rows.push([a.hoja,a.fila||"",a.col||"",AVISO_TITULO[a.tipo]||a.tipo,a.detalle,a.campo||"",a.valor||""]);
+  });
+  (state.excluidas||[]).forEach(function(x){
+    rows.push([x.hoja,x.fila,"","Fila marcada en rojo","No entra al formulario",x.label||"",x.ruta||""]);
+  });
+  if(rows.length===1) rows.push(["","","","Sin dudas","La ficha no tiene avisos.","",""]);
+  var wb=XLSX.utils.book_new();
+  var ws=XLSX.utils.aoa_to_sheet(rows);
+  ws["!cols"]=[{wch:20},{wch:7},{wch:9},{wch:28},{wch:70},{wch:28},{wch:30}];
+  XLSX.utils.book_append_sheet(wb,ws,"dudas");
+  xlsxSave(wb,"dudas-"+state.file.replace(/\.xlsx?$/i,"")+".xlsx",btn,"Dudas para Alejandro (.xlsx)");
+}
+
 function renderTabla(){
   var h='<div class="tools"><input type="search" id="q" placeholder="Buscar pregunta, ruta, hoja, fila o casillero" value="'+esc(state.q)+'"><span>Todas las hojas de la ficha juntas, un campo por fila.</span></div>';
   h+='<div class="list"><table><thead><tr><th>Hoja · fila</th><th>Sección</th><th>Pregunta</th><th>Tipo</th><th>Ancho</th><th>Condición</th><th>PDF</th><th>Ruta JSON</th></tr></thead><tbody>';
@@ -1446,8 +1714,16 @@ function condFor(f,ctx){
   }).filter(Boolean);
   return conds.length?{str:JSON.stringify({logic:c.logic||"or",conditions:conds}),required:!!c.required}:null;
 }
+/* `personas[]` con el indice de SU instancia. Antes todo salia a personas[0],
+   asi que Tomador, Beneficiario y Asegurado se pisaban en la misma persona. */
+function rutaConIndice(f){
+  if(!f.ruta) return null;
+  var i=f.instIdx==null?0:f.instIdx;
+  return f.ruta.replace(/personas\[\]/g,"personas["+i+"]").replace(/\[\]/g,"[0]");
+}
+
 function sfFields(f,ctx){
-  var w=widgetOf(f),m=pdfMapOf(f),out=[],cd=condFor(f,ctx),path=f.ruta?f.ruta.replace(/\[\]/g,"[0]"):null;
+  var w=widgetOf(f),m=pdfMapOf(f),out=[],cd=condFor(f,ctx),path=rutaConIndice(f);
   function common(o){
     o.required=!!f.required&&!cd;o.readOnly=!!f.readOnly;o.width=widthOf(f).w;
     if(staticHidden(f))o.hidden=true;
@@ -1536,13 +1812,34 @@ function pick(fid){
   document.querySelectorAll('#view [data-f="'+fid+'"]').forEach(function(n){n.classList.add("sel")});
   renderInsp();
 }
+function bindFicha(v){
+  var j=v.querySelector("#fichaJson");if(j)j.onclick=function(){exportFichaJson(j)};
+  var d=v.querySelector("#fichaDudas");if(d)d.onclick=function(){exportDudas(d)};
+  // Un aviso lleva a su bloque y lo resalta: hoja + fila, no hay que buscarla.
+  v.querySelectorAll(".fx-ir").forEach(function(b){
+    b.onclick=function(){
+      var hoja=b.getAttribute("data-hoja"),fila=+b.getAttribute("data-fila");
+      var fila_=v.querySelector('.fx-t tr[data-hoja="'+hoja+'"][data-fila~="'+fila+'"]');
+      var det=null;
+      v.querySelectorAll("details.fx-g").forEach(function(g){
+        if(det) return;
+        var t=g.querySelector("summary").textContent;
+        if(t.indexOf(hoja)===0) det=g;
+      });
+      if(det){det.open=true;det.scrollIntoView({behavior:"smooth",block:"center"});
+        det.classList.add("fx-salto");setTimeout(function(){det.classList.remove("fx-salto")},1400)}
+    };
+  });
+}
+
 function render(){
   var y=window.scrollY;
   renderStats();
   document.querySelectorAll(".tab").forEach(function(t){t.setAttribute("aria-selected",String(t.getAttribute("data-tab")===state.tab))});
   var v=document.getElementById("view");
   if(!state.baseFields||!state.baseFields.length){v.innerHTML='<div class="info" style="max-width:640px"><b>Cargá una ficha del INS</b> con «Cargar ficha (.xlsx)» o soltándola en la página. Se leen todas las hojas del formato nuevo (una por nodo, 14 columnas) y armás el formulario, las reglas, el cruce con el PDF y el form-def desde acá.</div>';renderInsp();return}
-  v.innerHTML=state.tab==="form"?renderForm():state.tab==="json"?renderJson():state.tab==="reglas"?renderReglas():state.tab==="pdf"?renderPdf():state.tab==="acro"?renderAcro():renderTabla();
+  v.innerHTML=state.tab==="ficha"?renderFicha():state.tab==="form"?renderForm():state.tab==="json"?renderJson():state.tab==="reglas"?renderReglas():state.tab==="pdf"?renderPdf():state.tab==="acro"?renderAcro():renderTabla();
+  if(state.tab==="ficha") bindFicha(v);
   if(state.tab==="pdf") bindPdf(v);
   if(state.tab==="acro") bindAcro(v);
   if(state.tab==="form"&&state.ordering){bindOrden(v)}
