@@ -403,6 +403,7 @@
             enterMoveMode();
         });
         $('#btnToggleProps').addEventListener('click', toggleProps);
+        $('#btnAllAuto').addEventListener('click', ponerTodoEnAuto);
         initDrawHandlers();
         initMoveHandlers();
     }
@@ -827,7 +828,21 @@
                     'ponelos en Auto desde "Propiedades" para verlos de verdad.';
             }
             if (r.fallos.length) msg += ' ' + r.fallos.length + ' no se pudieron llenar.';
-            statusEl.className = 'status active' + (r.comb ? '' : ' success');
+
+            // Lo que de verdad importa mirar: qué campo sigue desbordando.
+            var ne = r.noEntran || [];
+            if (ne.length) {
+                var top = ne.slice().sort(function(a, b) { return (b.necesita - b.disponible) - (a.necesita - a.disponible); });
+                msg += ' ⚠ El texto NO entra en ' + ne.length + ' campos: ' +
+                    top.slice(0, 4).map(function(x) {
+                        return x.field + ' (' + x.size + 'pt, necesita ' + x.necesita + 'pt y hay ' + x.disponible + ')';
+                    }).join(', ') + (ne.length > 4 ? ' y ' + (ne.length - 4) + ' más' : '') +
+                    '. Ponelos en Auto, y si ya están, ensanchá la caja con "Mover".';
+            } else if (!r.comb) {
+                msg += ' El texto entra en todos.';
+            }
+            console.table && ne.length && console.table(ne);
+            statusEl.className = 'status active' + (r.comb || ne.length ? '' : ' success');
             statusEl.textContent = msg;
         } catch (err) {
             console.error(err);
@@ -1321,6 +1336,43 @@
             countEl.textContent = convState.allFieldEntries.length + ' campos, ' + renamed + ' renombrados' +
                 (deleted ? ', ' + deleted + ' a eliminar' : '');
         }
+    }
+
+    // Pone la fuente en Auto en todos los campos de texto a la vista. Auto es
+    // tamaño 0 en el /DA: el visor lo achica hasta que el texto entra en la
+    // caja. Aplicarlo también limpia el flag Comb, que es lo que hacía que
+    // elegir un tamaño no tuviera ningún efecto.
+    //
+    // Respeta el filtro: si buscaste algo, toca solo lo que estás viendo.
+    function ponerTodoEnAuto() {
+        if (!convState.allFieldEntries || !convState.allFieldEntries.length) return;
+        // Abrir la columna de fuente primero: re-renderiza la tabla, y después
+        // se leen las filas visibles sobre el DOM ya nuevo.
+        if (!convState.showProps) toggleProps();
+
+        var filas = $$('#convRenameTableBody tr').filter(function(tr) {
+            return tr.style.display !== 'none';
+        });
+        var tocados = 0, saltados = 0;
+        filas.forEach(function(tr) {
+            var idx = parseInt(tr.dataset.tableIdx, 10);
+            var e = convState.allFieldEntries[idx];
+            if (!e || convState.deletedFields.has(fieldKeyForEntry(e))) return;
+            // Solo texto: en una casilla o un radio el tamaño no significa nada.
+            var tipo = (e._newType || e.type || '').toLowerCase();
+            if (tipo && !/text|textarea|number/.test(tipo)) { saltados++; return; }
+            e._fontSize = '0';
+            e._propEdited = true;
+            tocados++;
+            var sel = tr.querySelector('.conv-font-select');
+            if (sel) sel.value = '0';
+        });
+
+        $('#convStatus').className = 'status active';
+        $('#convStatus').textContent = tocados
+            ? '✓ ' + tocados + ' campos en Auto' + (saltados ? ' (' + saltados + ' salteados: no son de texto)' : '') +
+              '. Dale "Aplicar cambios" y después "Descargar con datos de prueba" para ver si entra todo.'
+            : '✗ No hay campos de texto a la vista para poner en Auto.';
     }
 
     function togglePositions() {

@@ -1183,10 +1183,47 @@ async function fillPdfWithDummy(input, opts) {
     try { form.updateFieldAppearances(font); }
     catch (e) { fallos.push({ field: '(apariencias)', reason: e.message }); }
 
+    // Con las apariencias ya generadas, el /DA tiene el tamaño que el visor
+    // resolvió de verdad (el 0 del auto ya está calculado). Comparando ese
+    // ancho contra el de la caja se sabe qué campo sigue desbordando.
+    //
+    // Auto no es garantía: hay un piso de tamaño, así que una caja muy angosta
+    // con mucho texto se pasa igual. Esos son los que hay que ensanchar.
+    const noEntran = [];
+    const FF_MULTILINE = 1 << 12;
+    form.getFields().forEach(function (f) {
+        if (!(f instanceof PDFTextField)) return;
+        let widget;
+        try { widget = f.acroField.getWidgets()[0]; } catch (e) { return; }
+        if (!widget) return;
+        const ffObj = f.acroField.dict.get(PDFName.of('Ff'));
+        const ff = ffObj && ffObj.asNumber ? ffObj.asNumber() : 0;
+        if (ff & FF_MULTILINE) return;      // envuelve, no se pasa de ancho
+
+        const da = widget.dict.get(PDFName.of('DA')) || f.acroField.dict.get(PDFName.of('DA'));
+        const txtDa = da ? (da.asString ? da.asString() : String(da)) : '';
+        const m = /([\d.]+)\s+Tf/.exec(txtDa);
+        const size = m ? parseFloat(m[1]) : 0;
+        if (!size) return;
+        const valor = f.getText() || '';
+        if (!valor) return;
+        let necesita;
+        try { necesita = font.widthOfTextAtSize(valor, size); } catch (e) { return; }
+        const rect = widget.getRectangle();
+        const util = rect.width - 4;        // el borde se come un par de puntos
+        if (necesita > util) {
+            noEntran.push({
+                field: f.getName(), size: Math.round(size * 10) / 10,
+                necesita: Math.round(necesita), disponible: Math.round(util),
+            });
+        }
+    });
+
     return {
         pdfBytes: await doc.save(),
         texto: texto, casillas: casillas, listas: listas, radios: radios,
         saltados: saltados, comb: comb, fallos: fallos,
+        noEntran: noEntran,
         total: texto + casillas + listas + radios,
     };
 }

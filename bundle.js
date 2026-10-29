@@ -103291,6 +103291,44 @@ ${pagesHtml}</body>
         } catch (e) {
           fallos.push({ field: "(apariencias)", reason: e.message });
         }
+        const noEntran = [];
+        const FF_MULTILINE = 1 << 12;
+        form.getFields().forEach(function(f) {
+          if (!(f instanceof PDFTextField)) return;
+          let widget;
+          try {
+            widget = f.acroField.getWidgets()[0];
+          } catch (e) {
+            return;
+          }
+          if (!widget) return;
+          const ffObj = f.acroField.dict.get(PDFName.of("Ff"));
+          const ff = ffObj && ffObj.asNumber ? ffObj.asNumber() : 0;
+          if (ff & FF_MULTILINE) return;
+          const da = widget.dict.get(PDFName.of("DA")) || f.acroField.dict.get(PDFName.of("DA"));
+          const txtDa = da ? da.asString ? da.asString() : String(da) : "";
+          const m = /([\d.]+)\s+Tf/.exec(txtDa);
+          const size = m ? parseFloat(m[1]) : 0;
+          if (!size) return;
+          const valor = f.getText() || "";
+          if (!valor) return;
+          let necesita;
+          try {
+            necesita = font.widthOfTextAtSize(valor, size);
+          } catch (e) {
+            return;
+          }
+          const rect = widget.getRectangle();
+          const util = rect.width - 4;
+          if (necesita > util) {
+            noEntran.push({
+              field: f.getName(),
+              size: Math.round(size * 10) / 10,
+              necesita: Math.round(necesita),
+              disponible: Math.round(util)
+            });
+          }
+        });
         return {
           pdfBytes: await doc.save(),
           texto,
@@ -103300,6 +103338,7 @@ ${pagesHtml}</body>
           saltados,
           comb,
           fallos,
+          noEntran,
           total: texto + casillas + listas + radios
         };
       }
